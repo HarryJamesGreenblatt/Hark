@@ -33,7 +33,7 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 - .NET 9 SDK
 - An Azure AI **Speech** resource (`kind=SpeechServices`, `S0`)
 - The signed-in identity holds the **Cognitive Services Speech User** role on that resource
-- Signed in via Azure CLI (`az login`) or Visual Studio — used for keyless auth
+- Signed in via Azure CLI (`az login`) — its identity is used for keyless auth
 
 ## Configuration
 
@@ -44,7 +44,9 @@ Provide the resource via flags or environment variables:
 | Region | `--region eastus2` | `HARK_SPEECH_REGION` |
 | Resource ARM id | `--resource-id <id>` | `HARK_SPEECH_RESOURCE_ID` |
 
-> **Auth is keyless.** HARK uses `DefaultAzureCredential` and never reads or stores account keys.
+> **Auth is keyless.** HARK authenticates with `AzureCliCredential` (your `az login` identity) and
+> never reads or stores account keys. The explicit credential keeps `DefaultAzureCredential` free
+> for other tooling and ensures the role-bearing CLI identity is the one used.
 
 ## Usage
 
@@ -79,7 +81,7 @@ az role assignment create --assignee-object-id $me --assignee-principal-type Use
 |---|---|
 | [NAudio](https://github.com/naudio/NAudio) | WASAPI loopback capture + resampling |
 | [Microsoft.CognitiveServices.Speech](https://learn.microsoft.com/azure/ai-services/speech-service/) | Continuous speech recognition |
-| [Azure.Identity](https://learn.microsoft.com/dotnet/api/azure.identity) | Keyless Entra ID auth (`DefaultAzureCredential`) |
+| [Azure.Identity](https://learn.microsoft.com/dotnet/api/azure.identity) | Keyless Entra ID auth (`AzureCliCredential`) |
 
 ## License
 
