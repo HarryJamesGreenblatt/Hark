@@ -1,0 +1,13 @@
+## .NET build artifacts
+bin/
+obj/
+
+## User-specific / IDE
+.vs/
+*.user
+
+## HARK transcripts (don't commit captured output)
+*.txt
+*.jsonl
+*.srt
+!README*.txt

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Hark.Cli/Hark.Cli.csproj" />
+  <Project Path="Hark.Core/Hark.Core.csproj" />
+</Solution>

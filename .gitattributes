@@ -1,0 +1,12 @@
+# Normalize line endings: let Git decide on checkout, store LF in the repo.
+* text=auto
+
+# Keep Windows-centric scripts as CRLF on checkout.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Treat common binary assets as binary (no EOL/diff munging).
+*.png binary
+*.jpg binary
+*.ico binary
