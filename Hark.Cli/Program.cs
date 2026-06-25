@@ -1,8 +1,6 @@
 ﻿using Azure.Identity;
-using Hark.Core.Audio;
-using Hark.Core.Capture;
+using Hark.Core;
 using Hark.Core.Output;
-using Hark.Core.Transcription;
 
 // HARK — Hear. Adapt. Recognize. Keep.
 // Captures system playback audio (WASAPI loopback) and streams it to Azure AI Speech for
@@ -34,18 +32,13 @@ if (options.JsonPath is not null) sinks.Add(new JsonSink(options.JsonPath));
 if (options.SrtPath is not null) sinks.Add(new SrtSink(options.SrtPath));
 await using var sink = new CompositeSink(sinks.ToArray());
 
-// Recognize — Azure Speech via keyless Entra auth.
+// The shared pipeline (Hear → Adapt → Recognize → Keep).
 // Use the Azure CLI sign-in (az login) explicitly rather than DefaultAzureCredential, so HARK
 // authenticates as the identity that holds the 'Cognitive Services Speech User' role on the
 // resource — independent of any Visual Studio / IDE sign-in used for other work.
-await using var transcriber = new AzureSpeechTranscriber(
-    region, resourceId, options.Language, new AzureCliCredential());
-transcriber.Interim += sink.Write;
-transcriber.Final += sink.Write;
-transcriber.Error += msg => Console.Error.WriteLine($"[Recognize] {msg}");
-
-// Hear — WASAPI loopback capture.
-using var capture = new LoopbackCaptureService();
+await using var session = new HarkSession(
+    region, resourceId, options.Language, new AzureCliCredential(), sink);
+session.Error += msg => Console.Error.WriteLine($"[Recognize] {msg}");
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -54,21 +47,9 @@ Console.CancelKeyPress += (_, e) =>
     shutdown.Cancel();
 };
 
-await transcriber.StartAsync(shutdown.Token);
+await session.StartAsync(shutdown.Token);
 
-capture.Start();
-var format = capture.WaveFormat
-    ?? throw new InvalidOperationException("Capture did not expose a wave format after starting.");
-
-// Adapt — convert each captured buffer to 16 kHz mono 16-bit PCM and feed the recognizer.
-var converter = new PcmConverter(format);
-capture.DataAvailable += (buffer, bytes) =>
-{
-    var pcm = converter.Convert(buffer, bytes);
-    if (pcm.Length > 0) transcriber.Write(pcm, pcm.Length);
-};
-
-Console.Error.WriteLine($"HARK listening on default output device ({format.SampleRate} Hz, {format.Channels}ch).");
+Console.Error.WriteLine("HARK listening on default output device.");
 Console.Error.WriteLine("Play audio through your speakers/headphones. Press Ctrl+C to stop.");
 
 try
@@ -81,8 +62,7 @@ catch (OperationCanceledException)
 }
 
 Console.Error.WriteLine("Stopping…");
-capture.Stop();
-await transcriber.StopAsync();
+await session.StopAsync();
 return 0;
 
 /// <summary>Parsed command-line options for the HARK CLI.</summary>

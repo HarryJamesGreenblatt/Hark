@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Hark.App": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "HARK_SPEECH_REGION": "eastus2",
+        "HARK_SPEECH_RESOURCE_ID": "/subscriptions/REDACTED-SUBSCRIPTION-ID/resourceGroups/rg-hark/providers/Microsoft.CognitiveServices/accounts/spch-hark"
+      }
+    }
+  }
+}
