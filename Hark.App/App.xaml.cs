@@ -29,9 +29,10 @@ public partial class App : Application
         _region = Environment.GetEnvironmentVariable("HARK_SPEECH_REGION");
         _resourceId = Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID");
 
+        // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();
         _overlay.SetRunning(false);
-        _overlay.Show();
+        _overlay.CloseRequested += () => Shutdown();
 
         _tray = BuildTrayIcon();
 
@@ -46,27 +47,39 @@ public partial class App : Application
                 "Couldn't register Ctrl+Win+H (it may be reserved). Use the tray menu to toggle captions.",
                 ToolTipIcon.Warning);
         }
+        else
+        {
+            _tray.ShowBalloonTip(
+                3000, "HARK is running",
+                "Press Ctrl+Win+H to toggle captions. Right-click the tray icon to exit.",
+                ToolTipIcon.Info);
+        }
     }
 
     private NotifyIcon BuildTrayIcon()
     {
         var menu = new ContextMenuStrip();
-        var toggleItem = new ToolStripMenuItem("Start captions", null, (_, _) => ToggleAsync());
-        var showItem = new ToolStripMenuItem("Show overlay", null, (_, _) => _overlay?.Show());
-        var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => Shutdown());
-        menu.Items.AddRange(new ToolStripItem[] { toggleItem, showItem, new ToolStripSeparator(), exitItem });
+        var toggleItem = new ToolStripMenuItem("Start captions (Ctrl+Win+H)", null, (_, _) => ToggleAsync());
+        var exitItem = new ToolStripMenuItem("Exit HARK", null, (_, _) => Shutdown());
+        menu.Items.AddRange(new ToolStripItem[] { toggleItem, new ToolStripSeparator(), exitItem });
 
         // Keep the toggle label in sync whenever the menu opens.
         menu.Opening += (_, _) =>
-            toggleItem.Text = (_session?.IsRunning ?? false) ? "Stop captions" : "Start captions";
+            toggleItem.Text = (_session?.IsRunning ?? false)
+                ? "Stop captions (Ctrl+Win+H)"
+                : "Start captions (Ctrl+Win+H)";
 
-        return new NotifyIcon
+        var tray = new NotifyIcon
         {
             Icon = SystemIcons.Application,
             Visible = true,
             Text = "HARK — captions (Ctrl+Win+H)",
             ContextMenuStrip = menu,
         };
+
+        // Double-click the tray icon toggles captions, matching the hotkey.
+        tray.DoubleClick += (_, _) => ToggleAsync();
+        return tray;
     }
 
     /// <summary>Fire-and-forget entry point for hotkey/menu/UI handlers.</summary>
@@ -82,6 +95,7 @@ public partial class App : Application
             {
                 await _session.StopAsync(cancellationToken);
                 _overlay?.SetRunning(false);
+                _overlay?.Hide();      // toggle "off" — the bar disappears like native Live Captions
             }
             else
             {
@@ -94,8 +108,8 @@ public partial class App : Application
                     return;
                 }
 
-                _overlay?.Show();
                 _overlay?.ClearText();
+                _overlay?.ShowAndActivate();   // toggle "on" — surface the bar above other windows
 
                 // Same keyless auth as the CLI: AzureCliCredential (the az login identity).
                 _session = new HarkSession(

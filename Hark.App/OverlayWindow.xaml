@@ -32,9 +32,10 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Slim header acts as the drag handle and shows live status. -->
+            <!-- Slim header acts as the drag handle and shows live status; hosts the close button. -->
             <Grid Grid.Row="0" x:Name="DragHandle" Background="Transparent" Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -50,9 +51,33 @@
                            Foreground="#9AA0A6" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="2" x:Name="HintText"
                            Text="Ctrl+Win+H to toggle"
+                           HorizontalAlignment="Right"
+                           Margin="12,0,0,0"
                            FontFamily="Segoe UI Variable, Segoe UI"
                            FontSize="11"
                            Foreground="#5F6368" VerticalAlignment="Center" />
+
+                <!-- Close button (✕): exits HARK. Red hover mirrors native window chrome. -->
+                <Button Grid.Column="3" x:Name="CloseButton"
+                        Width="22" Height="22" Margin="10,0,0,0" Padding="0"
+                        Content="✕" FontSize="11"
+                        Foreground="#C8CCD0" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
+                        ToolTip="Close HARK">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bg" Property="Background" Value="#E03A3A" />
+                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
             </Grid>
 
             <!-- Rolling transcript: read-only but selectable + copyable, and scrollable when expanded. -->

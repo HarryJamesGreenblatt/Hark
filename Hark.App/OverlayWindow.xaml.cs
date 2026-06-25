@@ -37,7 +37,11 @@ public partial class OverlayWindow : Window
 
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
+        CloseButton.Click += (_, _) => CloseRequested?.Invoke();
     }
+
+    /// <summary>Raised when the user clicks the overlay's close (✕) button.</summary>
+    public event Action? CloseRequested;
 
     /// <summary>Updates the live (interim) hypothesis line.</summary>
     public void ShowInterim(string text)
@@ -128,6 +132,16 @@ public partial class OverlayWindow : Window
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - Width) / 2;
         Top = area.Bottom - Height - 48;
+    }
+
+    /// <summary>Shows the overlay and forces it above other topmost windows.</summary>
+    public void ShowAndActivate()
+    {
+        Show();
+        // Re-assert topmost so the bar surfaces above other always-on-top windows (e.g. browsers).
+        Topmost = false;
+        Topmost = true;
+        Activate();
     }
 
     private void OnDragHandlePressed(object sender, MouseButtonEventArgs e)
