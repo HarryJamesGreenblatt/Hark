@@ -1,6 +1,8 @@
-﻿using Azure.Identity;
+﻿using System.Reflection;
+using Azure.Identity;
 using Hark.Core;
 using Hark.Core.Output;
+using Microsoft.Extensions.Configuration;
 
 // HARK — Hear. Adapt. Recognize. Keep.
 // Captures system playback audio (WASAPI loopback) and streams it to Azure AI Speech for
@@ -13,14 +15,23 @@ if (options.ShowHelp)
     return 0;
 }
 
-string? region = options.Region ?? Environment.GetEnvironmentVariable("HARK_SPEECH_REGION");
-string? resourceId = options.ResourceId ?? Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID");
+// Config precedence: CLI flag > env var > user-secrets (dev-machine-local, never committed).
+// The resource ARM id embeds the subscription id, so it deliberately never lives in source or
+// launch profiles — see dotnet user-secrets in the README's Configuration section.
+var config = new ConfigurationBuilder()
+    .AddUserSecrets(Assembly.GetExecutingAssembly())
+    .AddEnvironmentVariables()
+    .Build();
+
+string? region = options.Region ?? config["HARK_SPEECH_REGION"];
+string? resourceId = options.ResourceId ?? config["HARK_SPEECH_RESOURCE_ID"];
 
 if (string.IsNullOrWhiteSpace(region) || string.IsNullOrWhiteSpace(resourceId))
 {
     Console.Error.WriteLine(
         "Missing Speech resource configuration. Provide --region and --resource-id, " +
-        "or set HARK_SPEECH_REGION and HARK_SPEECH_RESOURCE_ID.");
+        "set HARK_SPEECH_REGION / HARK_SPEECH_RESOURCE_ID, or configure dotnet user-secrets " +
+        "for Hark.Cli (see README).");
     Console.Error.WriteLine("Run 'hark --help' for details.");
     return 2;
 }

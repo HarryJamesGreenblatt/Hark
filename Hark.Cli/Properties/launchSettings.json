@@ -3,16 +3,14 @@
     "HARK": {
       "commandName": "Project",
       "environmentVariables": {
-        "HARK_SPEECH_REGION": "eastus2",
-        "HARK_SPEECH_RESOURCE_ID": "/subscriptions/REDACTED-SUBSCRIPTION-ID/resourceGroups/rg-hark/providers/Microsoft.CognitiveServices/accounts/spch-hark"
+        "HARK_SPEECH_REGION": "eastus2"
       }
     },
     "HARK (with transcripts)": {
       "commandName": "Project",
       "commandLineArgs": "--out transcript.txt --json transcript.jsonl --srt transcript.srt",
       "environmentVariables": {
-        "HARK_SPEECH_REGION": "eastus2",
-        "HARK_SPEECH_RESOURCE_ID": "/subscriptions/REDACTED-SUBSCRIPTION-ID/resourceGroups/rg-hark/providers/Microsoft.CognitiveServices/accounts/spch-hark"
+        "HARK_SPEECH_REGION": "eastus2"
       }
     }
   }

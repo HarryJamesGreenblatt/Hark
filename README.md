@@ -37,12 +37,22 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 
 ## Configuration
 
-Provide the resource via flags or environment variables:
+Provide the resource via flags, environment variables, or `dotnet user-secrets` (checked in that
+priority order):
 
 | Setting | Flag | Env var |
 |---|---|---|
 | Region | `--region eastus2` | `HARK_SPEECH_REGION` |
 | Resource ARM id | `--resource-id <id>` | `HARK_SPEECH_RESOURCE_ID` |
+
+> **The resource ARM id embeds your subscription id**, so it's never hardcoded in source or
+> `launchSettings.json`. Store it locally instead (one-time, per project):
+> ```powershell
+> dotnet user-secrets set "HARK_SPEECH_REGION" "eastus2" --project Hark.Cli
+> dotnet user-secrets set "HARK_SPEECH_RESOURCE_ID" "<your-speech-resource-arm-id>" --project Hark.Cli
+> # repeat with --project Hark.App for the desktop overlay
+> ```
+> User secrets live outside the repo (`%APPDATA%\Microsoft\UserSecrets\`) and are never committed.
 
 > **Auth is keyless.** HARK authenticates with `AzureCliCredential` (your `az login` identity) and
 > never reads or stores account keys. The explicit credential keeps `DefaultAzureCredential` free

@@ -1,8 +1,10 @@
 using System.Drawing;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
 using Azure.Identity;
 using Hark.Core;
+using Microsoft.Extensions.Configuration;
 
 namespace Hark.App;
 
@@ -28,6 +30,18 @@ public partial class App : Application
 
         _region = Environment.GetEnvironmentVariable("HARK_SPEECH_REGION");
         _resourceId = Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID");
+
+        // The resource ARM id embeds the subscription id, so it deliberately never lives in
+        // source or launch profiles — fall back to dotnet user-secrets (dev-machine-local,
+        // never committed) when the environment variables aren't set. See README.
+        if (string.IsNullOrWhiteSpace(_region) || string.IsNullOrWhiteSpace(_resourceId))
+        {
+            var config = new ConfigurationBuilder()
+                .AddUserSecrets(Assembly.GetExecutingAssembly())
+                .Build();
+            _region ??= config["HARK_SPEECH_REGION"];
+            _resourceId ??= config["HARK_SPEECH_RESOURCE_ID"];
+        }
 
         // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();

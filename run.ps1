@@ -1,6 +1,10 @@
 # HARK — convenience launcher
-# Sets the Speech resource configuration for the current session and runs the CLI.
+# Sets the (non-sensitive) region for the current session and runs the CLI.
 # Auth is keyless (Entra ID) via your Azure CLI / Visual Studio sign-in — no keys here.
+#
+# The Speech resource ARM id embeds your subscription id, so it's never hardcoded here — it's
+# read from dotnet user-secrets (dev-machine-local, never committed) or HARK_SPEECH_RESOURCE_ID.
+# One-time setup: dotnet user-secrets set HARK_SPEECH_RESOURCE_ID "<arm-id>" --project Hark.Cli
 
 param(
 	[string]$Out  = "transcript.txt",
@@ -10,8 +14,7 @@ param(
 	[switch]$Quiet
 )
 
-$env:HARK_SPEECH_REGION      = "eastus2"
-$env:HARK_SPEECH_RESOURCE_ID = "/subscriptions/REDACTED-SUBSCRIPTION-ID/resourceGroups/rg-hark/providers/Microsoft.CognitiveServices/accounts/spch-hark"
+$env:HARK_SPEECH_REGION = "eastus2"
 
 $harkArgs = @()
 if ($Out)      { $harkArgs += @("--out", $Out) }
