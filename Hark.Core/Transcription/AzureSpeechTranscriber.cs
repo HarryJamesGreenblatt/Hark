@@ -19,6 +19,13 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
     /// <summary>Refresh the Entra token comfortably before its ~1 hour expiry.</summary>
     private static readonly TimeSpan TokenRefreshInterval = TimeSpan.FromMinutes(8);
 
+    /// <summary>
+    /// Languages considered by continuous language identification when the caller doesn't pin one.
+    /// Keep this to the realistic set for the audio — continuous LID is most reliable with a small
+    /// candidate list (the service supports a limited number of simultaneous languages).
+    /// </summary>
+    private static readonly string[] CandidateLanguages = { "en-US", "es-ES" };
+
     private readonly string _region;
     private readonly string _resourceId;
     private readonly string? _language;
@@ -68,9 +75,6 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
         var config = SpeechConfig.FromAuthorizationToken(
             await BuildAuthTokenAsync(cancellationToken).ConfigureAwait(false), _region);
 
-        if (!string.IsNullOrWhiteSpace(_language))
-            config.SpeechRecognitionLanguage = _language;
-
         // Request word-level detail and stable interim results for a responsive stream.
         config.OutputFormat = OutputFormat.Simple;
 
@@ -79,7 +83,23 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
         _pushStream = AudioInputStream.CreatePushStream(format);
 
         var audioConfig = AudioConfig.FromStreamInput(_pushStream);
-        _recognizer = new SpeechRecognizer(config, audioConfig);
+
+        if (!string.IsNullOrWhiteSpace(_language))
+        {
+            // Caller pinned a specific language.
+            config.SpeechRecognitionLanguage = _language;
+            _recognizer = new SpeechRecognizer(config, audioConfig);
+        }
+        else
+        {
+            // No language pinned: enable continuous language identification so mixed-language
+            // audio (e.g. Spanish + English lyrics) is transcribed throughout instead of being
+            // dropped by a single-language model. Continuous LID re-evaluates the language as the
+            // audio evolves, rather than only detecting it once at the start.
+            config.SetProperty(PropertyId.SpeechServiceConnection_LanguageIdMode, "Continuous");
+            var autoDetect = AutoDetectSourceLanguageConfig.FromLanguages(CandidateLanguages);
+            _recognizer = new SpeechRecognizer(config, autoDetect, audioConfig);
+        }
 
         _recognizer.Recognizing += OnRecognizing;
         _recognizer.Recognized += OnRecognized;

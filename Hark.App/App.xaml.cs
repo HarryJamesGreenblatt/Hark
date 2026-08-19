@@ -140,6 +140,7 @@ public partial class App : Application
         {
             _tray?.ShowBalloonTip(5000, "HARK — error", ex.Message, ToolTipIcon.Error);
             _overlay?.SetRunning(false);
+            _overlay?.ShowStatus($"Couldn't start captions: {ex.Message}");
         }
         finally
         {
@@ -149,7 +150,10 @@ public partial class App : Application
 
     private void OnSessionError(string message) =>
         Dispatcher.BeginInvoke(() =>
-            _tray?.ShowBalloonTip(4000, "HARK — recognizer", message, ToolTipIcon.Warning));
+        {
+            _tray?.ShowBalloonTip(4000, "HARK — recognizer", message, ToolTipIcon.Warning);
+            _overlay?.ShowStatus($"Recognizer: {message}");
+        });
 
     protected override void OnExit(ExitEventArgs e)
     {

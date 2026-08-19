@@ -69,6 +69,18 @@ public partial class OverlayWindow : Window
         HintText.Text = running ? "Listening · Ctrl+Win+H to stop" : "Idle · Ctrl+Win+H to start";
     }
 
+    /// <summary>
+    /// Surfaces a diagnostic message (e.g. a failed start or recognizer error) directly in the
+    /// caption area so it persists, instead of relying on a fleeting tray balloon.
+    /// </summary>
+    public void ShowStatus(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        HintText.Text = "Error · Ctrl+Win+H to retry";
+        _interim = message.Trim();
+        Render();
+    }
+
     /// <summary>Clears all caption text (used when stopping a session).</summary>
     public void ClearText()
     {
