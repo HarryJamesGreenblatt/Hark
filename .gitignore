@@ -13,8 +13,5 @@ obj/
 !README*.txt
 
 
-## Session history
-context/
-
 ## Contextual artifacts
 artifacts/
