@@ -62,5 +62,4 @@ Polish the desktop experience: match native Live Captions' docking, prevent a de
 - **Language selector (from native Live Captions):** native forces a language choice up front; HARK
   uses continuous LID (non-diarized) / a pinned language (diarized). A native-style picker could let
   users set the diarized language without a rebuild.
-- **WavBall reference clone:** left in `%TEMP%\WavBall` for reference; safe to delete.
 - Carried forward: live SUMMARY smoke test, IaC + CI/CD pipeline, tests, personal-subscription move.
