@@ -79,15 +79,39 @@ return 0;
 /// <summary>Parsed command-line options for the HARK CLI.</summary>
 internal sealed class CliOptions
 {
+    #region Properties
+
+    /// <summary>The Speech resource region, e.g. <c>eastus2</c>.</summary>
     public string? Region { get; private init; }
+
+    /// <summary>The full ARM resource ID of the Speech account.</summary>
     public string? ResourceId { get; private init; }
+
+    /// <summary>Optional BCP-47 recognition language tag.</summary>
     public string? Language { get; private init; }
+
+    /// <summary>Optional destination path for the rolling plain-text transcript.</summary>
     public string? OutPath { get; private init; }
+
+    /// <summary>Optional destination path for the JSON Lines transcript.</summary>
     public string? JsonPath { get; private init; }
+
+    /// <summary>Optional destination path for the SRT subtitle file.</summary>
     public string? SrtPath { get; private init; }
+
+    /// <summary>Whether interim hypotheses are suppressed on stdout (finals only).</summary>
     public bool Quiet { get; private init; }
+
+    /// <summary>Whether help text was requested (or an unknown argument was encountered).</summary>
     public bool ShowHelp { get; private init; }
 
+    #endregion
+
+    #region Methods
+
+    /// <summary>Parses command-line arguments into a <see cref="CliOptions"/> instance.</summary>
+    /// <param name="args">The raw command-line arguments.</param>
+    /// <returns>The parsed options.</returns>
     public static CliOptions Parse(string[] args)
     {
         string? region = null, resourceId = null, language = null, outPath = null, jsonPath = null, srtPath = null;
@@ -125,8 +149,13 @@ internal sealed class CliOptions
         };
     }
 
+    /// <summary>Returns the next argument after the current index, advancing <paramref name="i"/>.</summary>
+    /// <param name="args">The full argument list.</param>
+    /// <param name="i">The current index, advanced by one if a next argument exists.</param>
+    /// <returns>The next argument, or <see langword="null"/> if none remains.</returns>
     private static string? Next(string[] args, ref int i) => i + 1 < args.Length ? args[++i] : null;
 
+    /// <summary>Writes usage help text to stdout.</summary>
     public static void PrintHelp()
     {
         Console.WriteLine(
@@ -157,4 +186,6 @@ internal sealed class CliOptions
               hark --region eastus2 --out transcript.txt --json transcript.jsonl
             """);
     }
+
+    #endregion
 }
