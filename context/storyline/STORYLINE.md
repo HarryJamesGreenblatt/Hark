@@ -14,12 +14,13 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-19 (end of Episode 5)._
+_Last updated: 2026-08-19 (end of Episode 6)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
   `github.com/HarryJamesGreenblatt/Hark`. The overlay is now a **multi-speaker** experience:
   reliable multi-language captions, real-time speaker diarization, per-speaker pages, and an
-  AI recap with a CAPTIONS/SUMMARY mode switch.
+  AI recap with a CAPTIONS/SUMMARY mode switch. The recap model is **provisioned and wired**
+  (Azure OpenAI, `gpt-4.1-mini`, keyless) — pending a live end-to-end smoke test.
 - **Branch:** `main` · working tree clean.
 - **Apps:** `Hark.Cli` (terminal) and `Hark.App` (WPF tray overlay) drive the shared
   `Hark.Core/HarkSession`. `Hark.App`: starts hidden; `Ctrl+Win+H` toggles the bar; header has a
@@ -37,10 +38,13 @@ _Last updated: 2026-08-19 (end of Episode 5)._
   cache summaries (reuse when captions unchanged; regenerate on new speech/session).
 - **Auth:** `AzureCliCredential` (explicit), keyless. Requires `az login` with the
   **Cognitive Services Speech User** role on the Speech resource, and — for recaps — the
-  appropriate **Azure OpenAI** data-plane role on that resource.
+  **Cognitive Services OpenAI User** role on the Azure OpenAI resource.
 - **Config:** all sensitive values live outside source. Speech region/resource id via env var →
   `dotnet user-secrets`; Azure OpenAI endpoint + deployment via `dotnet user-secrets`
   (`HARK_AOAI_ENDPOINT`, `HARK_AOAI_DEPLOYMENT`). Missing recap config shows a friendly inline note.
+- **Summary infra:** a dedicated Azure OpenAI resource in `rg-hark` (eastus2, enterprise non-prod)
+  with a `gpt-4.1-mini` chat deployment. Provisioned by hand via `az` this session — a candidate for
+  IaC + CI/CD later (see open threads). Billable; delete/purge when done experimenting.
 - **How to run:** VS **F5** per project, or `.\run.ps1` (CLI), or raw `dotnet run` — after the
   one-time user-secrets setup for the resources you're targeting.
 - **`gh` auth:** enterprise (`hgreenblatt_microsoft`) and personal (`HarryJamesGreenblatt`, owns the
@@ -60,6 +64,7 @@ _Last updated: 2026-08-19 (end of Episode 5)._
 | 3 | 2026-06-24 | [Overlay Close & Toggle](./EP03-overlay-close-and-toggle.md) | Added ✕ close button + native hidden-until-toggled on/off behavior. |
 | 4 | 2026-08-18 | [GitHub Publish & Secret Hardening](./EP04-github-publish-and-secret-hardening.md) | Published to a personal public GitHub repo; found + fixed a leaked subscription id (moved to `dotnet user-secrets`); scrubbed git history. |
 | 5 | 2026-08-19 | [Diarization, Speaker Pages & AI Recap](./EP05-diarization-speaker-pages-and-recap.md) | Fixed multi-language captions + silent failures; added speaker diarization, per-speaker pages, and a Teams-style Azure OpenAI recap with a CAPTIONS/SUMMARY mode switch. |
+| 6 | 2026-08-19 | [Summary Enablement & AOAI Provisioning](./EP06-summary-enablement-and-aoai-provisioning.md) | Provisioned the Azure OpenAI resource + `gpt-4.1-mini` deployment behind SUMMARY (keyless), wired user-secrets, and documented the setup in the README. |
 
 ---
 
@@ -67,18 +72,23 @@ _Last updated: 2026-08-19 (end of Episode 5)._
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
-- **Summary smoke test (Episode 5):** set the Azure OpenAI user-secrets (`HARK_AOAI_ENDPOINT`,
-  `HARK_AOAI_DEPLOYMENT`), grant the signed-in identity the appropriate **Azure OpenAI** data-plane
-  role, then verify a live recap and the cache-reuse behavior (toggle SUMMARY↔CAPTIONS).
-- **README/docs:** document the new summary secrets (variable names only) and the required role,
-  alongside the existing Speech setup.
+- **Live recap smoke test:** run `Hark.App`, capture dialogue, click SUMMARY, and confirm a recap
+  returns from the `gpt-4.1-mini` deployment and that the revision-based cache reuses it until new
+  speech arrives.
+- **Infra as Code + CI/CD (nice-to-have, not now):** formalize the Azure provisioning (resource
+  group, Speech resource, Azure OpenAI account + `gpt-4.1-mini` deployment, role assignments) as
+  **Bicep/Terraform** driven by a **GitHub Actions** workflow, so the full stack can be stood up in
+  another environment/subscription with one run. Parameterize region/model; keep secrets in the
+  target env rather than local user-secrets.
+- **Personal Azure resources (deferred):** provision Speech **and** Azure OpenAI resources under a
+  personal subscription, `az login` as that identity, assign the data-plane roles, and point
+  `dotnet user-secrets` at them — fully decouples HARK from the enterprise account.
 - **Recap styles / persistence:** Teams is the default; consider persisting the chosen style and
   richer per-speaker recaps.
 - **Diarization caveats:** `Guest-N` labels are anonymous and session-scoped and can occasionally
   swap/merge; consider a rename/merge affordance.
-- **Personal Azure resources (deferred):** provision Speech **and** Azure OpenAI resources under a
-  personal subscription, `az login` as that identity, assign the data-plane roles, and point
-  `dotnet user-secrets` at them — fully decouples HARK from the enterprise account.
+- **Cost hygiene:** the Azure OpenAI resource is billable; delete/purge when experimentation winds
+  down (`az cognitiveservices account delete` + `purge`).
 - **Tests:** no coverage yet for `PcmConverter`, the `HarkSession` lifecycle, or `ConversationStore`.
 - **Overlay polish (optional):** drag-from-anywhere (except while selecting); click-through toggle;
   persistent settings (position, opacity, font size) vs env vars.
