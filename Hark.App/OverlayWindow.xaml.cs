@@ -19,6 +19,9 @@ public partial class OverlayWindow : Window
     private readonly LinkedList<string> _history = new();
     private string _interim = string.Empty;
 
+    /// <summary>Speakers that already have a pill in the index, to avoid duplicates.</summary>
+    private readonly HashSet<string> _speakers = new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly Brush FinalBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
     private static readonly Brush InterimBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xCC, 0xD0));
     private static readonly Brush RunningDot = new SolidColorBrush(Color.FromRgb(0x46, 0xD1, 0x7A));
@@ -42,6 +45,34 @@ public partial class OverlayWindow : Window
 
     /// <summary>Raised when the user clicks the overlay's close (✕) button.</summary>
     public event Action? CloseRequested;
+
+    /// <summary>Raised when the user clicks a speaker pill in the CONVERSATION index.</summary>
+    public event Action<string>? SpeakerSelected;
+
+    /// <summary>Adds a pill for a newly-discovered speaker (no-op if already present).</summary>
+    public void AddSpeaker(string speaker)
+    {
+        if (string.IsNullOrWhiteSpace(speaker) || !_speakers.Add(speaker)) return;
+
+        var button = new System.Windows.Controls.Button
+        {
+            Content = speaker,
+            Style = (Style)Bar.FindResource("SpeakerButtonStyle"),
+            ToolTip = $"Open {speaker}'s page",
+        };
+        button.Click += (_, _) => SpeakerSelected?.Invoke(speaker);
+
+        SpeakerBar.Items.Add(button);
+        SpeakerBarPanel.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Removes all speaker pills (used when a new session starts).</summary>
+    public void ClearSpeakers()
+    {
+        _speakers.Clear();
+        SpeakerBar.Items.Clear();
+        SpeakerBarPanel.Visibility = Visibility.Collapsed;
+    }
 
     /// <summary>Updates the live (interim) hypothesis line.</summary>
     public void ShowInterim(string text)

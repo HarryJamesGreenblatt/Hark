@@ -20,6 +20,9 @@ public partial class App : Application
     private GlobalHotkey? _hotkey;
     private HarkSession? _session;
 
+    private readonly ConversationStore _store = new();
+    private readonly Dictionary<string, SpeakerWindow> _speakerWindows = new(StringComparer.OrdinalIgnoreCase);
+
     private string? _region;
     private string? _resourceId;
     private bool _busy;
@@ -47,6 +50,11 @@ public partial class App : Application
         _overlay = new OverlayWindow();
         _overlay.SetRunning(false);
         _overlay.CloseRequested += () => Shutdown();
+        _overlay.SpeakerSelected += OpenSpeakerWindow;
+
+        // New speakers discovered by diarization surface as pills in the CONVERSATION index.
+        _store.SpeakerAdded += speaker =>
+            Dispatcher.BeginInvoke(() => _overlay?.AddSpeaker(speaker));
 
         _tray = BuildTrayIcon();
 
@@ -123,13 +131,14 @@ public partial class App : Application
                 }
 
                 _overlay?.ClearText();
+                ResetConversation();
                 _overlay?.ShowAndActivate();   // toggle "on" — surface the bar above other windows
 
                 // Same keyless auth as the CLI: AzureCliCredential (the az login identity).
                 _session = new HarkSession(
                     _region!, _resourceId!, language: null,
                     credential: new AzureCliCredential(),
-                    sink: _overlay is null ? null : new OverlaySink(_overlay),
+                    sink: _overlay is null ? null : new OverlaySink(_overlay, _store),
                     diarize: true);
                 _session.Error += OnSessionError;
 
@@ -155,6 +164,40 @@ public partial class App : Application
             _tray?.ShowBalloonTip(4000, "HARK — recognizer", message, ToolTipIcon.Warning);
             _overlay?.ShowStatus($"Recognizer: {message}");
         });
+
+    /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
+    private void OpenSpeakerWindow(string speaker)
+    {
+        if (_speakerWindows.TryGetValue(speaker, out var existing))
+        {
+            existing.Activate();
+            return;
+        }
+
+        var window = new SpeakerWindow(_store, speaker);
+        window.Closed += (_, _) => _speakerWindows.Remove(speaker);
+        _speakerWindows[speaker] = window;
+
+        // Cascade pages so multiple speakers don't stack exactly on top of each other.
+        if (_overlay is not null)
+        {
+            int index = _speakerWindows.Count - 1;
+            window.Left = _overlay.Left + 40 * index;
+            window.Top = Math.Max(0, _overlay.Top - window.Height - 20 - 30 * index);
+        }
+        window.Show();
+    }
+
+    /// <summary>Clears the conversation model, the speaker index, and any open speaker pages.</summary>
+    private void ResetConversation()
+    {
+        foreach (var window in _speakerWindows.Values.ToArray())
+            window.Close();
+        _speakerWindows.Clear();
+
+        _overlay?.ClearSpeakers();
+        _store.Clear();
+    }
 
     protected override void OnExit(ExitEventArgs e)
     {
