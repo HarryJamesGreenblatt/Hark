@@ -127,14 +127,14 @@ az cognitiveservices account create --name aoai-hark --resource-group rg-hark `
 
 # Deploy a chat model (pick a model/version available in your region)
 az cognitiveservices account deployment create -n aoai-hark -g rg-hark `
-  --deployment-name gpt-4o-mini --model-name gpt-4o-mini --model-version "2024-07-18" `
-  --model-format OpenAI --sku-name Standard --sku-capacity 10
+  --deployment-name gpt-4.1-mini --model-name gpt-4.1-mini --model-version "2025-04-14" `
+  --model-format OpenAI --sku-name GlobalStandard --sku-capacity 10
 
 $aoai = az cognitiveservices account show -n aoai-hark -g rg-hark --query id -o tsv
 az role assignment create --assignee-object-id $me --assignee-principal-type User `
   --role "Cognitive Services OpenAI User" --scope $aoai
 
-# Endpoint = https://aoai-hark.openai.azure.com/  ·  deployment = gpt-4o-mini
+# Endpoint = https://aoai-hark.openai.azure.com/  ·  deployment = gpt-4.1-mini
 # Store them in user-secrets (see "Summaries" above).
 ```
 
