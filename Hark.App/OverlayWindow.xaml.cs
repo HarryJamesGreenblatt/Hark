@@ -38,8 +38,14 @@ public partial class OverlayWindow : Window
     private bool _hasSpeakers;
     private bool _running;
 
-    /// <summary>Smoothed audio level (0..1) driving the HAL eye, for attack/decay easing.</summary>
+    /// <summary>Latest audio level target (0..1), published by the audio callback, eased in the render loop.</summary>
+    private double _audioTarget;
+
+    /// <summary>Displayed audio level (0..1), eased toward <see cref="_audioTarget"/> each frame.</summary>
     private double _eyeLevel;
+
+    /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
+    private TimeSpan _lastRenderTime;
 
     public OverlayWindow()
     {
@@ -71,6 +77,11 @@ public partial class OverlayWindow : Window
 
         UpdateModeButtons();
         SetSummaryAvailable(false);   // nothing to summarize until captions arrive
+
+        // Drive the HAL eye from the WPF compositor (~60fps), decoupled from the audio callback
+        // rate, so it eases smoothly toward the latest level instead of stepping at ~20 Hz.
+        CompositionTarget.Rendering += OnRendering;
+        Closed += (_, _) => CompositionTarget.Rendering -= OnRendering;
     }
 
     /// <summary>The recap style currently chosen in the picker.</summary>
@@ -212,39 +223,65 @@ public partial class OverlayWindow : Window
     public void SetRunning(bool running)
     {
         _running = running;
-        _eyeLevel = 0.0;
+        _audioTarget = 0.0;
         HintText.Text = running ? "Listening · Ctrl+Win+H to stop" : "Idle · Ctrl+Win+H to start";
-
-        // Idle = dim, dormant eye; running (before sound) = a low resting glow.
-        HalCornea.Opacity = running ? 0.4 : 0.28;
-        HalGlow.Opacity = running ? 0.18 : 0.0;
-        HalGlow.BlurRadius = running ? 4 : 0;
-        HalScale.ScaleX = HalScale.ScaleY = running ? 0.92 : 1.0;
+        // The render loop eases the eye to its new resting state.
     }
 
     /// <summary>
-    /// Modulates the HAL eye to the current audio level (RMS, 0..1) while running. A gain + curve
-    /// spreads the (typically small) loudness range across the eye, and asymmetric smoothing
-    /// (fast attack, slow decay) makes it pulse to sound like HAL-9000 instead of pinning on.
+    /// Publishes the latest audio level (RMS, 0..1). Cheap and non-visual — the render loop reads
+    /// this target and eases the eye toward it, so the audio callback rate never gates the animation.
     /// </summary>
     public void SetAudioLevel(double level)
     {
-        if (!_running) return;
-
         level = level < 0 ? 0 : level > 1 ? 1 : level;
-
         // RMS sits low (~0.05–0.3); boost + perceptual sqrt curve to use the full visual range.
-        double target = Math.Sqrt(Math.Min(1.0, level * 4.5));
+        _audioTarget = Math.Sqrt(Math.Min(1.0, level * 4.5));
+    }
 
-        // Rise quickly, fall gently — reads as a lively pulse rather than a jittery flicker.
-        double rate = target > _eyeLevel ? 0.5 : 0.12;
-        _eyeLevel += (target - _eyeLevel) * rate;
-        double l = _eyeLevel;
+    /// <summary>
+    /// Per-frame easing of the HAL eye toward the latest audio target (or rest when idle/silent).
+    /// Asymmetric time constants — fast attack, slower release — give a lively, HAL-like pulse.
+    /// </summary>
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        if (e is not RenderingEventArgs args) return;
 
-        HalCornea.Opacity = 0.35 + 0.65 * l;
-        HalGlow.Opacity = 0.15 + 0.75 * l;
-        HalGlow.BlurRadius = 3 + 22 * l;
-        HalScale.ScaleX = HalScale.ScaleY = 0.9 + 0.3 * l;
+        var now = args.RenderingTime;
+        double dt = (now - _lastRenderTime).TotalSeconds;
+        _lastRenderTime = now;
+        if (dt <= 0 || dt > 0.25) dt = 1.0 / 60.0;   // guard against pauses / first frame
+
+        double target = _running ? _audioTarget : 0.0;
+
+        // Exponential smoothing with separate attack (rising) and release (falling) time constants.
+        const double attackTau = 0.045;   // seconds — snappy onset
+        const double releaseTau = 0.20;   // seconds — gentle decay
+        double tau = target > _eyeLevel ? attackTau : releaseTau;
+        double alpha = 1.0 - Math.Exp(-dt / tau);
+        _eyeLevel += (target - _eyeLevel) * alpha;
+
+        ApplyEye(_eyeLevel);
+    }
+
+    /// <summary>Maps the eased level (0..1) onto the eye's cornea brightness, glow, and pulse.</summary>
+    private void ApplyEye(double l)
+    {
+        if (_running)
+        {
+            HalCornea.Opacity = 0.35 + 0.65 * l;
+            HalGlow.Opacity = 0.12 + 0.80 * l;
+            HalGlow.BlurRadius = 3 + 24 * l;
+            HalScale.ScaleX = HalScale.ScaleY = 0.9 + 0.32 * l;
+        }
+        else
+        {
+            // Idle: dormant, dim eye (still eases down smoothly from any prior glow).
+            HalCornea.Opacity = 0.24 + 0.10 * l;
+            HalGlow.Opacity = 0.0;
+            HalGlow.BlurRadius = 0;
+            HalScale.ScaleX = HalScale.ScaleY = 1.0;
+        }
     }
 
     /// <summary>
