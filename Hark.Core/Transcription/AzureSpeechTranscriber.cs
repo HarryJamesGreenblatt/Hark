@@ -13,6 +13,8 @@ namespace Hark.Core.Transcription;
 /// </summary>
 public sealed class AzureSpeechTranscriber : ISpeechTranscriber
 {
+    #region Constants
+
     /// <summary>Token scope for Azure AI / Cognitive Services data-plane access.</summary>
     private const string CognitiveServicesScope = "https://cognitiveservices.azure.com/.default";
 
@@ -26,15 +28,37 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
     /// </summary>
     private static readonly string[] CandidateLanguages = { "en-US", "es-ES" };
 
+    #endregion
+
+    #region Fields
+
+    /// <summary>The Speech resource region, e.g. <c>eastus2</c>.</summary>
     private readonly string _region;
+
+    /// <summary>The full ARM resource ID of the Speech account.</summary>
     private readonly string _resourceId;
+
+    /// <summary>Optional BCP-47 language tag pinned by the caller.</summary>
     private readonly string? _language;
+
+    /// <summary>The credential used to authorize against the Speech resource.</summary>
     private readonly TokenCredential _credential;
 
+    /// <summary>The push stream that converted PCM audio is written into.</summary>
     private PushAudioInputStream? _pushStream;
+
+    /// <summary>The active Speech SDK recognizer, or <see langword="null"/> when not running.</summary>
     private SpeechRecognizer? _recognizer;
+
+    /// <summary>Periodically refreshes the recognizer's authorization token.</summary>
     private Timer? _tokenRefreshTimer;
+
+    /// <summary>Whether <see cref="DisposeAsync"/> has already run, guarding against duplicate cleanup.</summary>
     private bool _disposed;
+
+    #endregion
+
+    #region Events
 
     /// <inheritdoc />
     public event Action<TranscriptSegment>? Interim;
@@ -44,6 +68,10 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
 
     /// <inheritdoc />
     public event Action<string>? Error;
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>
     /// Creates an Azure transcriber bound to a specific Speech resource.
@@ -66,6 +94,10 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
         // Picks up Visual Studio / Azure CLI sign-in for local dev, Managed Identity when hosted.
         _credential = credential ?? new DefaultAzureCredential();
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -171,18 +203,27 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
         }
     }
 
+    /// <summary>Re-raises a provisional hypothesis via <see cref="Interim"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The recognizing event arguments from the Speech SDK.</param>
     private void OnRecognizing(object? sender, SpeechRecognitionEventArgs e)
     {
         if (string.IsNullOrEmpty(e.Result.Text)) return;
         Interim?.Invoke(ToSegment(e.Result, isFinal: false));
     }
 
+    /// <summary>Re-raises a finalized segment via <see cref="Final"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The recognized event arguments from the Speech SDK.</param>
     private void OnRecognized(object? sender, SpeechRecognitionEventArgs e)
     {
         if (e.Result.Reason != ResultReason.RecognizedSpeech || string.IsNullOrEmpty(e.Result.Text)) return;
         Final?.Invoke(ToSegment(e.Result, isFinal: true));
     }
 
+    /// <summary>Re-raises a cancellation/error condition via <see cref="Error"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The cancellation event arguments from the Speech SDK.</param>
     private void OnCanceled(object? sender, SpeechRecognitionCanceledEventArgs e)
     {
         var detail = e.Reason == CancellationReason.Error
@@ -192,6 +233,9 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
     }
 
     /// <summary>Maps an SDK recognition result to a transport-agnostic <see cref="TranscriptSegment"/>.</summary>
+    /// <param name="result">The SDK recognition result.</param>
+    /// <param name="isFinal">Whether the segment is finalized.</param>
+    /// <returns>The mapped transcript segment.</returns>
     private static TranscriptSegment ToSegment(RecognitionResult result, bool isFinal) =>
         new(result.Text, isFinal, TimeSpan.FromTicks(result.OffsetInTicks), result.Duration);
 
@@ -207,4 +251,6 @@ public sealed class AzureSpeechTranscriber : ISpeechTranscriber
         _recognizer?.Dispose();
         _pushStream?.Dispose();
     }
+
+    #endregion
 }

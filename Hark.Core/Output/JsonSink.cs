@@ -10,10 +10,20 @@ namespace Hark.Core.Output;
 /// </summary>
 public sealed class JsonSink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>The underlying writer appending to the destination JSON Lines file.</summary>
     private readonly StreamWriter _writer;
+
+    /// <summary>Serializes access to <see cref="_writer"/> across concurrent segment writes.</summary>
     private readonly Lock _gate = new();
 
+    /// <summary>Serializer options used for each JSON Lines record.</summary>
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = false };
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>Opens (or creates) the JSON Lines file for appending.</summary>
     /// <param name="path">Destination file path.</param>
@@ -26,6 +36,10 @@ public sealed class JsonSink : ITranscriptSink
 
         _writer = new StreamWriter(path, append: true) { AutoFlush = true };
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
@@ -49,4 +63,6 @@ public sealed class JsonSink : ITranscriptSink
         lock (_gate) _writer.Dispose();
         return ValueTask.CompletedTask;
     }
+
+    #endregion
 }

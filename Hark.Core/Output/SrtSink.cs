@@ -11,9 +11,20 @@ namespace Hark.Core.Output;
 /// </summary>
 public sealed class SrtSink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>Destination <c>.srt</c> file path.</summary>
     private readonly string _path;
+
+    /// <summary>Buffered finalized segments, written atomically on dispose.</summary>
     private readonly List<TranscriptSegment> _segments = new();
+
+    /// <summary>Serializes access to <see cref="_segments"/> across concurrent segment writes.</summary>
     private readonly Lock _gate = new();
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>Records the destination path for the subtitle file.</summary>
     /// <param name="path">Destination <c>.srt</c> file path.</param>
@@ -23,6 +34,10 @@ public sealed class SrtSink : ITranscriptSink
         _path = path;
     }
 
+    #endregion
+
+    #region Methods
+
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
     {
@@ -31,6 +46,8 @@ public sealed class SrtSink : ITranscriptSink
     }
 
     /// <summary>Formats a timespan as an SRT timestamp (<c>HH:MM:SS,mmm</c>).</summary>
+    /// <param name="t">The timespan to format.</param>
+    /// <returns>The formatted SRT timestamp.</returns>
     private static string Format(TimeSpan t) =>
         string.Create(CultureInfo.InvariantCulture,
             $"{(int)t.TotalHours:D2}:{t.Minutes:D2}:{t.Seconds:D2},{t.Milliseconds:D3}");
@@ -59,4 +76,6 @@ public sealed class SrtSink : ITranscriptSink
 
         return ValueTask.CompletedTask;
     }
+
+    #endregion
 }

@@ -19,6 +19,8 @@ namespace Hark.Core.Transcription;
 /// </summary>
 public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
 {
+    #region Constants
+
     /// <summary>Recognition language used when the caller doesn't pin one.</summary>
     public const string DefaultLanguage = "en-US";
 
@@ -28,15 +30,37 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
     /// <summary>Refresh the Entra token comfortably before its ~1 hour expiry.</summary>
     private static readonly TimeSpan TokenRefreshInterval = TimeSpan.FromMinutes(8);
 
+    #endregion
+
+    #region Fields
+
+    /// <summary>The Speech resource region, e.g. <c>eastus2</c>.</summary>
     private readonly string _region;
+
+    /// <summary>The full ARM resource ID of the Speech account.</summary>
     private readonly string _resourceId;
+
+    /// <summary>The pinned BCP-47 recognition language.</summary>
     private readonly string _language;
+
+    /// <summary>The credential used to authorize against the Speech resource.</summary>
     private readonly TokenCredential _credential;
 
+    /// <summary>The push stream that converted PCM audio is written into.</summary>
     private PushAudioInputStream? _pushStream;
+
+    /// <summary>The active Speech SDK conversation transcriber, or <see langword="null"/> when not running.</summary>
     private ConversationTranscriber? _transcriber;
+
+    /// <summary>Periodically refreshes the transcriber's authorization token.</summary>
     private Timer? _tokenRefreshTimer;
+
+    /// <summary>Whether <see cref="DisposeAsync"/> has already run, guarding against duplicate cleanup.</summary>
     private bool _disposed;
+
+    #endregion
+
+    #region Events
 
     /// <inheritdoc />
     public event Action<TranscriptSegment>? Interim;
@@ -46,6 +70,10 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
 
     /// <inheritdoc />
     public event Action<string>? Error;
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>
     /// Creates a diarizing transcriber bound to a specific Speech resource.
@@ -64,6 +92,10 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
         _language = string.IsNullOrWhiteSpace(language) ? DefaultLanguage : language;
         _credential = credential ?? new DefaultAzureCredential();
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -153,18 +185,27 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
         }
     }
 
+    /// <summary>Re-raises a provisional hypothesis via <see cref="Interim"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The transcribing event arguments from the Speech SDK.</param>
     private void OnTranscribing(object? sender, ConversationTranscriptionEventArgs e)
     {
         if (string.IsNullOrEmpty(e.Result.Text)) return;
         Interim?.Invoke(ToSegment(e.Result, isFinal: false));
     }
 
+    /// <summary>Re-raises a finalized, speaker-attributed segment via <see cref="Final"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The transcribed event arguments from the Speech SDK.</param>
     private void OnTranscribed(object? sender, ConversationTranscriptionEventArgs e)
     {
         if (e.Result.Reason != ResultReason.RecognizedSpeech || string.IsNullOrEmpty(e.Result.Text)) return;
         Final?.Invoke(ToSegment(e.Result, isFinal: true));
     }
 
+    /// <summary>Re-raises a cancellation/error condition via <see cref="Error"/>.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The cancellation event arguments from the Speech SDK.</param>
     private void OnCanceled(object? sender, ConversationTranscriptionCanceledEventArgs e)
     {
         var detail = e.Reason == CancellationReason.Error
@@ -174,6 +215,9 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
     }
 
     /// <summary>Maps an SDK conversation result (with speaker id) to a <see cref="TranscriptSegment"/>.</summary>
+    /// <param name="result">The SDK conversation transcription result.</param>
+    /// <param name="isFinal">Whether the segment is finalized.</param>
+    /// <returns>The mapped, speaker-attributed transcript segment.</returns>
     private static TranscriptSegment ToSegment(ConversationTranscriptionResult result, bool isFinal) =>
         new(result.Text, isFinal, TimeSpan.FromTicks(result.OffsetInTicks), result.Duration,
             SpeakerId: string.IsNullOrEmpty(result.SpeakerId) ? null : result.SpeakerId);
@@ -190,4 +234,6 @@ public sealed class ConversationDiarizingTranscriber : ISpeechTranscriber
         _transcriber?.Dispose();
         _pushStream?.Dispose();
     }
+
+    #endregion
 }

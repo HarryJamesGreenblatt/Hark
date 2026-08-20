@@ -8,11 +8,22 @@ namespace Hark.Core.Output;
 /// </summary>
 public sealed class CompositeSink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>The sinks that each segment is broadcast to, in order.</summary>
     private readonly IReadOnlyList<ITranscriptSink> _sinks;
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>Wraps the supplied sinks.</summary>
     /// <param name="sinks">The sinks to broadcast to.</param>
     public CompositeSink(params ITranscriptSink[] sinks) => _sinks = sinks;
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
@@ -27,4 +38,6 @@ public sealed class CompositeSink : ITranscriptSink
         foreach (var sink in _sinks)
             await sink.DisposeAsync().ConfigureAwait(false);
     }
+
+    #endregion
 }

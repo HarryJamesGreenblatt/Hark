@@ -9,9 +9,20 @@ namespace Hark.Core.Output;
 /// </summary>
 public sealed class RollingFileSink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>The underlying writer appending to the destination transcript file.</summary>
     private readonly StreamWriter _writer;
+
+    /// <summary>Whether each line is prefixed with the segment offset.</summary>
     private readonly bool _timestamps;
+
+    /// <summary>Serializes access to <see cref="_writer"/> across concurrent segment writes.</summary>
     private readonly Lock _gate = new();
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>Opens (or creates) the transcript file for appending.</summary>
     /// <param name="path">Destination file path.</param>
@@ -26,6 +37,10 @@ public sealed class RollingFileSink : ITranscriptSink
         _writer = new StreamWriter(path, append: true) { AutoFlush = true };
         _timestamps = timestamps;
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
@@ -47,4 +62,6 @@ public sealed class RollingFileSink : ITranscriptSink
         lock (_gate) _writer.Dispose();
         return ValueTask.CompletedTask;
     }
+
+    #endregion
 }

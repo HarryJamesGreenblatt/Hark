@@ -10,11 +10,17 @@ namespace Hark.Core.Audio;
 /// </summary>
 public sealed class PcmConverter
 {
+    #region Constants
+
     /// <summary>Target sample rate required by the speech recognizer.</summary>
     public const int TargetSampleRate = 16_000;
 
     /// <summary>Target channel count (mono).</summary>
     public const int TargetChannels = 1;
+
+    #endregion
+
+    #region Fields
 
     /// <summary>Buffers the raw capture bytes so the pull-based resampler chain can draw from them.</summary>
     private readonly BufferedWaveProvider _buffer;
@@ -24,6 +30,10 @@ public sealed class PcmConverter
 
     /// <summary>Scratch buffer for reading resampled float samples before 16-bit quantization.</summary>
     private readonly float[] _scratch = new float[TargetSampleRate]; // up to ~1s of mono audio
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>
     /// Builds a converter for the given source format (from <see cref="Capture.LoopbackCaptureService.WaveFormat"/>).
@@ -53,6 +63,10 @@ public sealed class PcmConverter
         _resampled = new WdlResamplingSampleProvider(samples, TargetSampleRate);
     }
 
+    #endregion
+
+    #region Methods
+
     /// <summary>
     /// Feeds one capture buffer through the chain and returns the resulting 16 kHz mono 16-bit PCM bytes.
     /// May return an empty array when not enough input has accumulated to produce output.
@@ -80,4 +94,6 @@ public sealed class PcmConverter
 
         return pcm.ToArray();
     }
+
+    #endregion
 }

@@ -13,7 +13,14 @@ namespace Hark.Core.Summarization;
 /// </summary>
 public sealed class AzureOpenAiSummarizer : ISummarizer
 {
+    #region Fields
+
+    /// <summary>The chat client bound to the configured Azure OpenAI deployment.</summary>
     private readonly ChatClient _chat;
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>
     /// Creates a summarizer bound to an Azure OpenAI chat deployment.
@@ -29,6 +36,10 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         var client = new AzureOpenAIClient(new Uri(endpoint), credential ?? new DefaultAzureCredential());
         _chat = client.GetChatClient(deployment);
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public async Task<string> SummarizeAsync(string transcript, SummaryStyle style, CancellationToken cancellationToken = default)
@@ -50,6 +61,9 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             : string.Empty;
     }
 
+    /// <summary>Builds the system prompt instructing the model how to summarize in the given style.</summary>
+    /// <param name="style">The recap style to produce.</param>
+    /// <returns>The system prompt text.</returns>
     private static string SystemPromptFor(SummaryStyle style) => style switch
     {
         SummaryStyle.Narrative =>
@@ -69,4 +83,6 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             "Use brief bullet points under 'Key points' and 'Action items'. If there are no action " +
             "items, write 'None'. Be faithful to the transcript; do not invent details or real names.",
     };
+
+    #endregion
 }

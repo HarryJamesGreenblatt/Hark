@@ -9,10 +9,23 @@ namespace Hark.Core.Output;
 /// </summary>
 public sealed class StdoutSink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>Whether provisional hypotheses are shown on a transient line.</summary>
     private readonly bool _interimEnabled;
+
+    /// <summary>The character length of the last interim line written, for erasing it.</summary>
     private int _lastInterimLength;
+
+    /// <summary>The last interim text written, to skip redundant redraws of identical hypotheses.</summary>
     private string? _lastInterimText;
+
+    /// <summary>Serializes access to console output across concurrent segment writes.</summary>
     private readonly Lock _gate = new();
+
+    #endregion
+
+    #region Constructor(s)
 
     /// <summary>Creates the sink.</summary>
     /// <param name="showInterim">When true, provisional hypotheses are shown on a transient line.</param>
@@ -23,6 +36,10 @@ public sealed class StdoutSink : ITranscriptSink
     /// </remarks>
     public StdoutSink(bool showInterim = true) =>
         _interimEnabled = showInterim && !Console.IsOutputRedirected;
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
@@ -52,6 +69,8 @@ public sealed class StdoutSink : ITranscriptSink
     }
 
     /// <summary>Truncates an interim hypothesis to the current console width (with an ellipsis).</summary>
+    /// <param name="text">The interim text to fit.</param>
+    /// <returns>The text, truncated to the console width if necessary.</returns>
     private static string Fit(string text)
     {
         int max;
@@ -78,4 +97,6 @@ public sealed class StdoutSink : ITranscriptSink
         lock (_gate) ClearInterimLine();
         return ValueTask.CompletedTask;
     }
+
+    #endregion
 }
