@@ -24,10 +24,15 @@ public sealed class OverlaySink : ITranscriptSink
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
     {
+        // Prefix with the anonymous speaker label when diarization attributed one.
+        var text = string.IsNullOrEmpty(segment.SpeakerId)
+            ? segment.Text
+            : $"{segment.SpeakerId}: {segment.Text}";
+
         if (segment.IsFinal)
-            _dispatcher.BeginInvoke(() => _overlay.CommitFinal(segment.Text));
+            _dispatcher.BeginInvoke(() => _overlay.CommitFinal(text));
         else
-            _dispatcher.BeginInvoke(() => _overlay.ShowInterim(segment.Text));
+            _dispatcher.BeginInvoke(() => _overlay.ShowInterim(text));
     }
 
     /// <inheritdoc />

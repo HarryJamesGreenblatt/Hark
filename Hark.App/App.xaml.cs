@@ -129,7 +129,8 @@ public partial class App : Application
                 _session = new HarkSession(
                     _region!, _resourceId!, language: null,
                     credential: new AzureCliCredential(),
-                    sink: _overlay is null ? null : new OverlaySink(_overlay));
+                    sink: _overlay is null ? null : new OverlaySink(_overlay),
+                    diarize: true);
                 _session.Error += OnSessionError;
 
                 await _session.StartAsync(cancellationToken);

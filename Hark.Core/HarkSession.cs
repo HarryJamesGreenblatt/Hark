@@ -22,8 +22,9 @@ public sealed class HarkSession : IAsyncDisposable
     private readonly string? _language;
     private readonly TokenCredential? _credential;
     private readonly ITranscriptSink? _sink;
+    private readonly bool _diarize;
 
-    private AzureSpeechTranscriber? _transcriber;
+    private ISpeechTranscriber? _transcriber;
     private LoopbackCaptureService? _capture;
     private PcmConverter? _converter;
     private bool _running;
@@ -52,12 +53,17 @@ public sealed class HarkSession : IAsyncDisposable
     /// that type's keyless behavior when null.
     /// </param>
     /// <param name="sink">Optional sink that finalized/interim segments are also written to.</param>
+    /// <param name="diarize">
+    /// When true, uses a diarizing engine that attributes each segment to an anonymous speaker
+    /// (<see cref="TranscriptSegment.SpeakerId"/>). Diarization pins a single language.
+    /// </param>
     public HarkSession(
         string region,
         string resourceId,
         string? language = null,
         TokenCredential? credential = null,
-        ITranscriptSink? sink = null)
+        ITranscriptSink? sink = null,
+        bool diarize = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(region);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
@@ -67,6 +73,7 @@ public sealed class HarkSession : IAsyncDisposable
         _language = language;
         _credential = credential;
         _sink = sink;
+        _diarize = diarize;
     }
 
     /// <summary>
@@ -79,7 +86,10 @@ public sealed class HarkSession : IAsyncDisposable
         if (_running) return;
 
         // Recognize — Azure Speech via keyless Entra auth (credential chosen by the host).
-        _transcriber = new AzureSpeechTranscriber(_region, _resourceId, _language, _credential);
+        // Diarizing engine attributes speakers; the plain engine supports multi-language LID.
+        _transcriber = _diarize
+            ? new ConversationDiarizingTranscriber(_region, _resourceId, _language, _credential)
+            : new AzureSpeechTranscriber(_region, _resourceId, _language, _credential);
         _transcriber.Interim += OnInterim;
         _transcriber.Final += OnFinal;
         _transcriber.Error += OnError;
