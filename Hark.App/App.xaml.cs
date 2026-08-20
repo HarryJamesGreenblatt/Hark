@@ -16,26 +16,65 @@ namespace Hark.App;
 /// </summary>
 public partial class App : Application
 {
+    #region Fields
+
+    /// <summary>The single captions overlay window, created on startup and shown/hidden as capture toggles.</summary>
     private OverlayWindow? _overlay;
+
+    /// <summary>The tray icon and its context menu used to toggle captions and exit the app.</summary>
     private NotifyIcon? _tray;
+
+    /// <summary>The global Ctrl+Win+H hotkey that toggles captions on and off while the app runs.</summary>
     private GlobalHotkey? _hotkey;
+
+    /// <summary>The active capture/transcription session, or <see langword="null"/> when captions are stopped.</summary>
     private HarkSession? _session;
 
+    /// <summary>Accumulates transcript segments and speaker metadata for the current session.</summary>
     private readonly ConversationStore _store = new();
+
+    /// <summary>Open per-speaker detail windows, keyed by speaker name (case-insensitive).</summary>
     private readonly Dictionary<string, SpeakerWindow> _speakerWindows = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Azure Speech region, sourced from the environment or user-secrets.</summary>
     private string? _region;
+
+    /// <summary>Azure Speech resource ARM id, sourced from the environment or user-secrets.</summary>
     private string? _resourceId;
+
+    /// <summary>Azure OpenAI endpoint used for recap summarization, sourced from user-secrets.</summary>
     private string? _aoaiEndpoint;
+
+    /// <summary>Azure OpenAI deployment name used for recap summarization, sourced from user-secrets.</summary>
     private string? _aoaiDeployment;
+
+    /// <summary>Guards <see cref="ToggleAsync(CancellationToken)"/> against re-entrancy while starting or stopping.</summary>
     private bool _busy;
 
+    /// <summary>Lazily created Azure OpenAI summarizer used to generate recaps.</summary>
     private ISummarizer? _summarizer;
+
+    /// <summary>Cancellation source for the in-flight recap request, cancelled when superseded.</summary>
     private CancellationTokenSource? _summaryCts;
+
+    /// <summary>The most recently generated recap text, cached to avoid redundant API calls.</summary>
     private string? _cachedSummary;
+
+    /// <summary>The <see cref="ConversationStore.Revision"/> that <see cref="_cachedSummary"/> was generated from.</summary>
     private int _cachedRevision = -1;
+
+    /// <summary>The <see cref="SummaryStyle"/> that <see cref="_cachedSummary"/> was generated with.</summary>
     private SummaryStyle _cachedStyle;
 
+    #endregion
+
+    #region Methods
+
+    /// <summary>
+    /// Wires up the overlay, tray icon, and global hotkey, and loads Azure Speech/OpenAI
+    /// configuration from the environment or user-secrets.
+    /// </summary>
+    /// <param name="e">Startup event arguments supplied by WPF.</param>
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -73,7 +112,7 @@ public partial class App : Application
         _tray = BuildTrayIcon();
 
         // Global toggle: Ctrl+Win+H. Behaves like a standard Windows global hotkey.
-        _hotkey = new GlobalHotkey(GlobalHotkey.ModControl | GlobalHotkey.ModWin, 0x48 /* 'H' */);
+        _hotkey = new GlobalHotkey(GlobalHotkey.MOD_CONTROL | GlobalHotkey.MOD_WIN, 0x48 /* 'H' */);
         _hotkey.Pressed += ToggleAsync;
 
         if (!_hotkey.IsRegistered)
@@ -92,6 +131,8 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Builds the tray icon, its context menu, and the double-click toggle handler.</summary>
+    /// <returns>The configured <see cref="NotifyIcon"/>.</returns>
     private NotifyIcon BuildTrayIcon()
     {
         var menu = new ContextMenuStrip();
@@ -121,6 +162,8 @@ public partial class App : Application
     /// <summary>Fire-and-forget entry point for hotkey/menu/UI handlers.</summary>
     private async void ToggleAsync() => await ToggleAsync(CancellationToken.None);
 
+    /// <summary>Starts or stops capture and captions, toggling the overlay and tray state accordingly.</summary>
+    /// <param name="cancellationToken">Token used to cancel starting or stopping the session.</param>
     private async Task ToggleAsync(CancellationToken cancellationToken)
     {
         if (_busy) return;          // ignore re-entrancy while starting/stopping
@@ -173,6 +216,8 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Surfaces a recognizer error via a tray balloon tip and the overlay status line.</summary>
+    /// <param name="message">The error message reported by the recognizer.</param>
     private void OnSessionError(string message) =>
         Dispatcher.BeginInvoke(() =>
         {
@@ -181,10 +226,12 @@ public partial class App : Application
         });
 
     /// <summary>Marshals the capture audio level onto the UI to drive the sound-reactive HAL eye.</summary>
+    /// <param name="level">The current normalized audio level.</param>
     private void OnAudioLevel(double level) =>
         Dispatcher.BeginInvoke(() => _overlay?.SetAudioLevel(level));
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
+    /// <param name="speaker">The speaker name to open or focus a window for.</param>
     private void OpenSpeakerWindow(string speaker)
     {
         if (_speakerWindows.TryGetValue(speaker, out var existing))
@@ -227,6 +274,7 @@ public partial class App : Application
     /// Azure OpenAI. Caching is keyed on the store <see cref="ConversationStore.Revision"/> plus the
     /// requested style, so toggling back and forth without new speech doesn't re-call the service.
     /// </summary>
+    /// <param name="style">The requested recap style.</param>
     private async void OnSummaryRequested(SummaryStyle style)
     {
         if (_overlay is null) return;
@@ -283,6 +331,8 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Releases the hotkey, session, and tray icon when the application shuts down.</summary>
+    /// <param name="e">Exit event arguments supplied by WPF.</param>
     protected override void OnExit(ExitEventArgs e)
     {
         _hotkey?.Dispose();
@@ -290,5 +340,7 @@ public partial class App : Application
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }
         base.OnExit(e);
     }
+
+    #endregion
 }
 

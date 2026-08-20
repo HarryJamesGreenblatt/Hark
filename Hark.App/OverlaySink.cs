@@ -12,10 +12,24 @@ namespace Hark.App;
 /// </summary>
 public sealed class OverlaySink : ITranscriptSink
 {
+    #region Fields
+
+    /// <summary>The CONVERSATION overlay window that finalized/interim text is rendered to.</summary>
     private readonly OverlayWindow _overlay;
+
+    /// <summary>The shared conversation model that finalized, speaker-attributed lines are recorded into.</summary>
     private readonly ConversationStore _store;
+
+    /// <summary>The WPF dispatcher used to marshal recognition events onto the UI thread.</summary>
     private readonly Dispatcher _dispatcher;
 
+    #endregion
+
+    #region Constructor(s)
+
+    /// <summary>Creates a sink that renders to <paramref name="overlay"/> and records into <paramref name="store"/>.</summary>
+    /// <param name="overlay">The overlay window to render transcript segments to.</param>
+    /// <param name="store">The shared conversation model to record finalized lines into.</param>
     public OverlaySink(OverlayWindow overlay, ConversationStore store)
     {
         ArgumentNullException.ThrowIfNull(overlay);
@@ -24,6 +38,10 @@ public sealed class OverlaySink : ITranscriptSink
         _store = store;
         _dispatcher = overlay.Dispatcher;
     }
+
+    #endregion
+
+    #region Methods
 
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
@@ -50,4 +68,6 @@ public sealed class OverlaySink : ITranscriptSink
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    #endregion
 }

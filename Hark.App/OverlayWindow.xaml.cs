@@ -15,27 +15,52 @@ namespace Hark.App;
 /// </summary>
 public partial class OverlayWindow : Window
 {
+    #region Constants
+
     /// <summary>How many finalized lines to retain in the scrollback above the live interim line.</summary>
     private const int MaxHistoryLines = 200;
 
+    #endregion
+
+    #region Nested Types
+
+    /// <summary>Which content the overlay is showing.</summary>
+    private enum ViewMode { Captions, Summary }
+
+    #endregion
+
+    #region Fields
+
+    /// <summary>The rolling scrollback of finalized caption lines, capped at <see cref="MaxHistoryLines"/>.</summary>
     private readonly LinkedList<string> _history = new();
+
+    /// <summary>The current live (not yet finalized) hypothesis line.</summary>
     private string _interim = string.Empty;
 
     /// <summary>Speakers that already have a pill in the index, to avoid duplicates.</summary>
     private readonly HashSet<string> _speakers = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Text color for finalized caption lines.</summary>
     private static readonly Brush FinalBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+
+    /// <summary>Text color for the live interim caption line.</summary>
     private static readonly Brush InterimBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xCC, 0xD0));
 
+    /// <summary>Background color for the selected captions/summary mode button.</summary>
     private static readonly Brush ModeSelectedBg = new SolidColorBrush(Color.FromRgb(0x3B, 0x7D, 0xDD));
+
+    /// <summary>Foreground color for the selected captions/summary mode button.</summary>
     private static readonly Brush ModeSelectedFg = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+    /// <summary>Foreground color for the idle (unselected) captions/summary mode button.</summary>
     private static readonly Brush ModeIdleFg = new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6));
 
-    /// <summary>Which content the overlay is showing.</summary>
-    private enum ViewMode { Captions, Summary }
-
+    /// <summary>Which content (captions or summary) is currently displayed.</summary>
     private ViewMode _mode = ViewMode.Captions;
+
+    /// <summary>Whether at least one speaker pill has been added to the index.</summary>
     private bool _hasSpeakers;
+
+    /// <summary>Whether capture is currently running, driving the HAL eye and hint text.</summary>
     private bool _running;
 
     /// <summary>Latest audio level target (0..1), published by the audio callback, eased in the render loop.</summary>
@@ -47,6 +72,38 @@ public partial class OverlayWindow : Window
     /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
     private TimeSpan _lastRenderTime;
 
+    #endregion
+
+    #region Properties
+
+    /// <summary>The recap style currently chosen in the picker.</summary>
+    public SummaryStyle SelectedStyle =>
+        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Teams;
+
+    #endregion
+
+    #region Events
+
+    /// <summary>Raised when the user clicks the overlay's close (✕) button.</summary>
+    public event Action? CloseRequested;
+
+    /// <summary>Raised when the user clicks a speaker pill in the CONVERSATION index.</summary>
+    public event Action<string>? SpeakerSelected;
+
+    /// <summary>
+    /// Raised when a summary is needed: on switching to SUMMARY mode, or when the recap style
+    /// changes while in SUMMARY mode. The host decides whether to serve a cached result or generate.
+    /// </summary>
+    public event Action<SummaryStyle>? SummaryRequested;
+
+    #endregion
+
+    #region Constructor(s)
+
+    /// <summary>
+    /// Initializes the overlay's controls, freezes its static brushes, wires up window/menu/mode
+    /// handlers, and starts the compositor-driven render loop for the HAL eye.
+    /// </summary>
     public OverlayWindow()
     {
         InitializeComponent();
@@ -84,32 +141,23 @@ public partial class OverlayWindow : Window
         Closed += (_, _) => CompositionTarget.Rendering -= OnRendering;
     }
 
-    /// <summary>The recap style currently chosen in the picker.</summary>
-    public SummaryStyle SelectedStyle =>
-        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Teams;
+    #endregion
 
-    /// <summary>Raised when the user clicks the overlay's close (✕) button.</summary>
-    public event Action? CloseRequested;
-
-    /// <summary>Raised when the user clicks a speaker pill in the CONVERSATION index.</summary>
-    public event Action<string>? SpeakerSelected;
-
-    /// <summary>
-    /// Raised when a summary is needed: on switching to SUMMARY mode, or when the recap style
-    /// changes while in SUMMARY mode. The host decides whether to serve a cached result or generate.
-    /// </summary>
-    public event Action<SummaryStyle>? SummaryRequested;
+    #region Methods
 
     /// <summary>Shows a transient status (e.g. "Generating recap…") in the summary view.</summary>
+    /// <param name="message">The status text to display.</param>
     public void SetSummaryBusy(string message) => SummaryText.Text = message;
 
     /// <summary>Renders the finished recap text in the summary view.</summary>
+    /// <param name="text">The recap text to display.</param>
     public void SetSummaryText(string text) => SummaryText.Text = text ?? string.Empty;
 
     /// <summary>
     /// Enables/disables the SUMMARY switch. Disabled (dimmed) when there are no captions to
     /// summarize; if disabled while summary is showing, snaps back to captions.
     /// </summary>
+    /// <param name="available">Whether there is content available to summarize.</param>
     public void SetSummaryAvailable(bool available)
     {
         SummaryModeButton.IsEnabled = available;
@@ -121,6 +169,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Switches between captions and summary with a short cross-fade.</summary>
+    /// <param name="mode">The view mode to switch to.</param>
     private void SetMode(ViewMode mode)
     {
         if (_mode == mode)
@@ -147,6 +196,9 @@ public partial class OverlayWindow : Window
         }
     }
 
+    /// <summary>Cross-fades from <paramref name="fadeOut"/> to <paramref name="fadeIn"/>.</summary>
+    /// <param name="fadeIn">The element to fade in and make visible.</param>
+    /// <param name="fadeOut">The element to fade out and collapse once faded.</param>
     private static void FadeSwap(UIElement fadeIn, UIElement fadeOut)
     {
         var duration = new Duration(TimeSpan.FromMilliseconds(180));
@@ -159,6 +211,7 @@ public partial class OverlayWindow : Window
         fadeOut.BeginAnimation(OpacityProperty, outAnim);
     }
 
+    /// <summary>Applies selected/idle colors to the captions and summary mode buttons.</summary>
     private void UpdateModeButtons()
     {
         bool summary = _mode == ViewMode.Summary;
@@ -168,12 +221,14 @@ public partial class OverlayWindow : Window
         SummaryModeButton.Foreground = summary ? ModeSelectedFg : ModeIdleFg;
     }
 
+    /// <summary>Shows the speaker pill bar only in captions mode once at least one speaker exists.</summary>
     private void UpdateSpeakerBarVisibility() =>
         SpeakerBarPanel.Visibility = _mode == ViewMode.Captions && _hasSpeakers
             ? Visibility.Visible
             : Visibility.Collapsed;
 
     /// <summary>Adds a pill for a newly-discovered speaker (no-op if already present).</summary>
+    /// <param name="speaker">The speaker name to add a pill for.</param>
     public void AddSpeaker(string speaker)
     {
         if (string.IsNullOrWhiteSpace(speaker) || !_speakers.Add(speaker)) return;
@@ -201,6 +256,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Updates the live (interim) hypothesis line.</summary>
+    /// <param name="text">The interim text to display.</param>
     public void ShowInterim(string text)
     {
         _interim = text ?? string.Empty;
@@ -208,6 +264,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Commits a finalized line to the rolling history and clears the interim line.</summary>
+    /// <param name="text">The finalized text to commit.</param>
     public void CommitFinal(string text)
     {
         if (!string.IsNullOrWhiteSpace(text))
@@ -220,6 +277,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Reflects capture state in the HAL eye and hint text.</summary>
+    /// <param name="running">Whether capture is currently running.</param>
     public void SetRunning(bool running)
     {
         _running = running;
@@ -232,6 +290,7 @@ public partial class OverlayWindow : Window
     /// Publishes the latest audio level (RMS, 0..1). Cheap and non-visual — the render loop reads
     /// this target and eases the eye toward it, so the audio callback rate never gates the animation.
     /// </summary>
+    /// <param name="level">The raw RMS audio level (0..1).</param>
     public void SetAudioLevel(double level)
     {
         level = level < 0 ? 0 : level > 1 ? 1 : level;
@@ -243,6 +302,8 @@ public partial class OverlayWindow : Window
     /// Per-frame easing of the HAL eye toward the latest audio target (or rest when idle/silent).
     /// Asymmetric time constants — fast attack, slower release — give a lively, HAL-like pulse.
     /// </summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">Compositor rendering event arguments; expected to be a <see cref="RenderingEventArgs"/>.</param>
     private void OnRendering(object? sender, EventArgs e)
     {
         if (e is not RenderingEventArgs args) return;
@@ -265,6 +326,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Maps the eased level (0..1) onto the eye's cornea brightness, glow, and pulse.</summary>
+    /// <param name="l">The eased audio level (0..1).</param>
     private void ApplyEye(double l)
     {
         if (_running)
@@ -288,6 +350,7 @@ public partial class OverlayWindow : Window
     /// Surfaces a diagnostic message (e.g. a failed start or recognizer error) directly in the
     /// caption area so it persists, instead of relying on a fleeting tray balloon.
     /// </summary>
+    /// <param name="message">The diagnostic message to display.</param>
     public void ShowStatus(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
@@ -304,6 +367,7 @@ public partial class OverlayWindow : Window
         Render();
     }
 
+    /// <summary>Rebuilds the caption document from the history and interim line.</summary>
     private void Render()
     {
         // Preserve the user's selection length so live interim updates don't fight active copying.
@@ -340,6 +404,7 @@ public partial class OverlayWindow : Window
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>Copies the current text selection, or the entire transcript if nothing is selected.</summary>
     private void CopySelectionOrAll()
     {
         if (!CaptionBox.Selection.IsEmpty)
@@ -348,12 +413,14 @@ public partial class OverlayWindow : Window
             CopyAll();
     }
 
+    /// <summary>Copies the entire transcript (history + interim) to the clipboard.</summary>
     private void CopyAll()
     {
         var text = FullText();
         if (text.Length > 0) Clipboard.SetText(text);
     }
 
+    /// <summary>Docks the window as a full working-area-width bar flush at the top of the screen.</summary>
     private void PositionAsTopBar()
     {
         // Dock as a full working-area-width bar flush at the top, like native Live Captions.
@@ -373,8 +440,13 @@ public partial class OverlayWindow : Window
         Activate();
     }
 
+    /// <summary>Begins moving the window when the drag handle is pressed.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The mouse button event arguments.</param>
     private void OnDragHandlePressed(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState == MouseButtonState.Pressed) DragMove();
     }
+
+    #endregion
 }
