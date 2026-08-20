@@ -9,16 +9,16 @@
         Topmost="True"
         ResizeMode="CanResizeWithGrip"
         SizeToContent="Manual"
-        Width="900" Height="220"
-        MinWidth="420" MinHeight="120"
+        Width="900" Height="150"
+        MinWidth="420" MinHeight="96"
         WindowStartupLocation="Manual">
 
     <!-- Live-Captions-style bar: dark translucent, rounded, soft shadow. Done right: the transcript
          is selectable/copyable and the window is resizable + scrollable, unlike native Live Captions. -->
     <Border x:Name="Bar"
-            CornerRadius="12"
-            Margin="16"
-            Padding="20,14">
+            CornerRadius="0,0,12,12"
+            Margin="0,0,0,12"
+            Padding="20,10">
         <Border.Background>
             <SolidColorBrush Color="#000000" Opacity="0.82" />
         </Border.Background>

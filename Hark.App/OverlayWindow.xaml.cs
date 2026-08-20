@@ -50,7 +50,7 @@ public partial class OverlayWindow : Window
         ModeSelectedFg.Freeze();
         ModeIdleFg.Freeze();
 
-        Loaded += (_, _) => PositionAtBottomCenter();
+        Loaded += (_, _) => PositionAsTopBar();
         DragHandle.MouseLeftButtonDown += OnDragHandlePressed;
 
         CopyItem.Click += (_, _) => CopySelectionOrAll();
@@ -70,6 +70,7 @@ public partial class OverlayWindow : Window
         };
 
         UpdateModeButtons();
+        SetSummaryAvailable(false);   // nothing to summarize until captions arrive
     }
 
     /// <summary>The recap style currently chosen in the picker.</summary>
@@ -93,6 +94,20 @@ public partial class OverlayWindow : Window
 
     /// <summary>Renders the finished recap text in the summary view.</summary>
     public void SetSummaryText(string text) => SummaryText.Text = text ?? string.Empty;
+
+    /// <summary>
+    /// Enables/disables the SUMMARY switch. Disabled (dimmed) when there are no captions to
+    /// summarize; if disabled while summary is showing, snaps back to captions.
+    /// </summary>
+    public void SetSummaryAvailable(bool available)
+    {
+        SummaryModeButton.IsEnabled = available;
+        SummaryModeButton.Opacity = available ? 1.0 : 0.4;
+        SummaryModeButton.ToolTip = available ? null : "Capture some captions first";
+
+        if (!available && _mode == ViewMode.Summary)
+            SetMode(ViewMode.Captions);
+    }
 
     /// <summary>Switches between captions and summary with a short cross-fade.</summary>
     private void SetMode(ViewMode mode)
@@ -270,11 +285,13 @@ public partial class OverlayWindow : Window
         if (text.Length > 0) Clipboard.SetText(text);
     }
 
-    private void PositionAtBottomCenter()
+    private void PositionAsTopBar()
     {
+        // Dock as a full working-area-width bar flush at the top, like native Live Captions.
         var area = SystemParameters.WorkArea;
-        Left = area.Left + (area.Width - Width) / 2;
-        Top = area.Bottom - Height - 48;
+        Width = area.Width;
+        Left = area.Left;
+        Top = area.Top;
     }
 
     /// <summary>Shows the overlay and forces it above other topmost windows.</summary>

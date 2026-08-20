@@ -66,6 +66,10 @@ public partial class App : Application
         _store.SpeakerAdded += speaker =>
             Dispatcher.BeginInvoke(() => _overlay?.AddSpeaker(speaker));
 
+        // Enable the SUMMARY switch only once there are captions to summarize.
+        _store.Changed += () =>
+            Dispatcher.BeginInvoke(() => _overlay?.SetSummaryAvailable(_store.All.Count > 0));
+
         _tray = BuildTrayIcon();
 
         // Global toggle: Ctrl+Win+H. Behaves like a standard Windows global hotkey.
