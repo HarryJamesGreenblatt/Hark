@@ -40,7 +40,7 @@ public sealed class HarkSession : IAsyncDisposable
     public event Action<string>? Error;
 
     /// <summary>
-    /// Raised (~20 Hz while running) with the normalized peak audio level (0..1) of the captured
+    /// Raised (~20 Hz while running) with the normalized RMS audio level (0..1) of the captured
     /// stream — suitable for driving a level meter or a sound-reactive indicator.
     /// </summary>
     public event Action<double>? AudioLevel;
@@ -156,8 +156,9 @@ public sealed class HarkSession : IAsyncDisposable
     private long _lastLevelTick;
 
     /// <summary>
-    /// Raises <see cref="AudioLevel"/> with the normalized peak (0..1) of the converted PCM,
-    /// throttled to ~20 Hz so UI consumers (e.g. a level meter) aren't flooded.
+    /// Raises <see cref="AudioLevel"/> with the normalized RMS (0..1) of the converted PCM,
+    /// throttled to ~20 Hz. RMS (loudness) is far more dynamic than peak for system audio, which
+    /// tends to sit near full-scale — making a reactive indicator actually move.
     /// </summary>
     private void ReportAudioLevel(byte[] pcm)
     {
@@ -168,15 +169,17 @@ public sealed class HarkSession : IAsyncDisposable
         if (now - _lastLevelTick < 50) return;
         _lastLevelTick = now;
 
-        int peak = 0;
+        double sumSquares = 0;
+        int count = 0;
         for (int i = 0; i + 1 < pcm.Length; i += 2)
         {
-            short s = (short)(pcm[i] | (pcm[i + 1] << 8));
-            int mag = s < 0 ? -s : s;
-            if (mag > peak) peak = mag;
+            double sample = (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768.0;
+            sumSquares += sample * sample;
+            count++;
         }
 
-        handler(peak / 32768.0);
+        double rms = count > 0 ? Math.Sqrt(sumSquares / count) : 0.0;
+        handler(rms);
     }
 
     private void OnInterim(TranscriptSegment segment)

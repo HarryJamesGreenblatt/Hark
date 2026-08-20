@@ -38,6 +38,9 @@ public partial class OverlayWindow : Window
     private bool _hasSpeakers;
     private bool _running;
 
+    /// <summary>Smoothed audio level (0..1) driving the HAL eye, for attack/decay easing.</summary>
+    private double _eyeLevel;
+
     public OverlayWindow()
     {
         InitializeComponent();
@@ -209,18 +212,20 @@ public partial class OverlayWindow : Window
     public void SetRunning(bool running)
     {
         _running = running;
+        _eyeLevel = 0.0;
         HintText.Text = running ? "Listening · Ctrl+Win+H to stop" : "Idle · Ctrl+Win+H to start";
 
-        // Idle = dim, dormant eye; running = lit red cornea with a soft glow.
-        HalCornea.Opacity = running ? 0.9 : 0.3;
-        HalGlow.Opacity = running ? 0.55 : 0.0;
-        HalGlow.BlurRadius = running ? 8 : 0;
-        HalScale.ScaleX = HalScale.ScaleY = 1.0;
+        // Idle = dim, dormant eye; running (before sound) = a low resting glow.
+        HalCornea.Opacity = running ? 0.4 : 0.28;
+        HalGlow.Opacity = running ? 0.18 : 0.0;
+        HalGlow.BlurRadius = running ? 4 : 0;
+        HalScale.ScaleX = HalScale.ScaleY = running ? 0.92 : 1.0;
     }
 
     /// <summary>
-    /// Modulates the HAL eye to the current audio level (0..1) while running — the cornea brightens,
-    /// the glow swells, and it pulses subtly, so the eye reacts to sound like HAL-9000.
+    /// Modulates the HAL eye to the current audio level (RMS, 0..1) while running. A gain + curve
+    /// spreads the (typically small) loudness range across the eye, and asymmetric smoothing
+    /// (fast attack, slow decay) makes it pulse to sound like HAL-9000 instead of pinning on.
     /// </summary>
     public void SetAudioLevel(double level)
     {
@@ -228,10 +233,18 @@ public partial class OverlayWindow : Window
 
         level = level < 0 ? 0 : level > 1 ? 1 : level;
 
-        HalCornea.Opacity = 0.7 + 0.3 * level;
-        HalGlow.Opacity = 0.4 + 0.5 * level;
-        HalGlow.BlurRadius = 6 + 16 * level;
-        HalScale.ScaleX = HalScale.ScaleY = 1.0 + 0.18 * level;
+        // RMS sits low (~0.05–0.3); boost + perceptual sqrt curve to use the full visual range.
+        double target = Math.Sqrt(Math.Min(1.0, level * 4.5));
+
+        // Rise quickly, fall gently — reads as a lively pulse rather than a jittery flicker.
+        double rate = target > _eyeLevel ? 0.5 : 0.12;
+        _eyeLevel += (target - _eyeLevel) * rate;
+        double l = _eyeLevel;
+
+        HalCornea.Opacity = 0.35 + 0.65 * l;
+        HalGlow.Opacity = 0.15 + 0.75 * l;
+        HalGlow.BlurRadius = 3 + 22 * l;
+        HalScale.ScaleX = HalScale.ScaleY = 0.9 + 0.3 * l;
     }
 
     /// <summary>
