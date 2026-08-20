@@ -94,9 +94,45 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Ellipse Grid.Column="0" x:Name="StatusDot"
-                         Width="9" Height="9" VerticalAlignment="Center"
-                         Fill="#46D17A" />
+                <!-- HAL-9000-style eye: silver frame, black socket, glowing red cornea (recording),
+                     with a glass gloss highlight. Idle = dim; running/reactive = lit + glow. -->
+                <Grid Grid.Column="0" x:Name="HalEye" Width="18" Height="18" VerticalAlignment="Center">
+                    <Ellipse>
+                        <Ellipse.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#EDF1F4" Offset="0" />
+                                <GradientStop Color="#9AA1A8" Offset="0.5" />
+                                <GradientStop Color="#4E5459" Offset="1" />
+                            </LinearGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <Ellipse Margin="2" Fill="#0A0A0B" />
+                    <Ellipse x:Name="HalCornea" Margin="4" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="#FF7B6A" Offset="0" />
+                                <GradientStop Color="#E51414" Offset="0.55" />
+                                <GradientStop Color="#5A0000" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                        <Ellipse.Effect>
+                            <DropShadowEffect x:Name="HalGlow" Color="#FF2A2A"
+                                              ShadowDepth="0" BlurRadius="8" Opacity="0" />
+                        </Ellipse.Effect>
+                        <Ellipse.RenderTransform>
+                            <ScaleTransform x:Name="HalScale" ScaleX="1" ScaleY="1" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                    <!-- Glass dome reflection. -->
+                    <Ellipse Margin="4,3,7,9" IsHitTestVisible="False">
+                        <Ellipse.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#80FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                </Grid>
                 <TextBlock Grid.Column="1" Margin="8,0,0,0"
                            Text="HARK"
                            FontFamily="Segoe UI Variable, Segoe UI"

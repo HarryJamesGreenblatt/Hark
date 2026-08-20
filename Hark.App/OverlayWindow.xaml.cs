@@ -26,8 +26,6 @@ public partial class OverlayWindow : Window
 
     private static readonly Brush FinalBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
     private static readonly Brush InterimBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xCC, 0xD0));
-    private static readonly Brush RunningDot = new SolidColorBrush(Color.FromRgb(0x46, 0xD1, 0x7A));
-    private static readonly Brush IdleDot = new SolidColorBrush(Color.FromRgb(0x5F, 0x63, 0x68));
 
     private static readonly Brush ModeSelectedBg = new SolidColorBrush(Color.FromRgb(0x3B, 0x7D, 0xDD));
     private static readonly Brush ModeSelectedFg = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
@@ -38,14 +36,13 @@ public partial class OverlayWindow : Window
 
     private ViewMode _mode = ViewMode.Captions;
     private bool _hasSpeakers;
+    private bool _running;
 
     public OverlayWindow()
     {
         InitializeComponent();
         FinalBrush.Freeze();
         InterimBrush.Freeze();
-        RunningDot.Freeze();
-        IdleDot.Freeze();
         ModeSelectedBg.Freeze();
         ModeSelectedFg.Freeze();
         ModeIdleFg.Freeze();
@@ -208,11 +205,33 @@ public partial class OverlayWindow : Window
         Render();
     }
 
-    /// <summary>Reflects capture state in the status dot and hint text.</summary>
+    /// <summary>Reflects capture state in the HAL eye and hint text.</summary>
     public void SetRunning(bool running)
     {
-        StatusDot.Fill = running ? RunningDot : IdleDot;
+        _running = running;
         HintText.Text = running ? "Listening · Ctrl+Win+H to stop" : "Idle · Ctrl+Win+H to start";
+
+        // Idle = dim, dormant eye; running = lit red cornea with a soft glow.
+        HalCornea.Opacity = running ? 0.9 : 0.3;
+        HalGlow.Opacity = running ? 0.55 : 0.0;
+        HalGlow.BlurRadius = running ? 8 : 0;
+        HalScale.ScaleX = HalScale.ScaleY = 1.0;
+    }
+
+    /// <summary>
+    /// Modulates the HAL eye to the current audio level (0..1) while running — the cornea brightens,
+    /// the glow swells, and it pulses subtly, so the eye reacts to sound like HAL-9000.
+    /// </summary>
+    public void SetAudioLevel(double level)
+    {
+        if (!_running) return;
+
+        level = level < 0 ? 0 : level > 1 ? 1 : level;
+
+        HalCornea.Opacity = 0.7 + 0.3 * level;
+        HalGlow.Opacity = 0.4 + 0.5 * level;
+        HalGlow.BlurRadius = 6 + 16 * level;
+        HalScale.ScaleX = HalScale.ScaleY = 1.0 + 0.18 * level;
     }
 
     /// <summary>

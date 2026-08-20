@@ -39,6 +39,12 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Raised when the recognizer reports a non-fatal error or cancellation reason.</summary>
     public event Action<string>? Error;
 
+    /// <summary>
+    /// Raised (~20 Hz while running) with the normalized peak audio level (0..1) of the captured
+    /// stream — suitable for driving a level meter or a sound-reactive indicator.
+    /// </summary>
+    public event Action<double>? AudioLevel;
+
     /// <summary>True while a capture/recognition session is active.</summary>
     public bool IsRunning => _running;
 
@@ -140,7 +146,37 @@ public sealed class HarkSession : IAsyncDisposable
     private void OnDataAvailable(byte[] buffer, int bytes)
     {
         var pcm = _converter?.Convert(buffer, bytes);
-        if (pcm is { Length: > 0 }) _transcriber?.Write(pcm, pcm.Length);
+        if (pcm is { Length: > 0 })
+        {
+            _transcriber?.Write(pcm, pcm.Length);
+            ReportAudioLevel(pcm);
+        }
+    }
+
+    private long _lastLevelTick;
+
+    /// <summary>
+    /// Raises <see cref="AudioLevel"/> with the normalized peak (0..1) of the converted PCM,
+    /// throttled to ~20 Hz so UI consumers (e.g. a level meter) aren't flooded.
+    /// </summary>
+    private void ReportAudioLevel(byte[] pcm)
+    {
+        var handler = AudioLevel;
+        if (handler is null) return;
+
+        long now = Environment.TickCount64;
+        if (now - _lastLevelTick < 50) return;
+        _lastLevelTick = now;
+
+        int peak = 0;
+        for (int i = 0; i + 1 < pcm.Length; i += 2)
+        {
+            short s = (short)(pcm[i] | (pcm[i + 1] << 8));
+            int mag = s < 0 ? -s : s;
+            if (mag > peak) peak = mag;
+        }
+
+        handler(peak / 32768.0);
     }
 
     private void OnInterim(TranscriptSegment segment)

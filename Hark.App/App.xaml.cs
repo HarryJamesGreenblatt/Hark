@@ -155,6 +155,7 @@ public partial class App : Application
                     sink: _overlay is null ? null : new OverlaySink(_overlay, _store),
                     diarize: true);
                 _session.Error += OnSessionError;
+                _session.AudioLevel += OnAudioLevel;
 
                 await _session.StartAsync(cancellationToken);
                 _overlay?.SetRunning(true);
@@ -178,6 +179,10 @@ public partial class App : Application
             _tray?.ShowBalloonTip(4000, "HARK — recognizer", message, ToolTipIcon.Warning);
             _overlay?.ShowStatus($"Recognizer: {message}");
         });
+
+    /// <summary>Marshals the capture audio level onto the UI to drive the sound-reactive HAL eye.</summary>
+    private void OnAudioLevel(double level) =>
+        Dispatcher.BeginInvoke(() => _overlay?.SetAudioLevel(level));
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
     private void OpenSpeakerWindow(string speaker)
