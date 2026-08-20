@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using Hark.Core.Summarization;
 
 namespace Hark.App;
 
@@ -27,6 +29,16 @@ public partial class OverlayWindow : Window
     private static readonly Brush RunningDot = new SolidColorBrush(Color.FromRgb(0x46, 0xD1, 0x7A));
     private static readonly Brush IdleDot = new SolidColorBrush(Color.FromRgb(0x5F, 0x63, 0x68));
 
+    private static readonly Brush ModeSelectedBg = new SolidColorBrush(Color.FromRgb(0x3B, 0x7D, 0xDD));
+    private static readonly Brush ModeSelectedFg = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+    private static readonly Brush ModeIdleFg = new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6));
+
+    /// <summary>Which content the overlay is showing.</summary>
+    private enum ViewMode { Captions, Summary }
+
+    private ViewMode _mode = ViewMode.Captions;
+    private bool _hasSpeakers;
+
     public OverlayWindow()
     {
         InitializeComponent();
@@ -34,6 +46,9 @@ public partial class OverlayWindow : Window
         InterimBrush.Freeze();
         RunningDot.Freeze();
         IdleDot.Freeze();
+        ModeSelectedBg.Freeze();
+        ModeSelectedFg.Freeze();
+        ModeIdleFg.Freeze();
 
         Loaded += (_, _) => PositionAtBottomCenter();
         DragHandle.MouseLeftButtonDown += OnDragHandlePressed;
@@ -41,13 +56,96 @@ public partial class OverlayWindow : Window
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
         CloseButton.Click += (_, _) => CloseRequested?.Invoke();
+
+        // Mode switch + recap-style picker.
+        CaptionsModeButton.Click += (_, _) => SetMode(ViewMode.Captions);
+        SummaryModeButton.Click += (_, _) => SetMode(ViewMode.Summary);
+
+        StylePicker.ItemsSource = Enum.GetValues<SummaryStyle>();
+        StylePicker.SelectedItem = SummaryStyle.Teams;
+        StylePicker.SelectionChanged += (_, _) =>
+        {
+            if (_mode == ViewMode.Summary && StylePicker.SelectedItem is SummaryStyle)
+                SummaryRequested?.Invoke(SelectedStyle);
+        };
+
+        UpdateModeButtons();
     }
+
+    /// <summary>The recap style currently chosen in the picker.</summary>
+    public SummaryStyle SelectedStyle =>
+        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Teams;
 
     /// <summary>Raised when the user clicks the overlay's close (✕) button.</summary>
     public event Action? CloseRequested;
 
     /// <summary>Raised when the user clicks a speaker pill in the CONVERSATION index.</summary>
     public event Action<string>? SpeakerSelected;
+
+    /// <summary>
+    /// Raised when a summary is needed: on switching to SUMMARY mode, or when the recap style
+    /// changes while in SUMMARY mode. The host decides whether to serve a cached result or generate.
+    /// </summary>
+    public event Action<SummaryStyle>? SummaryRequested;
+
+    /// <summary>Shows a transient status (e.g. "Generating recap…") in the summary view.</summary>
+    public void SetSummaryBusy(string message) => SummaryText.Text = message;
+
+    /// <summary>Renders the finished recap text in the summary view.</summary>
+    public void SetSummaryText(string text) => SummaryText.Text = text ?? string.Empty;
+
+    /// <summary>Switches between captions and summary with a short cross-fade.</summary>
+    private void SetMode(ViewMode mode)
+    {
+        if (_mode == mode)
+        {
+            // Re-request a summary if the user taps SUMMARY again (host may refresh from cache).
+            if (mode == ViewMode.Summary) SummaryRequested?.Invoke(SelectedStyle);
+            return;
+        }
+
+        _mode = mode;
+        UpdateModeButtons();
+        UpdateSpeakerBarVisibility();
+
+        StylePicker.Visibility = mode == ViewMode.Summary ? Visibility.Visible : Visibility.Collapsed;
+
+        if (mode == ViewMode.Summary)
+        {
+            SummaryRequested?.Invoke(SelectedStyle);
+            FadeSwap(fadeIn: SummaryScroll, fadeOut: CaptionBox);
+        }
+        else
+        {
+            FadeSwap(fadeIn: CaptionBox, fadeOut: SummaryScroll);
+        }
+    }
+
+    private static void FadeSwap(UIElement fadeIn, UIElement fadeOut)
+    {
+        var duration = new Duration(TimeSpan.FromMilliseconds(180));
+
+        fadeIn.Visibility = Visibility.Visible;
+        fadeIn.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration));
+
+        var outAnim = new DoubleAnimation(1, 0, duration);
+        outAnim.Completed += (_, _) => fadeOut.Visibility = Visibility.Collapsed;
+        fadeOut.BeginAnimation(OpacityProperty, outAnim);
+    }
+
+    private void UpdateModeButtons()
+    {
+        bool summary = _mode == ViewMode.Summary;
+        CaptionsModeButton.Background = summary ? System.Windows.Media.Brushes.Transparent : ModeSelectedBg;
+        CaptionsModeButton.Foreground = summary ? ModeIdleFg : ModeSelectedFg;
+        SummaryModeButton.Background = summary ? ModeSelectedBg : System.Windows.Media.Brushes.Transparent;
+        SummaryModeButton.Foreground = summary ? ModeSelectedFg : ModeIdleFg;
+    }
+
+    private void UpdateSpeakerBarVisibility() =>
+        SpeakerBarPanel.Visibility = _mode == ViewMode.Captions && _hasSpeakers
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     /// <summary>Adds a pill for a newly-discovered speaker (no-op if already present).</summary>
     public void AddSpeaker(string speaker)
@@ -63,7 +161,8 @@ public partial class OverlayWindow : Window
         button.Click += (_, _) => SpeakerSelected?.Invoke(speaker);
 
         SpeakerBar.Items.Add(button);
-        SpeakerBarPanel.Visibility = Visibility.Visible;
+        _hasSpeakers = true;
+        UpdateSpeakerBarVisibility();
     }
 
     /// <summary>Removes all speaker pills (used when a new session starts).</summary>
@@ -71,7 +170,8 @@ public partial class OverlayWindow : Window
     {
         _speakers.Clear();
         SpeakerBar.Items.Clear();
-        SpeakerBarPanel.Visibility = Visibility.Collapsed;
+        _hasSpeakers = false;
+        UpdateSpeakerBarVisibility();
     }
 
     /// <summary>Updates the live (interim) hypothesis line.</summary>

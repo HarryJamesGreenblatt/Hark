@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Forms;
 using Azure.Identity;
 using Hark.Core;
+using Hark.Core.Summarization;
 using Microsoft.Extensions.Configuration;
 
 namespace Hark.App;
@@ -25,7 +26,15 @@ public partial class App : Application
 
     private string? _region;
     private string? _resourceId;
+    private string? _aoaiEndpoint;
+    private string? _aoaiDeployment;
     private bool _busy;
+
+    private ISummarizer? _summarizer;
+    private CancellationTokenSource? _summaryCts;
+    private string? _cachedSummary;
+    private int _cachedRevision = -1;
+    private SummaryStyle _cachedStyle;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -37,20 +46,21 @@ public partial class App : Application
         // The resource ARM id embeds the subscription id, so it deliberately never lives in
         // source or launch profiles — fall back to dotnet user-secrets (dev-machine-local,
         // never committed) when the environment variables aren't set. See README.
-        if (string.IsNullOrWhiteSpace(_region) || string.IsNullOrWhiteSpace(_resourceId))
-        {
-            var config = new ConfigurationBuilder()
-                .AddUserSecrets(Assembly.GetExecutingAssembly())
-                .Build();
-            _region ??= config["HARK_SPEECH_REGION"];
-            _resourceId ??= config["HARK_SPEECH_RESOURCE_ID"];
-        }
+        // Azure OpenAI (recap) settings live only in user-secrets.
+        var config = new ConfigurationBuilder()
+            .AddUserSecrets(Assembly.GetExecutingAssembly())
+            .Build();
+        _region ??= config["HARK_SPEECH_REGION"];
+        _resourceId ??= config["HARK_SPEECH_RESOURCE_ID"];
+        _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
+        _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
 
         // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();
         _overlay.SetRunning(false);
         _overlay.CloseRequested += () => Shutdown();
         _overlay.SpeakerSelected += OpenSpeakerWindow;
+        _overlay.SummaryRequested += OnSummaryRequested;
 
         // New speakers discovered by diarization surface as pills in the CONVERSATION index.
         _store.SpeakerAdded += speaker =>
@@ -197,6 +207,71 @@ public partial class App : Application
 
         _overlay?.ClearSpeakers();
         _store.Clear();
+
+        // A new session invalidates any cached recap.
+        _cachedSummary = null;
+        _cachedRevision = -1;
+    }
+
+    /// <summary>
+    /// Serves a cached recap when the captions are unchanged, otherwise generates a new one via
+    /// Azure OpenAI. Caching is keyed on the store <see cref="ConversationStore.Revision"/> plus the
+    /// requested style, so toggling back and forth without new speech doesn't re-call the service.
+    /// </summary>
+    private async void OnSummaryRequested(SummaryStyle style)
+    {
+        if (_overlay is null) return;
+
+        if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment))
+        {
+            _overlay.SetSummaryText(
+                "Summary isn't configured. Set HARK_AOAI_ENDPOINT and HARK_AOAI_DEPLOYMENT in user-secrets.");
+            return;
+        }
+
+        if (_store.All.Count == 0)
+        {
+            _overlay.SetSummaryText("Nothing to summarize yet — captions will appear here as a recap.");
+            return;
+        }
+
+        int revision = _store.Revision;
+        if (_cachedSummary is not null && _cachedRevision == revision && _cachedStyle == style)
+        {
+            _overlay.SetSummaryText(_cachedSummary);   // unchanged captions → reuse, no API call
+            return;
+        }
+
+        // Supersede any in-flight request (e.g. rapid style changes).
+        _summaryCts?.Cancel();
+        var cts = _summaryCts = new CancellationTokenSource();
+
+        _overlay.SetSummaryBusy("Generating recap…");
+
+        var transcript = string.Join(
+            Environment.NewLine,
+            _store.All.Select(entry => $"{entry.Speaker}: {entry.Text}"));
+
+        try
+        {
+            _summarizer ??= new AzureOpenAiSummarizer(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+            var recap = await _summarizer.SummarizeAsync(transcript, style, cts.Token);
+
+            if (cts.IsCancellationRequested) return;
+
+            _cachedSummary = recap;
+            _cachedRevision = revision;
+            _cachedStyle = style;
+            _overlay.SetSummaryText(recap);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer request; ignore.
+        }
+        catch (Exception ex)
+        {
+            _overlay.SetSummaryText($"Couldn't generate recap: {ex.Message}");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

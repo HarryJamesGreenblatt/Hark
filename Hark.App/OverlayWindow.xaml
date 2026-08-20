@@ -50,18 +50,40 @@
                                     <Setter Property="Foreground" Value="#FFFFFF" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
-        </Border.Resources>
+                                    </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
 
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+                            <!-- Segmented mode-switch button (CAPTIONS / SUMMARY). Selected look is set in code-behind. -->
+                            <Style x:Key="ModeButtonStyle" TargetType="Button">
+                                <Setter Property="Foreground" Value="#9AA0A6" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI" />
+                                <Setter Property="FontSize" Value="11" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Padding" Value="12,4" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Border.Resources>
+
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
             <!-- Slim header acts as the drag handle and shows live status; hosts the close button. -->
             <Grid Grid.Row="0" x:Name="DragHandle" Background="Transparent" Margin="0,0,0,6">
@@ -111,8 +133,32 @@
                 </Button>
             </Grid>
 
+            <!-- Mode switch (CAPTIONS / SUMMARY). Kept visually distinct from the speaker pills. -->
+            <Grid Grid.Row="1" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" CornerRadius="9" Padding="2"
+                        Background="#1C1E20" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="CaptionsModeButton" Content="CAPTIONS"
+                                Style="{StaticResource ModeButtonStyle}" />
+                        <Button x:Name="SummaryModeButton" Content="SUMMARY"
+                                Style="{StaticResource ModeButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Recap style picker; only meaningful in SUMMARY mode. -->
+                <ComboBox Grid.Column="2" x:Name="StylePicker"
+                          Width="130" FontSize="11" Visibility="Collapsed"
+                          VerticalAlignment="Center" />
+            </Grid>
+
             <!-- Speaker index: one pill per detected speaker; opens that speaker's page. -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6"
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,6"
                         x:Name="SpeakerBarPanel" Visibility="Collapsed">
                 <TextBlock Text="Speakers:" VerticalAlignment="Center" Margin="0,0,8,0"
                            FontFamily="Segoe UI Variable, Segoe UI" FontSize="11"
@@ -126,8 +172,10 @@
                 </ItemsControl>
             </StackPanel>
 
-            <!-- Rolling transcript: read-only but selectable + copyable, and scrollable when expanded. -->
-            <RichTextBox Grid.Row="2" x:Name="CaptionBox"
+            <!-- Content area: captions and summary overlap here and cross-fade on mode switch. -->
+            <Grid Grid.Row="3">
+                <!-- Rolling transcript: read-only but selectable + copyable, and scrollable when expanded. -->
+                <RichTextBox x:Name="CaptionBox"
                          IsReadOnly="True"
                          IsDocumentEnabled="True"
                          Background="Transparent"
@@ -138,20 +186,37 @@
                          FontSize="26"
                          VerticalScrollBarVisibility="Auto"
                          HorizontalScrollBarVisibility="Disabled">
-                <RichTextBox.Resources>
-                    <Style TargetType="Paragraph">
-                        <Setter Property="Margin" Value="0" />
-                        <Setter Property="LineHeight" Value="34" />
-                    </Style>
-                </RichTextBox.Resources>
-                <RichTextBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem x:Name="CopyItem" Header="Copy" InputGestureText="Ctrl+C" />
-                        <MenuItem x:Name="CopyAllItem" Header="Copy all" />
-                    </ContextMenu>
-                </RichTextBox.ContextMenu>
-                <FlowDocument x:Name="CaptionDoc" PagePadding="0" />
-            </RichTextBox>
+                    <RichTextBox.Resources>
+                        <Style TargetType="Paragraph">
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="LineHeight" Value="34" />
+                        </Style>
+                    </RichTextBox.Resources>
+                    <RichTextBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="CopyItem" Header="Copy" InputGestureText="Ctrl+C" />
+                            <MenuItem x:Name="CopyAllItem" Header="Copy all" />
+                        </ContextMenu>
+                    </RichTextBox.ContextMenu>
+                    <FlowDocument x:Name="CaptionDoc" PagePadding="0" />
+                </RichTextBox>
+
+                <!-- Summary view: hidden until SUMMARY mode; faded in over the captions. -->
+                <ScrollViewer x:Name="SummaryScroll"
+                              VerticalScrollBarVisibility="Auto"
+                              Visibility="Collapsed" Opacity="0">
+                    <TextBox x:Name="SummaryText"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="#FFFFFF"
+                             FontFamily="Segoe UI Variable, Segoe UI"
+                             FontSize="16"
+                             Text="" />
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Border>
 </Window>
