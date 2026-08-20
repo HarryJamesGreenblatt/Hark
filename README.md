@@ -94,14 +94,18 @@ Play a clear-speech video through your speakers/headphones; transcription stream
 
 A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 
-- **Toggle:** `Ctrl+Win+H` shows/hides a selectable, resizable, always-on-top captions bar.
+- **Toggle:** `Ctrl+Win+H` shows/hides a selectable, resizable, always-on-top captions bar. It docks
+  as a **full-width bar at the top** of the screen (native Live Captions layout), and stays movable.
+- **HAL-9000 status eye:** a metallic-framed red "eye" indicator that's dim when idle and, while
+  listening, glows and **pulses in time with the captured audio** (RMS level, eased at 60fps). Red
+  reads as "recording."
 - **Speaker diarization:** captions are attributed to anonymous, session-scoped speakers
   (`Guest-1`, `Guest-2`, …) using Azure Speech's `ConversationTranscriber`. Each detected speaker
   gets a **pill**; clicking it opens a dedicated **page** showing just that speaker's lines.
 - **CAPTIONS / SUMMARY switch:** a segmented control cross-fades between the live captions and an
-  **AI recap** (Teams-style by default; Narrative and per-speaker styles also available). The recap
-  is cached and only regenerated when the captions change, so switching back and forth is free.
-  Requires the optional Azure OpenAI configuration above.
+  **AI recap** (Teams-style by default; Narrative and per-speaker styles also available). SUMMARY is
+  disabled until there are captions to summarize; the recap is cached and only regenerated when the
+  captions change, so switching back and forth is free. Requires the optional Azure OpenAI config above.
 
 > Diarization labels are anonymous and can occasionally swap or merge — expected for single-channel
 > speaker separation. Spoken/narration audio works best; sung or heavily overlapping speech is harder.

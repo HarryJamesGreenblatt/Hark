@@ -14,12 +14,13 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-19 (end of Episode 6)._
+_Last updated: 2026-08-19 (end of Episode 7)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
-  `github.com/HarryJamesGreenblatt/Hark`. The overlay is now a **multi-speaker** experience:
+  `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
   reliable multi-language captions, real-time speaker diarization, per-speaker pages, and an
-  AI recap with a CAPTIONS/SUMMARY mode switch. The recap model is **provisioned and wired**
+  AI recap with a CAPTIONS/SUMMARY mode switch. It docks as a **full-width top bar** with a
+  **sound-reactive HAL-9000 status eye**. The recap model is provisioned and wired
   (Azure OpenAI, `gpt-4.1-mini`, keyless) — pending a live end-to-end smoke test.
 - **Branch:** `main` · working tree clean.
 - **Apps:** `Hark.Cli` (terminal) and `Hark.App` (WPF tray overlay) drive the shared
@@ -65,6 +66,7 @@ _Last updated: 2026-08-19 (end of Episode 6)._
 | 4 | 2026-08-18 | [GitHub Publish & Secret Hardening](./EP04-github-publish-and-secret-hardening.md) | Published to a personal public GitHub repo; found + fixed a leaked subscription id (moved to `dotnet user-secrets`); scrubbed git history. |
 | 5 | 2026-08-19 | [Diarization, Speaker Pages & AI Recap](./EP05-diarization-speaker-pages-and-recap.md) | Fixed multi-language captions + silent failures; added speaker diarization, per-speaker pages, and a Teams-style Azure OpenAI recap with a CAPTIONS/SUMMARY mode switch. |
 | 6 | 2026-08-19 | [Summary Enablement & AOAI Provisioning](./EP06-summary-enablement-and-aoai-provisioning.md) | Provisioned the Azure OpenAI resource + `gpt-4.1-mini` deployment behind SUMMARY (keyless), wired user-secrets, and documented the setup in the README. |
+| 7 | 2026-08-19 | [Overlay UX: Top Bar, SUMMARY Gating & a HAL-9000 Eye](./EP07-overlay-ux-top-bar-and-hal-eye.md) | Full-width top-bar dock; SUMMARY disabled until captions exist; a sound-reactive HAL-9000 status eye, fixed by adopting WavBall's 60fps render-loop reactivity pattern. |
 
 ---
 
@@ -72,6 +74,11 @@ _Last updated: 2026-08-19 (end of Episode 6)._
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
+- **HAL eye fine-tuning:** improved but not perfect; dial `attackTau`/`releaseTau`, the level gain,
+  and the glow/pulse terms in `OverlayWindow` to taste; consider an idle "breathing" shimmer.
+- **Language selector (native-style):** native Live Captions forces a language choice up front; HARK
+  uses continuous LID (non-diarized) / a pinned language (diarized, `en-US`). A native-style picker
+  could let users set the diarized language without a rebuild — pairs with the mode-switch row.
 - **Live recap smoke test:** run `Hark.App`, capture dialogue, click SUMMARY, and confirm a recap
   returns from the `gpt-4.1-mini` deployment and that the revision-based cache reuses it until new
   speech arrives.
