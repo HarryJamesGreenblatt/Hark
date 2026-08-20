@@ -23,6 +23,13 @@ public sealed class ConversationStore
     /// <summary>The distinct speakers discovered so far.</summary>
     public IReadOnlyCollection<string> Speakers => _bySpeaker.Keys;
 
+    /// <summary>
+    /// Monotonically increasing content version. Bumped on every change (new line or clear).
+    /// Consumers (e.g. the summary generator) can cache a result against the revision it was
+    /// produced from and skip regenerating while the revision is unchanged.
+    /// </summary>
+    public int Revision { get; private set; }
+
     /// <summary>Raised whenever the conversation content changes (new line or clear).</summary>
     public event Action? Changed;
 
@@ -46,6 +53,7 @@ public sealed class ConversationStore
         }
         lines.Add(line);
 
+        Revision++;
         Changed?.Invoke();
     }
 
@@ -60,6 +68,7 @@ public sealed class ConversationStore
     {
         _all.Clear();
         _bySpeaker.Clear();
+        Revision++;
         Changed?.Invoke();
     }
 

@@ -38,7 +38,7 @@ public sealed class OverlaySink : ITranscriptSink
             _dispatcher.BeginInvoke(() =>
             {
                 _overlay.CommitFinal(text);
-                // Feeds the per-speaker pages and the speaker index in the CONVERSATION overlay.
+                // Feeds the per-speaker pages and the speaker index in the CAPTIONS overlay.
                 _store.CommitFinal(segment.SpeakerId, segment.Text);
             });
         }

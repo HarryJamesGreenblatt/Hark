@@ -27,7 +27,7 @@
         </Border.Effect>
 
         <Border.Resources>
-            <!-- Pill button used for the per-speaker shortcuts in the CONVERSATION index. -->
+            <!-- Pill button used for the per-speaker shortcuts in the CAPTIONS index. -->
             <Style x:Key="SpeakerButtonStyle" TargetType="Button">
                 <Setter Property="Foreground" Value="#E6E8EA" />
                 <Setter Property="Background" Value="#2A2D31" />
@@ -76,7 +76,7 @@
                          Width="9" Height="9" VerticalAlignment="Center"
                          Fill="#46D17A" />
                 <TextBlock Grid.Column="1" Margin="8,0,0,0"
-                           Text="HARK · CONVERSATION"
+                           Text="HARK"
                            FontFamily="Segoe UI Variable, Segoe UI"
                            FontSize="11" FontWeight="SemiBold"
                            Foreground="#9AA0A6" VerticalAlignment="Center" />
