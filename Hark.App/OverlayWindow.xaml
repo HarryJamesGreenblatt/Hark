@@ -196,6 +196,72 @@
                                     </Border>
                                 </Grid>
                             </DataTemplate>
+
+                            <!-- Speaker card: same expand-to-reveal idiom as a topic, but pivoted on a
+                                 person — a blue speaker dot, the Guest label, and a one-line characterization
+                                 that expands to their points. Complements the topic-pivoted Conversation view. -->
+                            <DataTemplate x:Key="SpeakerTemplate">
+                                <Border Background="#16181A" CornerRadius="8" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <ToggleButton x:Name="Toggle" Style="{StaticResource TopicToggleStyle}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path x:Name="Chevron" Grid.Column="0"
+                                                      Width="8" Height="10" Margin="0,5,12,0"
+                                                      VerticalAlignment="Top" Stretch="Fill"
+                                                      Fill="#9AA0A6" Data="M 0 0 L 5 5 L 0 10 Z"
+                                                      RenderTransformOrigin="0.5,0.5" />
+                                                <Ellipse Grid.Column="1" Width="8" Height="8"
+                                                         Margin="0,7,8,0" VerticalAlignment="Top" Fill="#3B7DDD" />
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="{Binding Speaker}"
+                                                               FontFamily="Segoe UI Variable, Segoe UI"
+                                                               FontSize="14" FontWeight="SemiBold"
+                                                               Foreground="#FFFFFF" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Summary}"
+                                                               FontFamily="Segoe UI Variable, Segoe UI"
+                                                               FontSize="12" Foreground="#9AA0A6"
+                                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </ToggleButton>
+
+                                        <ItemsControl ItemsSource="{Binding Points}" Margin="32,0,12,10"
+                                                      Visibility="{Binding IsChecked, ElementName=Toggle,
+                                                                   Converter={StaticResource BoolToVis}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,3,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="&#8226;" Foreground="#5F6368"
+                                                                   Margin="0,0,8,0" VerticalAlignment="Top" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding}"
+                                                                   FontFamily="Segoe UI Variable, Segoe UI"
+                                                                   FontSize="13" Foreground="#D0D3D6"
+                                                                   TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsChecked, ElementName=Toggle}" Value="True">
+                                        <Setter TargetName="Chevron" Property="RenderTransform">
+                                            <Setter.Value>
+                                                <RotateTransform Angle="90" />
+                                            </Setter.Value>
+                                        </Setter>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
                         </Border.Resources>
 
                         <Grid>
@@ -391,6 +457,14 @@
                                        Style="{StaticResource RecapSectionHeaderStyle}" />
                             <ItemsControl x:Name="TaskList"
                                           ItemTemplate="{StaticResource TaskTemplate}" />
+                        </StackPanel>
+
+                        <!-- People-pivoted (Speakers) recap: one expandable card per speaker. -->
+                        <StackPanel x:Name="SpeakerPanel" Visibility="Collapsed">
+                            <TextBlock x:Name="SpeakersHeader" Text="SPEAKERS"
+                                       Style="{StaticResource RecapSectionHeaderStyle}" />
+                            <ItemsControl x:Name="SpeakerList"
+                                          ItemTemplate="{StaticResource SpeakerTemplate}" />
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>

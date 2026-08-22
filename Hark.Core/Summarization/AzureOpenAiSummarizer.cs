@@ -26,6 +26,9 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
     private static readonly MeetingRecap EmptyRecap =
         new(string.Empty, Array.Empty<RecapTopic>(), Array.Empty<RecapFollowUp>());
 
+    /// <summary>An empty speaker recap, returned for empty transcripts or empty completions.</summary>
+    private static readonly SpeakerRecap EmptySpeakerRecap = new(Array.Empty<SpeakerBrief>());
+
     #endregion
 
     #region Constructor(s)
@@ -50,36 +53,14 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
     #region Methods
 
     /// <inheritdoc />
-    public async Task<string> SummarizeAsync(string transcript, SummaryStyle style, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(transcript))
-            return string.Empty;
-
-        var messages = new ChatMessage[]
-        {
-            new SystemChatMessage(SystemPromptFor(style)),
-            new UserChatMessage($"Transcript:\n\n{transcript}"),
-        };
-
-        var options = new ChatCompletionOptions { Temperature = 0.4f, MaxOutputTokenCount = 1200 };
-
-        var completion = await _chat.CompleteChatAsync(messages, options, cancellationToken)
-            .ConfigureAwait(false);
-
-        return completion.Value.Content.Count > 0
-            ? completion.Value.Content[0].Text.Trim()
-            : string.Empty;
-    }
-
-    /// <inheritdoc />
-    public async Task<MeetingRecap> SummarizeStructuredAsync(string transcript, CancellationToken cancellationToken = default)
+    public async Task<MeetingRecap> SummarizeConversationAsync(string transcript, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(transcript))
             return EmptyRecap;
 
         var messages = new ChatMessage[]
         {
-            new SystemChatMessage(StructuredSystemPrompt),
+            new SystemChatMessage(ConversationSystemPrompt),
             new UserChatMessage($"Transcript:\n\n{transcript}"),
         };
 
@@ -91,7 +72,7 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             MaxOutputTokenCount = 3000,
             ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
                 "meeting_recap",
-                BinaryData.FromString(RecapSchema),
+                BinaryData.FromString(ConversationSchema),
                 jsonSchemaIsStrict: true),
         };
 
@@ -105,35 +86,42 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         return recap ?? EmptyRecap;
     }
 
+    /// <inheritdoc />
+    public async Task<SpeakerRecap> SummarizeSpeakersAsync(string transcript, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+            return EmptySpeakerRecap;
+
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage(SpeakersSystemPrompt),
+            new UserChatMessage($"Transcript:\n\n{transcript}"),
+        };
+
+        var options = new ChatCompletionOptions
+        {
+            Temperature = 0.4f,
+            MaxOutputTokenCount = 3000,
+            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                "speaker_recap",
+                BinaryData.FromString(SpeakersSchema),
+                jsonSchemaIsStrict: true),
+        };
+
+        var completion = await _chat.CompleteChatAsync(messages, options, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (completion.Value.Content.Count == 0)
+            return EmptySpeakerRecap;
+
+        var recap = JsonSerializer.Deserialize<SpeakerRecap>(completion.Value.Content[0].Text, RecapJson);
+        return recap ?? EmptySpeakerRecap;
+    }
+
     /// <summary>Builds the system prompt instructing the model how to summarize in the given style.</summary>
     /// <param name="style">The recap style to produce.</param>
     /// <returns>The system prompt text.</returns>
-    private static string SystemPromptFor(SummaryStyle style) => style switch
-    {
-        SummaryStyle.Narrative =>
-            "You summarize transcripts. Speakers are anonymous labels like 'Guest-1'. " +
-            "Write a single concise, neutral paragraph capturing the gist of the conversation. " +
-            "Do not invent details or real names.",
-
-        SummaryStyle.PerSpeaker =>
-            "You summarize transcripts. Speakers are anonymous labels like 'Guest-1'. " +
-            "For each speaker, write one short bullet summarizing their contribution, formatted as " +
-            "'Guest-N: ...'. Keep it factual; do not invent details or real names.",
-
-        _ => // Teams
-            "You produce concise, professional meeting-style recaps. Speakers are anonymous labels " +
-            "like 'Guest-1'. Structure the recap with three short sections using these exact headings:\n" +
-            "Overview:\nKey points:\nAction items:\n" +
-            "Use brief bullet points under 'Key points' and 'Action items'. If there are no action " +
-            "items, write 'None'. Be faithful to the transcript; do not invent details or real names.",
-    };
-
-    /// <summary>
-    /// System prompt for the structured Teams-Recap-style summary. Drives depth by asking the model to
-    /// segment the conversation by topic and expand each with specific detail bullets, rather than
-    /// compressing everything into one terse paragraph.
-    /// </summary>
-    private const string StructuredSystemPrompt =
+    private const string ConversationSystemPrompt =
         "You produce a structured meeting recap from a transcript. Speakers are anonymous labels " +
         "like 'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
         "Return a JSON object with:\n" +
@@ -152,8 +140,25 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         "detail you should produce. Be faithful to the transcript; never fabricate details, names, " +
         "decisions, or tasks.";
 
+    /// <summary>
+    /// System prompt for the people-pivoted recap. Asks for one brief per speaker so the Speakers view
+    /// genuinely complements the topic-pivoted Conversation view rather than restating it.
+    /// </summary>
+    private const string SpeakersSystemPrompt =
+        "You produce a per-speaker recap from a transcript. Speakers are anonymous labels like " +
+        "'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
+        "Return a JSON object with a 'speakers' array containing one entry for every distinct speaker " +
+        "who actually spoke. For each, provide:\n" +
+        "- speaker: the exact Guest label (e.g. 'Guest-1').\n" +
+        "- summary: one sentence characterizing that speaker's role, stance, or overall contribution.\n" +
+        "- points: 2-5 bullets of the specific things they said — positions they took, questions they " +
+        "raised, claims or numbers they gave, and any commitments they made. Be substantive and " +
+        "specific; attribute only what that speaker actually said.\n\n" +
+        "Include every distinct speaker present in the transcript. Be faithful to the transcript; " +
+        "never fabricate speakers, names, or content.";
+
     /// <summary>Strict JSON schema mirroring <see cref="MeetingRecap"/>, used for structured outputs.</summary>
-    private const string RecapSchema = """
+    private const string ConversationSchema = """
         {
           "type": "object",
           "properties": {
@@ -185,6 +190,30 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             }
           },
           "required": ["overview", "topics", "followUps"],
+          "additionalProperties": false
+        }
+        """;
+
+    /// <summary>Strict JSON schema mirroring <see cref="SpeakerRecap"/>, used for structured outputs.</summary>
+    private const string SpeakersSchema = """
+        {
+          "type": "object",
+          "properties": {
+            "speakers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "speaker": { "type": "string" },
+                  "summary": { "type": "string" },
+                  "points": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["speaker", "summary", "points"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["speakers"],
           "additionalProperties": false
         }
         """;

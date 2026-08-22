@@ -78,7 +78,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>The recap style currently chosen in the picker.</summary>
     public SummaryStyle SelectedStyle =>
-        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Teams;
+        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Conversation;
 
     #endregion
 
@@ -125,7 +125,7 @@ public partial class OverlayWindow : Window
         SummaryModeButton.Click += (_, _) => SetMode(ViewMode.Summary);
 
         StylePicker.ItemsSource = Enum.GetValues<SummaryStyle>();
-        StylePicker.SelectedItem = SummaryStyle.Teams;
+        StylePicker.SelectedItem = SummaryStyle.Conversation;
         StylePicker.SelectionChanged += (_, _) =>
         {
             if (_mode == ViewMode.Summary && StylePicker.SelectedItem is SummaryStyle)
@@ -153,7 +153,7 @@ public partial class OverlayWindow : Window
         SummaryText.Text = message;
     }
 
-    /// <summary>Renders finished recap text (Narrative / PerSpeaker styles) in the summary view.</summary>
+    /// <summary>Renders finished recap text (used only for status/error notes) in the summary view.</summary>
     /// <param name="text">The recap text to display.</param>
     public void SetSummaryText(string text)
     {
@@ -162,8 +162,8 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Renders a structured Teams-style recap: an overview, expandable per-topic notes, and a flat
-    /// list of follow-up tasks. Empty sections are hidden.
+    /// Renders a topic-pivoted (Conversation) recap: an overview, expandable per-topic notes, and a
+    /// flat list of follow-up tasks. Empty sections are hidden.
     /// </summary>
     /// <param name="recap">The structured recap to display.</param>
     public void SetStructuredRecap(MeetingRecap recap)
@@ -178,21 +178,43 @@ public partial class OverlayWindow : Window
         TaskList.ItemsSource = recap.FollowUps;
         TasksHeader.Visibility = recap.FollowUps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        ShowStructured();
+        ShowConversation();
     }
 
-    /// <summary>Shows the plain-text recap box and hides the structured panel.</summary>
+    /// <summary>
+    /// Renders a people-pivoted (Speakers) recap: one expandable card per speaker (a one-line
+    /// characterization that expands to reveal their points).
+    /// </summary>
+    /// <param name="recap">The speaker recap to display.</param>
+    public void SetSpeakerRecap(SpeakerRecap recap)
+    {
+        SpeakerList.ItemsSource = recap.Speakers;
+        SpeakersHeader.Visibility = recap.Speakers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowSpeakers();
+    }
+
+    /// <summary>Shows the plain-text box (status/errors) and hides both structured panels.</summary>
     private void ShowPlainText()
     {
         SummaryText.Visibility = Visibility.Visible;
         RecapPanel.Visibility = Visibility.Collapsed;
+        SpeakerPanel.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Shows the structured recap panel and hides the plain-text box.</summary>
-    private void ShowStructured()
+    /// <summary>Shows the topic-pivoted Conversation panel and hides the others.</summary>
+    private void ShowConversation()
     {
         SummaryText.Visibility = Visibility.Collapsed;
         RecapPanel.Visibility = Visibility.Visible;
+        SpeakerPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Shows the people-pivoted Speakers panel and hides the others.</summary>
+    private void ShowSpeakers()
+    {
+        SummaryText.Visibility = Visibility.Collapsed;
+        RecapPanel.Visibility = Visibility.Collapsed;
+        SpeakerPanel.Visibility = Visibility.Visible;
     }
 
     /// <summary>

@@ -57,16 +57,16 @@ public partial class App : Application
     /// <summary>Cancellation source for the in-flight recap request, cancelled when superseded.</summary>
     private CancellationTokenSource? _summaryCts;
 
-    /// <summary>The most recently generated recap text, cached to avoid redundant API calls.</summary>
-    private string? _cachedSummary;
-
-    /// <summary>The most recently generated structured (Teams-style) recap, cached alongside the text.</summary>
+    /// <summary>The most recently generated topic-pivoted (Conversation) recap, cached to avoid redundant calls.</summary>
     private MeetingRecap? _cachedRecap;
 
-    /// <summary>The <see cref="ConversationStore.Revision"/> that <see cref="_cachedSummary"/> was generated from.</summary>
+    /// <summary>The most recently generated people-pivoted (Speakers) recap, cached alongside the Conversation one.</summary>
+    private SpeakerRecap? _cachedSpeakerRecap;
+
+    /// <summary>The <see cref="ConversationStore.Revision"/> that the cached recaps were generated from.</summary>
     private int _cachedRevision = -1;
 
-    /// <summary>The <see cref="SummaryStyle"/> that <see cref="_cachedSummary"/> was generated with.</summary>
+    /// <summary>The <see cref="SummaryStyle"/> that the cached recaps were generated with.</summary>
     private SummaryStyle _cachedStyle;
 
     #endregion
@@ -268,7 +268,8 @@ public partial class App : Application
         _store.Clear();
 
         // A new session invalidates any cached recap.
-        _cachedSummary = null;
+        _cachedRecap = null;
+        _cachedSpeakerRecap = null;
         _cachedRevision = -1;
     }
 
@@ -298,9 +299,10 @@ public partial class App : Application
         int revision = _store.Revision;
         bool sameRevision = _cachedRevision == revision && _cachedStyle == style;
 
-        // Teams style renders as a structured, expandable recap; the others remain plain text. Each
-        // path has its own cache, keyed on revision + style, so toggling without new speech is free.
-        if (style == SummaryStyle.Teams)
+        // Both styles render as structured, expandable recaps — Conversation pivots on topics,
+        // Speakers on people. Each has its own cache keyed on revision + style, so toggling between
+        // them (or re-opening SUMMARY) without new speech is free.
+        if (style == SummaryStyle.Conversation)
         {
             if (sameRevision && _cachedRecap is not null)
             {
@@ -308,9 +310,9 @@ public partial class App : Application
                 return;
             }
         }
-        else if (sameRevision && _cachedSummary is not null)
+        else if (sameRevision && _cachedSpeakerRecap is not null)
         {
-            _overlay.SetSummaryText(_cachedSummary);
+            _overlay.SetSpeakerRecap(_cachedSpeakerRecap);
             return;
         }
 
@@ -328,29 +330,27 @@ public partial class App : Application
         {
             _summarizer ??= new AzureOpenAiSummarizer(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
 
-            if (style == SummaryStyle.Teams)
+            if (style == SummaryStyle.Conversation)
             {
-                var recap = await _summarizer.SummarizeStructuredAsync(transcript, cts.Token);
+                var recap = await _summarizer.SummarizeConversationAsync(transcript, cts.Token);
 
                 if (cts.IsCancellationRequested) return;
 
                 _cachedRecap = recap;
-                _cachedSummary = null;
                 _cachedRevision = revision;
                 _cachedStyle = style;
                 _overlay.SetStructuredRecap(recap);
             }
             else
             {
-                var recap = await _summarizer.SummarizeAsync(transcript, style, cts.Token);
+                var recap = await _summarizer.SummarizeSpeakersAsync(transcript, cts.Token);
 
                 if (cts.IsCancellationRequested) return;
 
-                _cachedSummary = recap;
-                _cachedRecap = null;
+                _cachedSpeakerRecap = recap;
                 _cachedRevision = revision;
                 _cachedStyle = style;
-                _overlay.SetSummaryText(recap);
+                _overlay.SetSpeakerRecap(recap);
             }
         }
         catch (OperationCanceledException)

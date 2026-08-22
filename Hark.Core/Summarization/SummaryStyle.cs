@@ -1,17 +1,15 @@
 namespace Hark.Core.Summarization;
 
 /// <summary>
-/// The flavor of recap to produce. The default is <see cref="Teams"/> (a meeting-style recap);
-/// additional styles let the same transcript be re-summarized differently.
+/// The flavor of recap to produce. Both styles are structured and expandable: <see cref="Conversation"/>
+/// pivots on topics, <see cref="Speakers"/> pivots on people. The enum member names are shown directly
+/// in the overlay's recap-style picker.
 /// </summary>
 public enum SummaryStyle
 {
-    /// <summary>Teams-style meeting recap: brief overview, key points, and action items.</summary>
-    Teams,
+    /// <summary>Topic-pivoted meeting recap: overview, expandable per-topic notes, and follow-up tasks.</summary>
+    Conversation,
 
-    /// <summary>A single concise narrative paragraph.</summary>
-    Narrative,
-
-    /// <summary>A short summary of what each speaker contributed.</summary>
-    PerSpeaker,
+    /// <summary>People-pivoted recap: one expandable card per speaker (characterization + their points).</summary>
+    Speakers,
 }
