@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-19 (end of Episode 7)._
+_Last updated: 2026-08-20 (end of Episode 8)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
   `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
@@ -40,12 +40,20 @@ _Last updated: 2026-08-19 (end of Episode 7)._
 - **Auth:** `AzureCliCredential` (explicit), keyless. Requires `az login` with the
   **Cognitive Services Speech User** role on the Speech resource, and — for recaps — the
   **Cognitive Services OpenAI User** role on the Azure OpenAI resource.
-- **Config:** all sensitive values live outside source. Speech region/resource id via env var →
-  `dotnet user-secrets`; Azure OpenAI endpoint + deployment via `dotnet user-secrets`
-  (`HARK_AOAI_ENDPOINT`, `HARK_AOAI_DEPLOYMENT`). Missing recap config shows a friendly inline note.
-- **Summary infra:** a dedicated Azure OpenAI resource in `rg-hark` (eastus2, enterprise non-prod)
-  with a `gpt-4.1-mini` chat deployment. Provisioned by hand via `az` this session — a candidate for
-  IaC + CI/CD later (see open threads). Billable; delete/purge when done experimenting.
+- **Config:** all sensitive values live outside source. Resolution precedence is **CLI flags → env
+  vars → `%APPDATA%\Hark\config.json` → `dotnet user-secrets`**. Dev machines use user-secrets;
+  **published exes** (where user-secrets isn't available) use the external `%APPDATA%\Hark\config.json`
+  — both stay out of the repo. Only resource *locations* are stored (region/ARM id, AOAI
+  endpoint/deployment); auth stays keyless. Missing recap config shows a friendly inline note.
+- **Summary infra:** an Azure OpenAI resource in `rg-hark` with a `gpt-4.1-mini` chat deployment
+  backs the SUMMARY view. Provisioning is now **codified** (see below) rather than hand-run.
+  Billable; delete/purge when done experimenting.
+- **Infra as Code:** the full Azure stack (resource group, Speech resource, optional Azure OpenAI
+  account + deployment, and the keyless RBAC role assignments) is defined as **Bicep** under
+  `infra/` and deployed by a keyless **GitHub Actions** pipeline
+  (`.github/workflows/provision-infra.yml`, OIDC). Resource names auto-generate as globally-unique
+  by default, so the stack stands up cleanly on any subscription. Deployment outputs map directly to
+  the app's user-secrets.
 - **How to run:** VS **F5** per project, or `.\run.ps1` (CLI), or raw `dotnet run` — after the
   one-time user-secrets setup for the resources you're targeting.
 - **`gh` auth:** enterprise (`hgreenblatt_microsoft`) and personal (`HarryJamesGreenblatt`, owns the
@@ -67,6 +75,7 @@ _Last updated: 2026-08-19 (end of Episode 7)._
 | 5 | 2026-08-19 | [Diarization, Speaker Pages & AI Recap](./EP05-diarization-speaker-pages-and-recap.md) | Fixed multi-language captions + silent failures; added speaker diarization, per-speaker pages, and a Teams-style Azure OpenAI recap with a CAPTIONS/SUMMARY mode switch. |
 | 6 | 2026-08-19 | [Summary Enablement & AOAI Provisioning](./EP06-summary-enablement-and-aoai-provisioning.md) | Provisioned the Azure OpenAI resource + `gpt-4.1-mini` deployment behind SUMMARY (keyless), wired user-secrets, and documented the setup in the README. |
 | 7 | 2026-08-19 | [Overlay UX: Top Bar, SUMMARY Gating & a HAL-9000 Eye](./EP07-overlay-ux-top-bar-and-hal-eye.md) | Full-width top-bar dock; SUMMARY disabled until captions exist; a sound-reactive HAL-9000 status eye, fixed by adopting WavBall's 60fps render-loop reactivity pattern. |
+| 8 | 2026-08-20 | [Infrastructure as Code + Provisioning Pipeline](./EP08-infra-as-code-and-provisioning-pipeline.md) | Codified the Azure stack as Bicep + a keyless GitHub Actions pipeline, with auto-unique naming so it stands up on any subscription in one run. |
 
 ---
 
@@ -82,11 +91,10 @@ These are unresolved at the end of the latest episode — natural starting point
 - **Live recap smoke test:** run `Hark.App`, capture dialogue, click SUMMARY, and confirm a recap
   returns from the `gpt-4.1-mini` deployment and that the revision-based cache reuses it until new
   speech arrives.
-- **Infra as Code + CI/CD (nice-to-have, not now):** formalize the Azure provisioning (resource
-  group, Speech resource, Azure OpenAI account + `gpt-4.1-mini` deployment, role assignments) as
-  **Bicep/Terraform** driven by a **GitHub Actions** workflow, so the full stack can be stood up in
-  another environment/subscription with one run. Parameterize region/model; keep secrets in the
-  target env rather than local user-secrets.
+- **Infra as Code + CI/CD:** ✅ **Done (Episode 8)** — Azure provisioning is now Bicep under
+  `infra/` driven by a keyless GitHub Actions pipeline. Remaining: optionally enable Azure OpenAI
+  by default on the target subscription, and run the live end-to-end smoke test against the
+  freshly-provisioned resources.
 - **Personal Azure resources (deferred):** provision Speech **and** Azure OpenAI resources under a
   personal subscription, `az login` as that identity, assign the data-plane roles, and point
   `dotnet user-secrets` at them — fully decouples HARK from the enterprise account.

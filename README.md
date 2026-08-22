@@ -40,10 +40,14 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 
 ## Configuration
 
-Provide the resource via flags, environment variables, or `dotnet user-secrets` (checked in that
-priority order):
+Provide the resource via flags, environment variables, an external config file, or
+`dotnet user-secrets` — checked in this priority order:
 
-| Setting | Flag | Env var |
+```
+CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dotnet user-secrets
+```
+
+| Setting | Flag | Env var / key |
 |---|---|---|
 | Region | `--region eastus2` | `HARK_SPEECH_REGION` |
 | Resource ARM id | `--resource-id <id>` | `HARK_SPEECH_RESOURCE_ID` |
@@ -56,6 +60,19 @@ priority order):
 > # repeat with --project Hark.App for the desktop overlay
 > ```
 > User secrets live outside the repo (`%APPDATA%\Microsoft\UserSecrets\`) and are never committed.
+
+> **Published exe?** `dotnet user-secrets` is a **development-only** mechanism — it doesn't ship with
+> a built executable. For a published build on a non-dev machine, drop the same values in an external
+> **`%APPDATA%\Hark\config.json`** instead (it lives in your user profile, so it's never in the repo
+> and can't be committed). Only resource *locations* live here — auth stays keyless, no keys:
+> ```json
+> {
+>   "HARK_SPEECH_REGION": "eastus2",
+>   "HARK_SPEECH_RESOURCE_ID": "<your-speech-resource-arm-id>",
+>   "HARK_AOAI_ENDPOINT": "https://<your-aoai>.openai.azure.com/",
+>   "HARK_AOAI_DEPLOYMENT": "<your-chat-deployment-name>"
+> }
+> ```
 
 > **Auth is keyless.** HARK authenticates with `AzureCliCredential` (your `az login` identity) and
 > never reads or stores account keys. The explicit credential keeps `DefaultAzureCredential` free
@@ -110,37 +127,56 @@ A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 > Diarization labels are anonymous and can occasionally swap or merge — expected for single-channel
 > speaker separation. Spoken/narration audio works best; sung or heavily overlapping speech is harder.
 
-## Provisioning (one-time)
+## Provisioning
+
+HARK's Azure resources are defined as **Infrastructure-as-Code** under [`infra/`](infra) (Bicep),
+so the whole stack can be stood up reproducibly on any subscription — no click-ops required. Auth
+stays keyless (Entra ID / RBAC) throughout; the templates create the resources **and** the
+data-plane role assignments.
+
+| File | Purpose |
+|---|---|
+| `infra/main.bicep` | Subscription-scoped entry point (resource group + modules + outputs) |
+| `infra/modules/speech.bicep` | Azure AI Speech account + `Cognitive Services Speech User` role |
+| `infra/modules/openai.bicep` | (Optional) Azure OpenAI account + chat deployment + `OpenAI User` role |
+| `infra/main.parameters.json` | Sample parameters (region, model, optional overrides) |
+
+> Resource names double as **globally-unique** custom subdomains (required for keyless auth), so
+> the templates auto-generate them from a subscription-derived suffix by default — deploying to a
+> fresh subscription never collides with an existing one. Supply `speechAccountName` /
+> `openAiAccountName` only if you want to pin your own names.
+
+### Option A — GitHub Actions (portable, keyless)
+
+The [`Provision Azure Infra`](.github/workflows/provision-infra.yml) workflow deploys the Bicep to
+whichever subscription you point it at, authenticating via **OpenID Connect** (federated
+credentials — no keys stored in GitHub). It runs automatically on pushes that touch `infra/**`, and
+can also be triggered manually from the **Actions** tab (`workflow_dispatch`) to choose a region and
+whether to include Azure OpenAI. On success it prints the exact `dotnet user-secrets` values to set
+locally.
+
+One-time setup (per subscription): create an Entra app with a federated credential for this repo,
+grant it `Owner` (or `Contributor` + `User Access Administrator`) on the subscription, and add the
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` repository secrets. See the
+comments at the top of the workflow file for details.
+
+### Option B — deploy from your machine
 
 ```powershell
-az group create --name rg-hark --location eastus2
-az cognitiveservices account create --name spch-hark --resource-group rg-hark `
-  --kind SpeechServices --sku S0 --location eastus2 --custom-domain spch-hark
+az login
+$me = az ad signed-in-user show --query id -o tsv
 
-$scope = az cognitiveservices account show -n spch-hark -g rg-hark --query id -o tsv
-$me    = az ad signed-in-user show --query id -o tsv
-az role assignment create --assignee-object-id $me --assignee-principal-type User `
-  --role "Cognitive Services Speech User" --scope $scope
+# Speech only:
+az deployment sub create --location eastus2 --template-file infra/main.bicep `
+  --parameters infra/main.parameters.json principalId=$me
+
+# ...or include Azure OpenAI for desktop recaps:
+az deployment sub create --location eastus2 --template-file infra/main.bicep `
+  --parameters infra/main.parameters.json principalId=$me deployOpenAi=true
 ```
 
-### Azure OpenAI (optional — for desktop recaps)
-
-```powershell
-az cognitiveservices account create --name aoai-hark --resource-group rg-hark `
-  --kind OpenAI --sku S0 --location eastus2 --custom-domain aoai-hark
-
-# Deploy a chat model (pick a model/version available in your region)
-az cognitiveservices account deployment create -n aoai-hark -g rg-hark `
-  --deployment-name gpt-4.1-mini --model-name gpt-4.1-mini --model-version "2025-04-14" `
-  --model-format OpenAI --sku-name GlobalStandard --sku-capacity 10
-
-$aoai = az cognitiveservices account show -n aoai-hark -g rg-hark --query id -o tsv
-az role assignment create --assignee-object-id $me --assignee-principal-type User `
-  --role "Cognitive Services OpenAI User" --scope $aoai
-
-# Endpoint = https://aoai-hark.openai.azure.com/  ·  deployment = gpt-4.1-mini
-# Store them in user-secrets (see "Summaries" above).
-```
+The deployment **outputs** map directly to the user-secrets above
+(`speechRegion`, `speechResourceId`, `openAiEndpoint`, `openAiDeployment`).
 
 ## Dependencies
 

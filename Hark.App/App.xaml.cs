@@ -79,18 +79,18 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        _region = Environment.GetEnvironmentVariable("HARK_SPEECH_REGION");
-        _resourceId = Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID");
-
-        // The resource ARM id embeds the subscription id, so it deliberately never lives in
-        // source or launch profiles — fall back to dotnet user-secrets (dev-machine-local,
-        // never committed) when the environment variables aren't set. See README.
-        // Azure OpenAI (recap) settings live only in user-secrets.
+        // Config precedence: env var > %APPDATA%\Hark\config.json > user-secrets.
+        // user-secrets is dev-machine-local (never committed) but Development-only, so it doesn't
+        // ship with a published exe; the external %APPDATA%\Hark\config.json fills that gap on
+        // non-dev machines while staying out of the repo. The resource ARM id embeds the
+        // subscription id, so it deliberately never lives in source or launch profiles. See README.
         var config = new ConfigurationBuilder()
             .AddUserSecrets(Assembly.GetExecutingAssembly())
+            .AddJsonFile(HarkConfig.ExternalConfigPath, optional: true, reloadOnChange: false)
+            .AddEnvironmentVariables()
             .Build();
-        _region ??= config["HARK_SPEECH_REGION"];
-        _resourceId ??= config["HARK_SPEECH_RESOURCE_ID"];
+        _region = config["HARK_SPEECH_REGION"];
+        _resourceId = config["HARK_SPEECH_RESOURCE_ID"];
         _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
         _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
 

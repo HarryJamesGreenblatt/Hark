@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "resourceGroupName": {
+      "value": "rg-hark"
+    },
+    "principalId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "principalType": {
+      "value": "User"
+    },
+    "deployOpenAi": {
+      "value": false
+    },
+    "openAiDeploymentName": {
+      "value": "gpt-4.1-mini"
+    },
+    "openAiModelName": {
+      "value": "gpt-4.1-mini"
+    },
+    "openAiModelVersion": {
+      "value": "2025-04-14"
+    },
+    "openAiCapacity": {
+      "value": 10
+    }
+  }
+}

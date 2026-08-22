@@ -1,0 +1,116 @@
+name: Provision Azure Infra
+
+# Stands up HARK's Azure resources (Speech + optional OpenAI) on any subscription.
+# Auth is keyless via OpenID Connect (federated credentials) — no secrets/keys stored in GitHub.
+#
+# One-time setup (per subscription) before this runs:
+#   1. Create an Entra app / service principal with a federated credential for this repo:
+#        az ad app create --display-name hark-provisioner
+#      then add a federated credential (subject: repo:HarryJamesGreenblatt/Hark:ref:refs/heads/main).
+#   2. Grant it Owner (or Contributor + User Access Administrator, needed for role assignments)
+#      on the target subscription.
+#   3. Add these repository secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID.
+#   4. (Optional) Add PROVISION_PRINCIPAL_ID = the object id that should receive the data-plane
+#      roles on your dev machine (az ad signed-in-user show --query id -o tsv). Defaults to the
+#      pipeline's own principal when unset.
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'eastus2'
+      deployOpenAi:
+        description: 'Also deploy Azure OpenAI (desktop SUMMARY recaps)'
+        type: boolean
+        required: true
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/provision-infra.yml'
+
+permissions:
+  id-token: write   # required for OIDC login
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    environment: azure
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC, keyless)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve deployment inputs
+        id: inputs
+        run: |
+          # push runs carry no workflow inputs, so fall back to sensible defaults.
+          LOCATION="${{ github.event.inputs.location }}"
+          DEPLOY_OPENAI="${{ github.event.inputs.deployOpenAi }}"
+          echo "location=${LOCATION:-eastus2}" >> "$GITHUB_OUTPUT"
+          echo "deployOpenAi=${DEPLOY_OPENAI:-false}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve principal id for role assignments
+        id: principal
+        run: |
+          PRINCIPAL_ID="${{ secrets.PROVISION_PRINCIPAL_ID }}"
+          if [ -z "$PRINCIPAL_ID" ]; then
+            PRINCIPAL_ID=$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)
+            echo "principalType=ServicePrincipal" >> "$GITHUB_OUTPUT"
+          else
+            echo "principalType=User" >> "$GITHUB_OUTPUT"
+          fi
+          echo "principalId=$PRINCIPAL_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Bicep template
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment sub validate \
+              --location "${{ steps.inputs.outputs.location }}" \
+              --template-file infra/main.bicep \
+              --parameters infra/main.parameters.json \
+              --parameters location="${{ steps.inputs.outputs.location }}" \
+                           principalId="${{ steps.principal.outputs.principalId }}" \
+                           principalType="${{ steps.principal.outputs.principalType }}" \
+                           deployOpenAi=${{ steps.inputs.outputs.deployOpenAi }}
+
+      - name: Deploy infrastructure
+        id: deploy
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment sub create \
+              --name "hark-$(date +%Y%m%d%H%M%S)" \
+              --location "${{ steps.inputs.outputs.location }}" \
+              --template-file infra/main.bicep \
+              --parameters infra/main.parameters.json \
+              --parameters location="${{ steps.inputs.outputs.location }}" \
+                           principalId="${{ steps.principal.outputs.principalId }}" \
+                           principalType="${{ steps.principal.outputs.principalType }}" \
+                           deployOpenAi=${{ steps.inputs.outputs.deployOpenAi }} \
+              --query properties.outputs -o json > outputs.json
+            cat outputs.json
+
+      - name: Summarize outputs
+        run: |
+          echo "### HARK infra provisioned :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Set these locally with `dotnet user-secrets` (see README):' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "HARK_SPEECH_REGION      = $(jq -r '.speechRegion.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARK_SPEECH_RESOURCE_ID = $(jq -r '.speechResourceId.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARK_AOAI_ENDPOINT      = $(jq -r '.openAiEndpoint.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARK_AOAI_DEPLOYMENT    = $(jq -r '.openAiDeployment.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

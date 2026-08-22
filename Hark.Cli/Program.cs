@@ -15,11 +15,14 @@ if (options.ShowHelp)
     return 0;
 }
 
-// Config precedence: CLI flag > env var > user-secrets (dev-machine-local, never committed).
-// The resource ARM id embeds the subscription id, so it deliberately never lives in source or
-// launch profiles — see dotnet user-secrets in the README's Configuration section.
+// Config precedence: CLI flag > env var > %APPDATA%\Hark\config.json > user-secrets.
+// user-secrets is dev-machine-local (never committed) but Development-only, so it doesn't ship with
+// a published exe; the external %APPDATA%\Hark\config.json fills that gap on non-dev machines while
+// staying out of the repo. The resource ARM id embeds the subscription id, so it deliberately never
+// lives in source or launch profiles — see the README's Configuration section.
 var config = new ConfigurationBuilder()
     .AddUserSecrets(Assembly.GetExecutingAssembly())
+    .AddJsonFile(HarkConfig.ExternalConfigPath, optional: true, reloadOnChange: false)
     .AddEnvironmentVariables()
     .Build();
 
@@ -30,8 +33,8 @@ if (string.IsNullOrWhiteSpace(region) || string.IsNullOrWhiteSpace(resourceId))
 {
     Console.Error.WriteLine(
         "Missing Speech resource configuration. Provide --region and --resource-id, " +
-        "set HARK_SPEECH_REGION / HARK_SPEECH_RESOURCE_ID, or configure dotnet user-secrets " +
-        "for Hark.Cli (see README).");
+        "set HARK_SPEECH_REGION / HARK_SPEECH_RESOURCE_ID, add them to %APPDATA%\\Hark\\config.json, " +
+        "or configure dotnet user-secrets for Hark.Cli (see README).");
     Console.Error.WriteLine("Run 'hark --help' for details.");
     return 2;
 }
