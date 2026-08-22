@@ -101,6 +101,39 @@ public sealed class ConversationStore
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Replaces the entire conversation with a new set of entries (used by the offline refinement
+    /// pass, which re-diarizes the whole session for more accurate speaker attribution). Raises
+    /// <see cref="SpeakerAdded"/> for each distinct speaker and bumps <see cref="Revision"/> once.
+    /// </summary>
+    /// <param name="entries">The rebuilt, speaker-attributed lines, in order.</param>
+    public void Rebuild(IEnumerable<Entry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        _all.Clear();
+        _bySpeaker.Clear();
+
+        foreach (var entry in entries)
+        {
+            var line = entry.Text?.Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+            var name = Normalize(entry.Speaker);
+
+            _all.Add(new Entry(name, line));
+            if (!_bySpeaker.TryGetValue(name, out var lines))
+            {
+                lines = new List<string>();
+                _bySpeaker[name] = lines;
+                SpeakerAdded?.Invoke(name);
+            }
+            lines.Add(line);
+        }
+
+        Revision++;
+        Changed?.Invoke();
+    }
+
     /// <summary>Normalizes a raw speaker label, mapping blank or "Unknown" labels to <see cref="DefaultSpeaker"/>.</summary>
     /// <param name="speaker">The raw speaker label.</param>
     /// <returns>The normalized speaker label.</returns>

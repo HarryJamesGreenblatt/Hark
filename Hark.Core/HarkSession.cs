@@ -37,6 +37,15 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Whether to use the diarizing transcriber, which attributes segments to speakers.</summary>
     private readonly bool _diarize;
 
+    /// <summary>Whether to retain the converted PCM for an offline refinement pass.</summary>
+    private readonly bool _captureAudio;
+
+    /// <summary>Cap on buffered audio (~20 min at 16 kHz mono 16-bit) to bound memory.</summary>
+    private const long MaxBufferedAudioBytes = 16_000L * 2 * 60 * 20;
+
+    /// <summary>Buffered converted PCM for the current session, or <see langword="null"/> when not capturing.</summary>
+    private MemoryStream? _audioBuffer;
+
     /// <summary>The active recognizer, or <see langword="null"/> when not running.</summary>
     private ISpeechTranscriber? _transcriber;
 
@@ -106,7 +115,8 @@ public sealed class HarkSession : IAsyncDisposable
         string? language = null,
         TokenCredential? credential = null,
         ITranscriptSink? sink = null,
-        bool diarize = false)
+        bool diarize = false,
+        bool captureAudio = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(region);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
@@ -117,6 +127,7 @@ public sealed class HarkSession : IAsyncDisposable
         _credential = credential;
         _sink = sink;
         _diarize = diarize;
+        _captureAudio = captureAudio;
     }
 
     #endregion
@@ -154,6 +165,9 @@ public sealed class HarkSession : IAsyncDisposable
         // Adapt — convert each captured buffer to 16 kHz mono 16-bit PCM and feed the recognizer.
         _converter = new PcmConverter(format);
         _capture.DataAvailable += OnDataAvailable;
+
+        // Retain the converted audio for an optional offline refinement pass after stopping.
+        _audioBuffer = _captureAudio ? new MemoryStream() : null;
 
         _running = true;
     }
@@ -196,8 +210,20 @@ public sealed class HarkSession : IAsyncDisposable
         {
             _transcriber?.Write(pcm, pcm.Length);
             ReportAudioLevel(pcm);
+
+            // Buffer for the offline refinement pass, capped to bound memory on long sessions.
+            if (_audioBuffer is not null && _audioBuffer.Length < MaxBufferedAudioBytes)
+                _audioBuffer.Write(pcm, 0, pcm.Length);
         }
     }
+
+    /// <summary>
+    /// Returns the converted PCM buffered for this session (16 kHz mono 16-bit), or
+    /// <see langword="null"/> when audio capture wasn't enabled or nothing was captured. Valid after
+    /// <see cref="StopAsync"/> until the next <see cref="StartAsync"/>.
+    /// </summary>
+    /// <returns>The buffered session audio, or <see langword="null"/>.</returns>
+    public byte[]? GetBufferedAudioPcm() => _audioBuffer is { Length: > 0 } ? _audioBuffer.ToArray() : null;
 
     /// <summary>
     /// Raises <see cref="AudioLevel"/> with the normalized RMS (0..1) of the converted PCM,
@@ -255,6 +281,9 @@ public sealed class HarkSession : IAsyncDisposable
 
         try { await StopAsync().ConfigureAwait(false); }
         catch { /* best-effort teardown */ }
+
+        _audioBuffer?.Dispose();
+        _audioBuffer = null;
     }
 
     #endregion

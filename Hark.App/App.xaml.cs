@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using Azure.Identity;
 using Hark.Core;
 using Hark.Core.Summarization;
+using Hark.Core.Transcription;
 using Microsoft.Extensions.Configuration;
 
 namespace Hark.App;
@@ -178,6 +179,9 @@ public partial class App : Application
                 await _session.StopAsync(cancellationToken);
                 _overlay?.SetRunning(false);
                 _overlay?.Hide();      // toggle "off" — the bar disappears like native Live Captions
+
+                // Second pass: re-diarize the buffered audio offline for better speaker attribution.
+                _ = RefineDiarizationAsync();
             }
             else
             {
@@ -199,7 +203,8 @@ public partial class App : Application
                     _region!, _resourceId!, language: null,
                     credential: new AzureCliCredential(),
                     sink: _overlay is null ? null : new OverlaySink(_overlay, _store),
-                    diarize: true);
+                    diarize: true,
+                    captureAudio: true);
                 _session.Error += OnSessionError;
                 _session.AudioLevel += OnAudioLevel;
 
@@ -232,6 +237,53 @@ public partial class App : Application
     /// <param name="level">The current normalized audio level.</param>
     private void OnAudioLevel(double level) =>
         Dispatcher.BeginInvoke(() => _overlay?.SetAudioLevel(level));
+
+    /// <summary>
+    /// After capture stops, re-diarizes the buffered session audio in one offline pass (Azure Fast
+    /// Transcription) and rebuilds the conversation with more accurate, globally-clustered speaker
+    /// attribution. Runs in the background; failures are surfaced quietly and leave the live result
+    /// intact. The rebuilt transcript feeds the speaker pages and both recap views.
+    /// </summary>
+    private async Task RefineDiarizationAsync()
+    {
+        var session = _session;
+        if (session is null || string.IsNullOrWhiteSpace(_resourceId)) return;
+
+        var pcm = session.GetBufferedAudioPcm();
+        if (pcm is null || pcm.Length < 16_000 * 2) return;   // < ~1s of audio — nothing worth refining
+
+        try
+        {
+            // The live pass tends to over-segment, so hint the ceiling from its speaker count, clamped.
+            int liveSpeakers = _store.Speakers.Count;
+            int maxSpeakers = Math.Clamp(liveSpeakers > 0 ? liveSpeakers : 2, 2, 8);
+
+            var refiner = new FastTranscriptionRefiner(_resourceId!, new AzureCliCredential());
+            var segments = await refiner.RefineAsync(pcm, maxSpeakers);
+            if (segments.Count == 0) return;
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                _overlay?.ClearSpeakers();
+                _store.Rebuild(segments.Select(s => new ConversationStore.Entry(
+                    string.IsNullOrEmpty(s.SpeakerId) ? ConversationStore.DefaultSpeaker : s.SpeakerId!,
+                    s.Text)));
+
+                // The refined transcript supersedes any cached recap.
+                _cachedRecap = null;
+                _cachedSpeakerRecap = null;
+                _cachedRevision = -1;
+
+                _tray?.ShowBalloonTip(
+                    3000, "HARK", "Refined speaker attribution for this session.", ToolTipIcon.Info);
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(
+                4000, "HARK — refine", $"Couldn't refine speakers: {ex.Message}", ToolTipIcon.Warning));
+        }
+    }
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
     /// <param name="speaker">The speaker name to open or focus a window for.</param>
