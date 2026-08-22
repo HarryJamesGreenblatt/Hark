@@ -17,4 +17,13 @@ public interface ISummarizer
     /// <param name="cancellationToken">Cancels an in-flight summarization.</param>
     /// <returns>The recap text.</returns>
     Task<string> SummarizeAsync(string transcript, SummaryStyle style, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Produces a structured, Teams-Recap-style summary: an overview, per-topic notes (each with
+    /// expandable detail bullets), and a flat list of follow-up tasks.
+    /// </summary>
+    /// <param name="transcript">The speaker-attributed conversation, one line per finalized segment.</param>
+    /// <param name="cancellationToken">Cancels an in-flight summarization.</param>
+    /// <returns>The structured recap.</returns>
+    Task<MeetingRecap> SummarizeStructuredAsync(string transcript, CancellationToken cancellationToken = default);
 }

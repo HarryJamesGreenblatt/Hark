@@ -147,11 +147,53 @@ public partial class OverlayWindow : Window
 
     /// <summary>Shows a transient status (e.g. "Generating recap…") in the summary view.</summary>
     /// <param name="message">The status text to display.</param>
-    public void SetSummaryBusy(string message) => SummaryText.Text = message;
+    public void SetSummaryBusy(string message)
+    {
+        ShowPlainText();
+        SummaryText.Text = message;
+    }
 
-    /// <summary>Renders the finished recap text in the summary view.</summary>
+    /// <summary>Renders finished recap text (Narrative / PerSpeaker styles) in the summary view.</summary>
     /// <param name="text">The recap text to display.</param>
-    public void SetSummaryText(string text) => SummaryText.Text = text ?? string.Empty;
+    public void SetSummaryText(string text)
+    {
+        ShowPlainText();
+        SummaryText.Text = text ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Renders a structured Teams-style recap: an overview, expandable per-topic notes, and a flat
+    /// list of follow-up tasks. Empty sections are hidden.
+    /// </summary>
+    /// <param name="recap">The structured recap to display.</param>
+    public void SetStructuredRecap(MeetingRecap recap)
+    {
+        RecapOverview.Text = recap.Overview ?? string.Empty;
+        RecapOverview.Visibility = string.IsNullOrWhiteSpace(recap.Overview)
+            ? Visibility.Collapsed : Visibility.Visible;
+
+        TopicList.ItemsSource = recap.Topics;
+        NotesHeader.Visibility = recap.Topics.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        TaskList.ItemsSource = recap.FollowUps;
+        TasksHeader.Visibility = recap.FollowUps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        ShowStructured();
+    }
+
+    /// <summary>Shows the plain-text recap box and hides the structured panel.</summary>
+    private void ShowPlainText()
+    {
+        SummaryText.Visibility = Visibility.Visible;
+        RecapPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Shows the structured recap panel and hides the plain-text box.</summary>
+    private void ShowStructured()
+    {
+        SummaryText.Visibility = Visibility.Collapsed;
+        RecapPanel.Visibility = Visibility.Visible;
+    }
 
     /// <summary>
     /// Enables/disables the SUMMARY switch. Disabled (dimmed) when there are no captions to

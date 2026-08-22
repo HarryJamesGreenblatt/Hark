@@ -60,6 +60,9 @@ public partial class App : Application
     /// <summary>The most recently generated recap text, cached to avoid redundant API calls.</summary>
     private string? _cachedSummary;
 
+    /// <summary>The most recently generated structured (Teams-style) recap, cached alongside the text.</summary>
+    private MeetingRecap? _cachedRecap;
+
     /// <summary>The <see cref="ConversationStore.Revision"/> that <see cref="_cachedSummary"/> was generated from.</summary>
     private int _cachedRevision = -1;
 
@@ -293,9 +296,21 @@ public partial class App : Application
         }
 
         int revision = _store.Revision;
-        if (_cachedSummary is not null && _cachedRevision == revision && _cachedStyle == style)
+        bool sameRevision = _cachedRevision == revision && _cachedStyle == style;
+
+        // Teams style renders as a structured, expandable recap; the others remain plain text. Each
+        // path has its own cache, keyed on revision + style, so toggling without new speech is free.
+        if (style == SummaryStyle.Teams)
         {
-            _overlay.SetSummaryText(_cachedSummary);   // unchanged captions → reuse, no API call
+            if (sameRevision && _cachedRecap is not null)
+            {
+                _overlay.SetStructuredRecap(_cachedRecap);
+                return;
+            }
+        }
+        else if (sameRevision && _cachedSummary is not null)
+        {
+            _overlay.SetSummaryText(_cachedSummary);
             return;
         }
 
@@ -312,14 +327,31 @@ public partial class App : Application
         try
         {
             _summarizer ??= new AzureOpenAiSummarizer(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
-            var recap = await _summarizer.SummarizeAsync(transcript, style, cts.Token);
 
-            if (cts.IsCancellationRequested) return;
+            if (style == SummaryStyle.Teams)
+            {
+                var recap = await _summarizer.SummarizeStructuredAsync(transcript, cts.Token);
 
-            _cachedSummary = recap;
-            _cachedRevision = revision;
-            _cachedStyle = style;
-            _overlay.SetSummaryText(recap);
+                if (cts.IsCancellationRequested) return;
+
+                _cachedRecap = recap;
+                _cachedSummary = null;
+                _cachedRevision = revision;
+                _cachedStyle = style;
+                _overlay.SetStructuredRecap(recap);
+            }
+            else
+            {
+                var recap = await _summarizer.SummarizeAsync(transcript, style, cts.Token);
+
+                if (cts.IsCancellationRequested) return;
+
+                _cachedSummary = recap;
+                _cachedRecap = null;
+                _cachedRevision = revision;
+                _cachedStyle = style;
+                _overlay.SetSummaryText(recap);
+            }
         }
         catch (OperationCanceledException)
         {

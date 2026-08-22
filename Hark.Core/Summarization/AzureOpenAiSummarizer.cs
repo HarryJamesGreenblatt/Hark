@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Identity;
@@ -17,6 +18,13 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
 
     /// <summary>The chat client bound to the configured Azure OpenAI deployment.</summary>
     private readonly ChatClient _chat;
+
+    /// <summary>Case-insensitive options for deserializing the model's JSON recap.</summary>
+    private static readonly JsonSerializerOptions RecapJson = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>An empty recap, returned for empty transcripts or empty completions.</summary>
+    private static readonly MeetingRecap EmptyRecap =
+        new(string.Empty, Array.Empty<RecapTopic>(), Array.Empty<RecapFollowUp>());
 
     #endregion
 
@@ -53,12 +61,48 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             new UserChatMessage($"Transcript:\n\n{transcript}"),
         };
 
-        var completion = await _chat.CompleteChatAsync(messages, cancellationToken: cancellationToken)
+        var options = new ChatCompletionOptions { Temperature = 0.4f, MaxOutputTokenCount = 1200 };
+
+        var completion = await _chat.CompleteChatAsync(messages, options, cancellationToken)
             .ConfigureAwait(false);
 
         return completion.Value.Content.Count > 0
             ? completion.Value.Content[0].Text.Trim()
             : string.Empty;
+    }
+
+    /// <inheritdoc />
+    public async Task<MeetingRecap> SummarizeStructuredAsync(string transcript, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+            return EmptyRecap;
+
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage(StructuredSystemPrompt),
+            new UserChatMessage($"Transcript:\n\n{transcript}"),
+        };
+
+        // JSON-schema structured output guarantees a parseable, well-shaped recap; the higher token
+        // budget lets the recap scale with the meeting instead of collapsing to a terse paragraph.
+        var options = new ChatCompletionOptions
+        {
+            Temperature = 0.4f,
+            MaxOutputTokenCount = 3000,
+            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                "meeting_recap",
+                BinaryData.FromString(RecapSchema),
+                jsonSchemaIsStrict: true),
+        };
+
+        var completion = await _chat.CompleteChatAsync(messages, options, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (completion.Value.Content.Count == 0)
+            return EmptyRecap;
+
+        var recap = JsonSerializer.Deserialize<MeetingRecap>(completion.Value.Content[0].Text, RecapJson);
+        return recap ?? EmptyRecap;
     }
 
     /// <summary>Builds the system prompt instructing the model how to summarize in the given style.</summary>
@@ -83,6 +127,67 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
             "Use brief bullet points under 'Key points' and 'Action items'. If there are no action " +
             "items, write 'None'. Be faithful to the transcript; do not invent details or real names.",
     };
+
+    /// <summary>
+    /// System prompt for the structured Teams-Recap-style summary. Drives depth by asking the model to
+    /// segment the conversation by topic and expand each with specific detail bullets, rather than
+    /// compressing everything into one terse paragraph.
+    /// </summary>
+    private const string StructuredSystemPrompt =
+        "You produce a structured meeting recap from a transcript. Speakers are anonymous labels " +
+        "like 'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
+        "Return a JSON object with:\n" +
+        "- overview: 1-3 sentences capturing the meeting's purpose and outcome.\n" +
+        "- topics: the meeting broken into the distinct subjects that were actually discussed. " +
+        "Segment by topic shift, not by speaker. For each topic provide:\n" +
+        "    - title: a short noun phrase naming the topic.\n" +
+        "    - summary: one sentence stating the gist of that topic.\n" +
+        "    - details: 2-5 bullets expanding on it — specific points raised, positions taken, " +
+        "decisions made, numbers or examples mentioned, and any disagreements. Be substantive and " +
+        "specific; do not merely restate the title or summary.\n" +
+        "- followUps: a flat list of concrete action items or commitments. For each, set 'task' " +
+        "(what will be done) and 'owner' (the Guest label responsible, or null if unassigned). " +
+        "If there are none, return an empty array.\n\n" +
+        "Cover the whole conversation proportionally: the more that was said, the more topics and " +
+        "detail you should produce. Be faithful to the transcript; never fabricate details, names, " +
+        "decisions, or tasks.";
+
+    /// <summary>Strict JSON schema mirroring <see cref="MeetingRecap"/>, used for structured outputs.</summary>
+    private const string RecapSchema = """
+        {
+          "type": "object",
+          "properties": {
+            "overview": { "type": "string" },
+            "topics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "summary": { "type": "string" },
+                  "details": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["title", "summary", "details"],
+                "additionalProperties": false
+              }
+            },
+            "followUps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "task": { "type": "string" },
+                  "owner": { "type": ["string", "null"] }
+                },
+                "required": ["task", "owner"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["overview", "topics", "followUps"],
+          "additionalProperties": false
+        }
+        """;
 
     #endregion
 }
