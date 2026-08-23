@@ -76,6 +76,12 @@ _Last updated: 2026-08-22 (end of Episode 13)._
   repo) both configured; `gh auth switch` to flip.
 - **Known env gotcha:** the Azure CLI can crash on a broken ACL under
   `~/.azure/cliextensions/account/...` → worked around by **running VS elevated**.
+- **North star (vision):** [**Codename Cristóbal**](../cristobal-vision.md) — hook HARK's engine into
+  an agent that dispatches a generative image model to render live *didactic* visualizations of the
+  conversation. Key design: HARK's summaries are the **wrong** image seed (literal + over-complicated);
+  the right seed is an **art-director refine** that already exists, grounded, in the sibling project
+  `sequitur_studios` (its **Production Designer** lands one iconic `visual_concept`). Rides the engine
+  road below as a `GroundingEvent` producer.
 
 ---
 
@@ -125,10 +131,17 @@ These are unresolved at the end of the latest episode — natural starting point
   (non-breaking), and move `ConversationStore` into `Hark.Core` as the materialized projection
   (`Revision` = supersession key). Turns future features (second-pass diarizer, grounding oracle,
   a "crystal-ball" live-visual aid) into subscribers rather than rewrites.
-- **Grounding oracle (vision, separate future project):** a debounced blackboard process over the
-  transcript emitting `GroundingEvent`s — **recognition** (match known corpus → seed refinement) and
-  **augmentation** (open retrieval/generation → live presentation "crystal ball"). Confidence-gating
-  + privacy posture are prerequisites.
+- **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
+  that dispatches a generative image model to render live *didactic* visualizations. The hard-won
+  insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed
+  is an **art-director refine** producing **one iconic, metaphor-not-literal `visual_concept`** — which
+  **already exists, grounded**, in the sibling project `sequitur_studios` (the **Production Designer**
+  agent + Azure `gpt-image-1` backend; reuse its `visual_concept` / `concept_stance` UNDERSCORE·CONTRAST
+  / `motifs` vocabulary). Cristóbal = **HARK (live source) ⨝ sequitur (studio)**; the one new piece is a
+  **beat detector** (rolling transcript → an evolving `Brief`), plus the async-supersession cadence
+  (each beat's concept clobbers the last → a slow-dissolve mood image). It is the **augmentation** half
+  of the grounding oracle: a `GroundingEvent` producer, with Cristóbal's image agent as consumer.
+  **Enabling spine = the engine boundary (Phases 1–2 below).** Full design: [`context/cristobal-vision.md`](../cristobal-vision.md).
 - **HAL eye — refined (Episode 12):** de-washed (saturated cornea + confined top-only gloss) and made
   genuinely reactive (RMS **noise gate** so silence reads dark, full 0.28–1.0 range, an **ADSR envelope
   follower**). A follow-up caught the last "slow/inconsistent" complaint as **structural, not tuning:**
