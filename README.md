@@ -8,6 +8,35 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 
 ![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4) ![Azure AI Speech](https://img.shields.io/badge/Azure-AI%20Speech-0078D4) ![Auth](https://img.shields.io/badge/auth-Entra%20ID%20(keyless)-2F8D46)
 
+## Install (Windows)
+
+The quickest way to run the desktop overlay is the installer on the
+[**Releases**](https://github.com/HarryJamesGreenblatt/Hark/releases/latest) page — no .NET SDK or
+build step required (it ships a self-contained app).
+
+1. Download **`Hark-Setup.zip`** from the latest release and extract it — inside is a single
+   `Hark-Setup.exe`. (Shipping the exe *inside a zip* keeps the browser download clean; SmartScreen's
+   "isn't commonly downloaded" reputation gate applies to bare executables, not archives.)
+2. Run **`Hark-Setup.exe`**. SmartScreen shows *"Windows protected your PC"* for a new publisher —
+   click **More info → Run anyway**.
+3. Click **Install** and approve the single **UAC prompt** — it trusts HARK's signing certificate so
+   the packaged app validates. HARK then installs into **Start / Search**, with an **Add/Remove
+   Programs** entry and a launch-at-startup task.
+4. If the machine isn't already configured (via env vars, `config.json`, or user-secrets), the
+   installer prompts for your **Azure resource locations** — Speech region + resource id, and
+   optionally the Azure OpenAI endpoint/deployment for recaps — and writes them to
+   `%APPDATA%\Hark\config.json`. Already-configured machines skip this step.
+
+HARK lives in the system tray; press **Ctrl+Win+H** to toggle captions. Uninstall via **Add/Remove
+Programs** like any packaged app. You still need an Azure **Speech** resource and `az login` with the
+right role — see [Prerequisites](#prerequisites) and [Configuration](#configuration).
+
+> **How the installer is built:** pushing a `vX.Y.Z` tag runs
+> [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds and **signs** the
+> MSIX, embeds it into a single self-contained `Hark-Setup.exe`, and publishes it (zipped) as a
+> GitHub Release. Signing uses the `MSIX_CERT_PFX` / `MSIX_CERT_PASSWORD` repo secrets; the public
+> cert ships inside the installer to establish trust at install time.
+
 ## How it works
 
 ```

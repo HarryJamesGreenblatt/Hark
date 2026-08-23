@@ -14,10 +14,12 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-22 (end of Episode 12)._
+_Last updated: 2026-08-22 (end of Episode 13)._
 
-- **Status:** CLI MVP + desktop overlay working, published to the public personal repo
-  `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
+- **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
+  personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
+  single **`Hark-Setup.exe`** (self-contained, embeds a signed MSIX). The overlay is a
+  **multi-speaker** experience:
   reliable multi-language captions, real-time speaker diarization, per-speaker pages, and an
   AI recap with a CAPTIONS/SUMMARY mode switch. `Hear` now captures **loopback + the local mic**
   (mixed), so a headset user's own voice is captioned alongside the far side. The recap picker is now
@@ -94,12 +96,22 @@ _Last updated: 2026-08-22 (end of Episode 12)._
 | 10 | 2026-08-22 | [Conversation/Speakers, Offline Diarization Second Pass & Responsive Overlay](./EP10-conversation-speakers-diarization-secondpass-responsive-overlay.md) | Recap picker → Conversation/Speakers (both structured+expandable); offline Fast Transcription second pass re-diarizes buffered audio on Stop; overlay height fits content with collapsible sections + a LATEST/TRANSCRIPT captions scope switch. |
 | 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the transcribed stream (float-domain sum, mic-clocked with a ~1 s loopback queue); a live overlay mic toggle, off by default, `HARK_MIX_MIC=1` opts in — a headset user's own voice is now captioned. |
 | 12 | 2026-08-22 | [The HAL Eye & the Feedback Loop](./EP12-hal-eye-and-the-feedback-loop.md) | HARK began captioning/summarizing its own dev session; its recaps became the bug reports — the HAL eye was tuned across rounds from that dictated feedback (de-washed cornea, RMS noise gate, full 0.28–1.0 range, ADSR envelope: fast attack + 0.38 s sustain/resonate). A recap follow-up task shipped a view-aware **copy button** (captions per scope / recap as markdown). Mic now defaults off, uses a mic glyph, and has a manually verified global **Ctrl+Shift+M** toggle. |
+| 13 | 2026-08-22 | [Installable Release: MSIX, a Single-File Setup & the SmartScreen Lesson](./EP13-installable-release-and-installer-pipeline.md) | HARK became a shippable Windows app — a HAL-eye icon set, a signed MSIX, and a single self-contained `Hark-Setup.exe` embedding the package, published by a `v*`-tag release pipeline. Five point releases (v0.1.0→v0.1.4) shook out SmartScreen (ship the exe zipped), a duplicate-instance bug (single-instance mutex), and an in-installer Azure-config step that detects existing config across env/config.json/user-secrets. |
 
 ---
 
 ## 🔓 Open threads (carried forward)
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
+
+- **Installable release — shipped (Episode 13):** a HAL-eye icon set, a signed MSIX
+  (`Package.appxmanifest` with a launch-at-startup task), and a single self-contained
+  **`Hark.Installer` → `Hark-Setup.exe`** that embeds the signed package + public cert (trust cert
+  → `Add-AppxPackage` → optional Azure-config step). Built by `.github/workflows/release.yml` on a
+  `v*` tag. Remaining: **Azure Trusted Signing (~$10/mo)** to sign the msix + exe for warning-free
+  browser downloads (today the exe is unsigned — zipped to dodge SmartScreen's download block, but a
+  first-run "Run anyway" and a self-signed cert-trust UAC remain); a nicer second-launch UX (surface
+  the existing instance instead of exiting silently); optional installer rename ("Setup" → "Installer").
 
 - **Speaker distinction — baseline shipped (Episode 10):** an offline **Fast Transcription second pass**
   now re-diarizes the buffered session audio on Stop (`FastTranscriptionRefiner` + `maxSpeakers`),
