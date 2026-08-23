@@ -22,6 +22,9 @@ public partial class App : Application
     /// <summary>The single captions overlay window, created on startup and shown/hidden as capture toggles.</summary>
     private OverlayWindow? _overlay;
 
+    /// <summary>Held for the process lifetime to enforce a single running instance.</summary>
+    private System.Threading.Mutex? _singleInstance;
+
     /// <summary>The tray icon and its context menu used to toggle captions and exit the app.</summary>
     private NotifyIcon? _tray;
 
@@ -93,6 +96,16 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Single-instance guard: a second launch (Start tile, startup task, or a double-click) would
+        // stack another tray icon and overlay and fight over the global hotkeys. Keep the first; a
+        // duplicate exits immediately.
+        _singleInstance = new System.Threading.Mutex(initiallyOwned: true, @"HarryGreenblatt.Hark.SingleInstance", out bool isFirstInstance);
+        if (!isFirstInstance)
+        {
+            Shutdown();
+            return;
+        }
 
         // Config precedence: env var > %APPDATA%\Hark\config.json > user-secrets.
         // user-secrets is dev-machine-local (never committed) but Development-only, so it doesn't
