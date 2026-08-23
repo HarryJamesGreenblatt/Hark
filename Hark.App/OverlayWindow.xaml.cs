@@ -73,6 +73,12 @@ public partial class OverlayWindow : Window
     /// <summary>The recap style currently chosen (Conversation or Speakers).</summary>
     private SummaryStyle _style = SummaryStyle.Conversation;
 
+    /// <summary>The last Conversation recap rendered, kept so the copy button can serialize it.</summary>
+    private MeetingRecap? _lastRecap;
+
+    /// <summary>The last Speakers recap rendered, kept so the copy button can serialize it.</summary>
+    private SpeakerRecap? _lastSpeakerRecap;
+
     /// <summary>Whether at least one speaker pill has been added to the index.</summary>
     private bool _hasSpeakers;
 
@@ -163,6 +169,9 @@ public partial class OverlayWindow : Window
         ConversationStyleButton.Click += (_, _) => SetStyle(SummaryStyle.Conversation);
         SpeakersStyleButton.Click += (_, _) => SetStyle(SummaryStyle.Speakers);
 
+        // Copy whatever the window currently shows — captions (per scope) or the recap (per style).
+        CopyButton.Click += (_, _) => CopyView();
+
         UpdateModeButtons();
         UpdateScopeButtons();
         UpdateStyleButtons();
@@ -209,6 +218,7 @@ public partial class OverlayWindow : Window
     /// <param name="recap">The structured recap to display.</param>
     public void SetStructuredRecap(MeetingRecap recap)
     {
+        _lastRecap = recap;
         RecapOverview.Text = recap.Overview ?? string.Empty;
         RecapOverview.Visibility = string.IsNullOrWhiteSpace(recap.Overview)
             ? Visibility.Collapsed : Visibility.Visible;
@@ -229,6 +239,7 @@ public partial class OverlayWindow : Window
     /// <param name="recap">The speaker recap to display.</param>
     public void SetSpeakerRecap(SpeakerRecap recap)
     {
+        _lastSpeakerRecap = recap;
         SpeakerList.ItemsSource = recap.Speakers;
         SetSectionVisible(SpeakersToggle, recap.Speakers.Count > 0);
         ShowSpeakers();
@@ -484,8 +495,11 @@ public partial class OverlayWindow : Window
     public void SetAudioLevel(double level)
     {
         level = level < 0 ? 0 : level > 1 ? 1 : level;
-        // RMS sits low (~0.05–0.3); boost + perceptual sqrt curve to use the full visual range.
-        _audioTarget = Math.Sqrt(Math.Min(1.0, level * 4.5));
+        // Gate the RMS noise floor first so true silence reads as 0 (no "constant baseline" glow),
+        // then boost hard so normal conversational speech — not just sustained shouts — reaches full.
+        const double noiseFloor = 0.02;   // RMS below this is treated as silence
+        double gated = level <= noiseFloor ? 0.0 : (level - noiseFloor) / (1.0 - noiseFloor);
+        _audioTarget = Math.Sqrt(Math.Min(1.0, gated * 11.0));
     }
 
     /// <summary>
@@ -505,9 +519,10 @@ public partial class OverlayWindow : Window
 
         double target = _running ? _audioTarget : 0.0;
 
-        // Exponential smoothing with separate attack (rising) and release (falling) time constants.
-        const double attackTau = 0.045;   // seconds — snappy onset
-        const double releaseTau = 0.20;   // seconds — gentle decay
+        // Envelope follower: a fast attack snaps to a speech peak; a slow release lets the eye hold
+        // near-full through the dips between syllables and resonate briefly after speech, then cool.
+        const double attackTau = 0.025;   // seconds — snappy onset
+        const double releaseTau = 0.38;   // seconds — sustain/resonate, then ease back to a dim ember
         double tau = target > _eyeLevel ? attackTau : releaseTau;
         double alpha = 1.0 - Math.Exp(-dt / tau);
         _eyeLevel += (target - _eyeLevel) * alpha;
@@ -521,10 +536,12 @@ public partial class OverlayWindow : Window
     {
         if (_running)
         {
-            HalCornea.Opacity = 0.35 + 0.65 * l;
-            HalGlow.Opacity = 0.12 + 0.80 * l;
-            HalGlow.BlurRadius = 3 + 24 * l;
-            HalScale.ScaleX = HalScale.ScaleY = 0.9 + 0.32 * l;
+            // Full range: a dim ember when silent (gated to ~0) up to a bright, red-bloomed pulse on
+            // loud speech. No glow at rest so it clearly "cools" between utterances.
+            HalCornea.Opacity = 0.28 + 0.72 * l;
+            HalGlow.Opacity = 0.90 * l;
+            HalGlow.BlurRadius = 4 + 26 * l;
+            HalScale.ScaleX = HalScale.ScaleY = 0.86 + 0.36 * l;
         }
         else
         {
@@ -609,6 +626,10 @@ public partial class OverlayWindow : Window
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>The single latest caption line shown in LATEST scope (live interim, or last final).</summary>
+    private string LatestLine() =>
+        _interim.Length > 0 ? _interim : _history.Count > 0 ? _history.Last!.Value : string.Empty;
+
     /// <summary>Copies the current text selection, or the entire transcript if nothing is selected.</summary>
     private void CopySelectionOrAll()
     {
@@ -623,6 +644,87 @@ public partial class OverlayWindow : Window
     {
         var text = FullText();
         if (text.Length > 0) Clipboard.SetText(text);
+    }
+
+    /// <summary>
+    /// Copies whatever the window currently shows: in CAPTIONS mode the transcript (the latest line in
+    /// LATEST scope, or the full history in TRANSCRIPT); in SUMMARY mode the active recap — with its
+    /// nested bullets — as markdown. Briefly confirms with a check glyph.
+    /// </summary>
+    private async void CopyView()
+    {
+        string text = _mode == ViewMode.Summary
+            ? (_style == SummaryStyle.Speakers ? BuildSpeakerText(_lastSpeakerRecap) : BuildRecapText(_lastRecap))
+            : (_scope == CaptionScope.Transcript ? FullText() : LatestLine());
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        try { Clipboard.SetText(text); }
+        catch { return; }   // clipboard can be transiently locked by another app; just skip feedback
+
+        CopyButton.Content = "\uE73E";   // checkmark
+        CopyButton.ToolTip = "Copied";
+        await Task.Delay(1200);
+        CopyButton.Content = "\uE8C8";   // back to the copy glyph
+        CopyButton.ToolTip = "Copy what's shown to the clipboard";
+    }
+
+    /// <summary>Serializes a Conversation recap (overview, topics + details, follow-up tasks) to markdown.</summary>
+    /// <param name="recap">The recap to serialize, or <see langword="null"/>.</param>
+    /// <returns>Markdown text, or an empty string when there is nothing to copy.</returns>
+    private static string BuildRecapText(MeetingRecap? recap)
+    {
+        if (recap is null) return string.Empty;
+
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(recap.Overview))
+            sb.AppendLine(recap.Overview.Trim()).AppendLine();
+
+        if (recap.Topics.Count > 0)
+        {
+            sb.AppendLine("## Meeting Notes").AppendLine();
+            foreach (var t in recap.Topics)
+            {
+                sb.Append("### ").AppendLine(t.Title?.Trim());
+                if (!string.IsNullOrWhiteSpace(t.Summary)) sb.AppendLine(t.Summary.Trim());
+                foreach (var d in t.Details)
+                    sb.Append("- ").AppendLine(d?.Trim());
+                sb.AppendLine();
+            }
+        }
+
+        if (recap.FollowUps.Count > 0)
+        {
+            sb.AppendLine("## Follow-up Tasks").AppendLine();
+            foreach (var f in recap.FollowUps)
+            {
+                sb.Append("- [ ] ").Append(f.Task?.Trim());
+                if (!string.IsNullOrWhiteSpace(f.Owner)) sb.Append(" \u2014 ").Append(f.Owner.Trim());
+                sb.AppendLine();
+            }
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>Serializes a Speakers recap (one heading + points per speaker) to markdown.</summary>
+    /// <param name="recap">The recap to serialize, or <see langword="null"/>.</param>
+    /// <returns>Markdown text, or an empty string when there is nothing to copy.</returns>
+    private static string BuildSpeakerText(SpeakerRecap? recap)
+    {
+        if (recap is null || recap.Speakers.Count == 0) return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("## Speakers").AppendLine();
+        foreach (var s in recap.Speakers)
+        {
+            sb.Append("### ").AppendLine(s.Speaker?.Trim());
+            if (!string.IsNullOrWhiteSpace(s.Summary)) sb.AppendLine(s.Summary.Trim());
+            foreach (var p in s.Points)
+                sb.Append("- ").AppendLine(p?.Trim());
+            sb.AppendLine();
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>Docks the window as a full working-area-width bar flush at the top of the screen.</summary>

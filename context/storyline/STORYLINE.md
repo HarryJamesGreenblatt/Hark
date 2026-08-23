@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-22 (end of Episode 11)._
+_Last updated: 2026-08-22 (end of Episode 12)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
   `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
@@ -92,6 +92,7 @@ _Last updated: 2026-08-22 (end of Episode 11)._
 | 9 | 2026-08-22 | [Structured Recap + Diarization & Engine-Boundary Design](./EP09-structured-recap-and-diarization-engine-design.md) | Shipped a nested Teams-Recap-style structured summary (expandable per-topic notes + follow-up tasks); designed the second-pass diarization fix (Fast Transcription) and the HARK engine boundary (typed `HarkEvent` stream + reserved grounding/refinement seams). |
 | 10 | 2026-08-22 | [Conversation/Speakers, Offline Diarization Second Pass & Responsive Overlay](./EP10-conversation-speakers-diarization-secondpass-responsive-overlay.md) | Recap picker → Conversation/Speakers (both structured+expandable); offline Fast Transcription second pass re-diarizes buffered audio on Stop; overlay height fits content with collapsible sections + a LATEST/TRANSCRIPT captions scope switch. |
 | 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the transcribed stream (float-domain sum, mic-clocked with a ~1 s loopback queue); a live overlay mic toggle, off by default, `HARK_MIX_MIC=1` opts in — a headset user's own voice is now captioned. |
+| 12 | 2026-08-22 | [The HAL Eye & the Feedback Loop](./EP12-hal-eye-and-the-feedback-loop.md) | HARK began captioning/summarizing its own dev session; its recaps became the bug reports — the HAL eye was tuned across rounds from that dictated feedback (de-washed cornea, RMS noise gate, full 0.28–1.0 range, ADSR envelope: fast attack + 0.38 s sustain/resonate). A recap follow-up task shipped a view-aware **copy button** (captions per scope / recap as markdown). Mic now off by default; toggle uses a mic glyph. |
 
 ---
 
@@ -115,8 +116,19 @@ These are unresolved at the end of the latest episode — natural starting point
   transcript emitting `GroundingEvent`s — **recognition** (match known corpus → seed refinement) and
   **augmentation** (open retrieval/generation → live presentation "crystal ball"). Confidence-gating
   + privacy posture are prerequisites.
-- **HAL eye fine-tuning:** improved but not perfect; dial `attackTau`/`releaseTau`, the level gain,
-  and the glow/pulse terms in `OverlayWindow` to taste; consider an idle "breathing" shimmer.
+- **HAL eye — refined (Episode 12):** de-washed (saturated cornea + confined top-only gloss) and made
+  genuinely reactive (RMS **noise gate** so silence reads dark, full 0.28–1.0 range, an **ADSR envelope
+  follower** — fast attack + 0.38 s sustain so speech peaks hold and resonate before cooling). HARK's
+  own recap validated it ("improved reflexive responsiveness… not too bad"). Optional: an idle
+  "breathing" shimmer; per-device gate-floor tuning.
+- **Copy what's shown — shipped (Episode 12):** a header **copy button** copies whatever the window
+  displays per the toggles — captions (LATEST line / full TRANSCRIPT) or the active recap serialized to
+  markdown with its nested bullets. Surfaced as a recap follow-up task (to stop screenshotting recaps).
+- **Diarization over-segmentation (surfaced by the app, Episode 12):** the live
+  `ConversationTranscriber` sometimes splits **one continuous speaker into three** `Guest-N` — seen
+  both in mic and loopback-only mode. The Stop second pass clusters globally, but the **live** path
+  needs a min-turn/merge heuristic, a lower `maxSpeakers` hint, or the engine-boundary
+  `RefinementEvent` re-labeling live history. **Next natural target.**
 - **Language selector (native-style):** native Live Captions forces a language choice up front; HARK
   uses continuous LID (non-diarized) / a pinned language (diarized, `en-US`). A native-style picker
   could let users set the diarized language without a rebuild — pairs with the mode-switch row.

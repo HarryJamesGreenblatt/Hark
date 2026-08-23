@@ -315,6 +315,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!-- HAL-9000-style eye: silver frame, black socket, glowing red cornea (recording),
@@ -333,25 +334,26 @@
                     <Ellipse x:Name="HalCornea" Margin="4" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <RadialGradientBrush>
-                                <GradientStop Color="#FF7B6A" Offset="0" />
-                                <GradientStop Color="#E51414" Offset="0.55" />
-                                <GradientStop Color="#5A0000" Offset="1" />
+                                <GradientStop Color="#FFD2C2" Offset="0" />
+                                <GradientStop Color="#FF1E10" Offset="0.42" />
+                                <GradientStop Color="#4A0000" Offset="1" />
                             </RadialGradientBrush>
                         </Ellipse.Fill>
                         <Ellipse.Effect>
-                            <DropShadowEffect x:Name="HalGlow" Color="#FF2A2A"
+                            <DropShadowEffect x:Name="HalGlow" Color="#FF1A14"
                                               ShadowDepth="0" BlurRadius="8" Opacity="0" />
                         </Ellipse.Effect>
                         <Ellipse.RenderTransform>
                             <ScaleTransform x:Name="HalScale" ScaleX="1" ScaleY="1" />
                         </Ellipse.RenderTransform>
                     </Ellipse>
-                    <!-- Glass dome reflection. -->
-                    <Ellipse Margin="4,3,7,9" IsHitTestVisible="False">
+                    <!-- Glass dome reflection: a small top-only highlight so it reads as glass without
+                         washing the cornea's saturated red. -->
+                    <Ellipse Margin="5,3,8,10" IsHitTestVisible="False">
                         <Ellipse.Fill>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Color="#80FFFFFF" Offset="0" />
-                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                                <GradientStop Color="#59FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="0.7" />
                             </LinearGradientBrush>
                         </Ellipse.Fill>
                     </Ellipse>
@@ -369,9 +371,32 @@
                            FontSize="11"
                            Foreground="#5F6368" VerticalAlignment="Center" />
 
+                <!-- Copy button: copies whatever the window currently shows — the captions (per the
+                     LATEST/TRANSCRIPT scope) or the recap (per the CONVERSATION/SPEAKERS style). -->
+                <Button Grid.Column="3" x:Name="CopyButton"
+                        Width="22" Height="22" Margin="10,0,0,0" Padding="0"
+                        FontFamily="Segoe MDL2 Assets" FontSize="12"
+                        Content="&#xE8C8;"
+                        Foreground="#9AA0A6" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
+                        ToolTip="Copy what's shown to the clipboard">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bg" Property="Background" Value="#2A2D31" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
                 <!-- Mic toggle: mixes the local microphone — your own voice — into the captioned
                      stream. Lit = on. State/glyph set in code-behind. -->
-                <Button Grid.Column="3" x:Name="MicButton"
+                <Button Grid.Column="4" x:Name="MicButton"
                         Width="22" Height="22" Margin="10,0,0,0" Padding="0"
                         FontFamily="Segoe MDL2 Assets" FontSize="13"
                         Content="&#xE720;"
@@ -393,7 +418,7 @@
                 </Button>
 
                 <!-- Close button (✕): exits HARK. Red hover mirrors native window chrome. -->
-                <Button Grid.Column="4" x:Name="CloseButton"
+                <Button Grid.Column="5" x:Name="CloseButton"
                         Width="22" Height="22" Margin="10,0,0,0" Padding="0"
                         Content="✕" FontSize="11"
                         Foreground="#C8CCD0" Background="Transparent"
