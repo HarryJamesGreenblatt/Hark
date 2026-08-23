@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-22 (end of Episode 13)._
+_Last updated: 2026-08-23 (end of Episode 14)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -103,6 +103,7 @@ _Last updated: 2026-08-22 (end of Episode 13)._
 | 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the transcribed stream (float-domain sum, mic-clocked with a ~1 s loopback queue); a live overlay mic toggle, off by default, `HARK_MIX_MIC=1` opts in — a headset user's own voice is now captioned. |
 | 12 | 2026-08-22 | [The HAL Eye & the Feedback Loop](./EP12-hal-eye-and-the-feedback-loop.md) | HARK began captioning/summarizing its own dev session; its recaps became the bug reports — the HAL eye was tuned across rounds from that dictated feedback (de-washed cornea, RMS noise gate, full 0.28–1.0 range, ADSR envelope: fast attack + 0.38 s sustain/resonate). A recap follow-up task shipped a view-aware **copy button** (captions per scope / recap as markdown). Mic now defaults off, uses a mic glyph, and has a manually verified global **Ctrl+Shift+M** toggle. |
 | 13 | 2026-08-22 | [Installable Release: MSIX, a Single-File Setup & the SmartScreen Lesson](./EP13-installable-release-and-installer-pipeline.md) | HARK became a shippable Windows app — a HAL-eye icon set, a signed MSIX, and a single self-contained `Hark-Setup.exe` embedding the package, published by a `v*`-tag release pipeline. Five point releases (v0.1.0→v0.1.4) shook out SmartScreen (ship the exe zipped), a duplicate-instance bug (single-instance mutex), and an in-installer Azure-config step that detects existing config across env/config.json/user-secrets. |
+| 14 | 2026-08-23 | [The Oracle's Recognition Head: Semantic Diarization Refinement (Stage 0 Plan)](./EP14-oracle-assisted-diarization-recognition-head.md) | Reframed the grounding oracle as two-headed — Cristóbal used only the *augmentation* head; the unused *recognition* head is the mechanism to repair diarization. Designed **Stage 0**: a text-only LLM **semantic post-pass** (`SemanticDiarizationRefiner`) that re-labels the offline refiner's segments (merge over-splits, fix cross-ups) with **immutable text**, reusing the recap AOAI infra, chained into `RefineDiarizationAsync`, no engine boundary required. Design only — no code shipped. |
 
 ---
 
@@ -125,6 +126,17 @@ These are unresolved at the end of the latest episode — natural starting point
   Services User** RBAC role in the wild; the live CAPTIONS history isn't retroactively re-labeled (needs
   the engine-boundary `RefinementEvent`); revisit the clamped `maxSpeakers` hint; optional phrase-list of
   known names on the live path; LLM-Speech enhanced mode.
+- **Oracle-assisted diarization — Stage 0 planned (Episode 14), ready to build:** the grounding oracle's
+  unused **recognition head** repairs diarization on an axis orthogonal to acoustics. **Stage 0** is a
+  text-only LLM **semantic post-pass** — a new stateless `Hark.Core/Transcription/SemanticDiarizationRefiner`
+  that re-labels the offline refiner's segments (merges over-splits, fixes host/guest cross-ups) with
+  **immutable text** (consumes only an `index → speaker` map), reusing the recap AOAI config
+  (`HARK_AOAI_*`, keyless) and chained into `App.RefineDiarizationAsync` between the acoustic refine and
+  `ConversationStore.Rebuild`. Gracefully optional (skipped if AOAI unconfigured), non-destructive
+  (worst case = today's acoustic result), no engine boundary required. Later stages: name/role binding
+  (0.5), promote to a `RefinementEvent` producer on the engine boundary + re-label live history (1), a
+  live debounced recognition oracle that eventually also feeds Cristóbal (2). Full plan:
+  [`EP14`](./EP14-oracle-assisted-diarization-recognition-head.md).
 - **Engine boundary (sketched, ready to build behavior-preserving):** promote the pipeline to a
   typed `HarkEvent` stream in `Hark.Core` (`SegmentEvent`/`AudioLevelEvent`/`StatusEvent` + reserved
   `RefinementEvent`/`GroundingEvent`), add `event Action<HarkEvent> Events` to `HarkSession`
