@@ -183,7 +183,7 @@ public partial class App : Application
 
         var tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Visible = true,
             Text = "HARK — captions (Ctrl+Win+H)",
             ContextMenuStrip = menu,
@@ -192,6 +192,20 @@ public partial class App : Application
         // Double-click the tray icon toggles captions, matching the hotkey.
         tray.DoubleClick += (_, _) => ToggleAsync();
         return tray;
+    }
+
+    /// <summary>Loads the app's HAL-eye icon from the executable, falling back to the system icon.</summary>
+    /// <returns>The tray icon to display.</returns>
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(path))
+                return Icon.ExtractAssociatedIcon(path) ?? SystemIcons.Application;
+        }
+        catch { /* fall through to the system icon */ }
+        return SystemIcons.Application;
     }
 
     /// <summary>Fire-and-forget entry point for hotkey/menu/UI handlers.</summary>

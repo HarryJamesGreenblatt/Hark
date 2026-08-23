@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Hark-Setup</AssemblyName>
+    <Product>HARK Setup</Product>
+    <AssemblyTitle>HARK Setup</AssemblyTitle>
+    <Description>Installer for HARK — live captions overlay</Description>
+    <Authors>Harry Greenblatt</Authors>
+    <ApplicationIcon>..\Hark.App\Assets\Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Public signing cert (committed) — trusted during install so the signed MSIX validates. -->
+    <EmbeddedResource Include="Hark.cer">
+      <LogicalName>Hark.cer</LogicalName>
+    </EmbeddedResource>
+    <!-- HAL-eye logo for the installer chrome. -->
+    <EmbeddedResource Include="..\Hark.App\Assets\Icon.png">
+      <LogicalName>Icon.png</LogicalName>
+    </EmbeddedResource>
+    <!-- The signed package is copied in and embedded by CI just before this exe is published;
+         absent during a normal dev build (the installer then reports it can't find the package). -->
+    <EmbeddedResource Include="Hark.msix" Condition="Exists('Hark.msix')">
+      <LogicalName>Hark.msix</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

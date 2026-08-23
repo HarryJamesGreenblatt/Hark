@@ -16,5 +16,13 @@ obj/
 ## Contextual artifacts
 artifacts/
 
+## Installer / packaging (keep private keys and large build outputs out of the repo)
+*.pfx
+*.msix
+publish/
+publish-dev/
+publish-msix/
+installer-output/
+
 # Code Workspaces
 *.code-workspace 

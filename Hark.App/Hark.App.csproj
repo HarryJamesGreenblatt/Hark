@@ -9,6 +9,7 @@
 	<!-- WinForms is enabled solely for the tray NotifyIcon (no extra NuGet needed). -->
 	<UseWindowsForms>true</UseWindowsForms>
 	<ApplicationManifest>app.manifest</ApplicationManifest>
+	<ApplicationIcon>Assets\Icon.ico</ApplicationIcon>
     <UserSecretsId>d2185b7b-b2db-438e-9a76-f08d51c63093</UserSecretsId>
   </PropertyGroup>
 

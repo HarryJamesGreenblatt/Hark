@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Parse version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          $parts = $tag.Split('.')
+          $msixVersion = "$($parts[0]).$($parts[1]).$($parts[2]).0"
+          echo "MSIX_VERSION=$msixVersion" >> $env:GITHUB_OUTPUT
+          echo "TAG_VERSION=$tag" >> $env:GITHUB_OUTPUT
+
+      # ── MSIX build ──
+      - name: Publish for MSIX
+        run: >
+          dotnet publish Hark.App/Hark.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishReadyToRun=true
+          -p:DebugType=embedded
+          -o publish-msix
+
+      - name: Prepare MSIX layout
+        shell: pwsh
+        run: |
+          # Stamp the version into the manifest.
+          $manifest = Get-Content Hark.App/Package.appxmanifest -Raw
+          $manifest = $manifest -replace 'Version="0.0.0.0"', "Version=""${{ steps.version.outputs.MSIX_VERSION }}"""
+          Set-Content publish-msix/AppxManifest.xml $manifest
+
+          # Copy the tile assets into the package's Assets folder.
+          New-Item -ItemType Directory -Path publish-msix/Assets -Force | Out-Null
+          Copy-Item Hark.App/Assets/MsixTiles/* publish-msix/Assets/
+
+      - name: Create MSIX package
+        shell: pwsh
+        run: |
+          $makeAppx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\MakeAppx.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { $_.Directory.Parent.Name } -Descending | Select-Object -First 1
+          if (-not $makeAppx) { throw "MakeAppx.exe not found in Windows SDK" }
+          Write-Host "Using: $($makeAppx.FullName)"
+          & $makeAppx.FullName pack /d publish-msix /p Hark.msix /o
+
+      - name: Sign MSIX
+        shell: pwsh
+        run: |
+          $pfxBytes = [Convert]::FromBase64String("${{ secrets.MSIX_CERT_PFX }}")
+          $pfxPath = "$env:RUNNER_TEMP\cert.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+
+          $signTool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\SignTool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { $_.Directory.Parent.Name } -Descending | Select-Object -First 1
+          if (-not $signTool) { throw "SignTool.exe not found in Windows SDK" }
+          Write-Host "Using: $($signTool.FullName)"
+          & $signTool.FullName sign /fd SHA256 /a `
+            /f $pfxPath `
+            /p "${{ secrets.MSIX_CERT_PASSWORD }}" `
+            /tr http://timestamp.digicert.com /td SHA256 `
+            Hark.msix
+
+          Remove-Item $pfxPath -ErrorAction SilentlyContinue
+
+      # ── Single-file installer exe with the signed MSIX embedded ──
+      - name: Build Hark-Setup.exe
+        shell: pwsh
+        run: |
+          # The installer project embeds Hark.cer (committed) + this freshly signed Hark.msix.
+          Copy-Item Hark.msix Hark.Installer/Hark.msix -Force
+          dotnet publish Hark.Installer/Hark.Installer.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true -p:DebugType=embedded `
+            -o installer-exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hark-Setup
+          path: installer-exe/Hark-Setup.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/Hark-Setup/Hark-Setup.exe
+          generate_release_notes: true
