@@ -4,6 +4,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Hark.Core.Summarization;
 
 namespace Hark.App;
@@ -26,6 +27,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Which content the overlay is showing.</summary>
     private enum ViewMode { Captions, Summary }
+
+    /// <summary>How much of the transcript the captions view shows.</summary>
+    private enum CaptionScope { Latest, Transcript }
 
     #endregion
 
@@ -56,6 +60,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Which content (captions or summary) is currently displayed.</summary>
     private ViewMode _mode = ViewMode.Captions;
+
+    /// <summary>Whether captions show just the latest line or the full, scrollable transcript.</summary>
+    private CaptionScope _scope = CaptionScope.Latest;
 
     /// <summary>Whether at least one speaker pill has been added to the index.</summary>
     private bool _hasSpeakers;
@@ -124,6 +131,10 @@ public partial class OverlayWindow : Window
         CaptionsModeButton.Click += (_, _) => SetMode(ViewMode.Captions);
         SummaryModeButton.Click += (_, _) => SetMode(ViewMode.Summary);
 
+        // Caption scope switch (latest line vs full transcript).
+        LatestScopeButton.Click += (_, _) => SetScope(CaptionScope.Latest);
+        TranscriptScopeButton.Click += (_, _) => SetScope(CaptionScope.Transcript);
+
         StylePicker.ItemsSource = Enum.GetValues<SummaryStyle>();
         StylePicker.SelectedItem = SummaryStyle.Conversation;
         StylePicker.SelectionChanged += (_, _) =>
@@ -133,7 +144,13 @@ public partial class OverlayWindow : Window
         };
 
         UpdateModeButtons();
+        UpdateScopeButtons();
         SetSummaryAvailable(false);   // nothing to summarize until captions arrive
+
+        // Re-fit the bar when the summary's own content changes (section / card expansion). Captions
+        // height is driven explicitly from Render / ApplyCaptionScope so manual resizes aren't fought.
+        RecapPanel.SizeChanged += (_, _) => ScheduleHeightAdjust();
+        SpeakerPanel.SizeChanged += (_, _) => ScheduleHeightAdjust();
 
         // Drive the HAL eye from the WPF compositor (~60fps), decoupled from the audio callback
         // rate, so it eases smoothly toward the latest level instead of stepping at ~20 Hz.
@@ -151,6 +168,7 @@ public partial class OverlayWindow : Window
     {
         ShowPlainText();
         SummaryText.Text = message;
+        ScheduleHeightAdjust();
     }
 
     /// <summary>Renders finished recap text (used only for status/error notes) in the summary view.</summary>
@@ -159,6 +177,7 @@ public partial class OverlayWindow : Window
     {
         ShowPlainText();
         SummaryText.Text = text ?? string.Empty;
+        ScheduleHeightAdjust();
     }
 
     /// <summary>
@@ -173,10 +192,10 @@ public partial class OverlayWindow : Window
             ? Visibility.Collapsed : Visibility.Visible;
 
         TopicList.ItemsSource = recap.Topics;
-        NotesHeader.Visibility = recap.Topics.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SetSectionVisible(NotesToggle, recap.Topics.Count > 0);
 
         TaskList.ItemsSource = recap.FollowUps;
-        TasksHeader.Visibility = recap.FollowUps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SetSectionVisible(TasksToggle, recap.FollowUps.Count > 0);
 
         ShowConversation();
     }
@@ -189,8 +208,17 @@ public partial class OverlayWindow : Window
     public void SetSpeakerRecap(SpeakerRecap recap)
     {
         SpeakerList.ItemsSource = recap.Speakers;
-        SpeakersHeader.Visibility = recap.Speakers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SetSectionVisible(SpeakersToggle, recap.Speakers.Count > 0);
         ShowSpeakers();
+    }
+
+    /// <summary>Shows or hides a collapsible section header, collapsing it when the section is empty.</summary>
+    /// <param name="toggle">The section's header toggle.</param>
+    /// <param name="visible">Whether the section has content to show.</param>
+    private static void SetSectionVisible(System.Windows.Controls.Primitives.ToggleButton toggle, bool visible)
+    {
+        toggle.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (!visible) toggle.IsChecked = false;   // ensure the bound list collapses when empty
     }
 
     /// <summary>Shows the plain-text box (status/errors) and hides both structured panels.</summary>
@@ -248,6 +276,7 @@ public partial class OverlayWindow : Window
         UpdateSpeakerBarVisibility();
 
         StylePicker.Visibility = mode == ViewMode.Summary ? Visibility.Visible : Visibility.Collapsed;
+        ScopeSwitch.Visibility = mode == ViewMode.Captions ? Visibility.Visible : Visibility.Collapsed;
 
         if (mode == ViewMode.Summary)
         {
@@ -256,14 +285,15 @@ public partial class OverlayWindow : Window
         }
         else
         {
+            ApplyCaptionScope();   // reset captions to its own height (don't keep the summary's)
             FadeSwap(fadeIn: CaptionBox, fadeOut: SummaryScroll);
         }
     }
 
-    /// <summary>Cross-fades from <paramref name="fadeOut"/> to <paramref name="fadeIn"/>.</summary>
+    /// <summary>Cross-fades from <paramref name="fadeOut"/> to <paramref name="fadeIn"/>, then re-fits height.</summary>
     /// <param name="fadeIn">The element to fade in and make visible.</param>
     /// <param name="fadeOut">The element to fade out and collapse once faded.</param>
-    private static void FadeSwap(UIElement fadeIn, UIElement fadeOut)
+    private void FadeSwap(UIElement fadeIn, UIElement fadeOut)
     {
         var duration = new Duration(TimeSpan.FromMilliseconds(180));
 
@@ -271,8 +301,45 @@ public partial class OverlayWindow : Window
         fadeIn.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration));
 
         var outAnim = new DoubleAnimation(1, 0, duration);
-        outAnim.Completed += (_, _) => fadeOut.Visibility = Visibility.Collapsed;
+        outAnim.Completed += (_, _) =>
+        {
+            fadeOut.Visibility = Visibility.Collapsed;
+            ScheduleHeightAdjust();   // re-fit once the outgoing view is gone
+        };
         fadeOut.BeginAnimation(OpacityProperty, outAnim);
+    }
+
+    /// <summary>Switches the caption scope (latest line vs full transcript) and re-fits.</summary>
+    /// <param name="scope">The scope to switch to.</param>
+    private void SetScope(CaptionScope scope)
+    {
+        if (_scope == scope) return;
+        _scope = scope;
+        UpdateScopeButtons();
+        ApplyCaptionScope();
+    }
+
+    /// <summary>
+    /// Applies the current caption scope: LATEST keeps the bar at a single (current) line; TRANSCRIPT
+    /// grows to the full conversation up to the screen, then scrolls. Re-renders and re-fits.
+    /// </summary>
+    private void ApplyCaptionScope()
+    {
+        var area = SystemParameters.WorkArea;
+        CaptionBox.MaxHeight = _scope == CaptionScope.Transcript
+            ? Math.Max(120, area.Height - 120)
+            : 160;
+        Render();
+    }
+
+    /// <summary>Applies selected/idle colors to the LATEST / TRANSCRIPT scope buttons.</summary>
+    private void UpdateScopeButtons()
+    {
+        bool transcript = _scope == CaptionScope.Transcript;
+        LatestScopeButton.Background = transcript ? System.Windows.Media.Brushes.Transparent : ModeSelectedBg;
+        LatestScopeButton.Foreground = transcript ? ModeIdleFg : ModeSelectedFg;
+        TranscriptScopeButton.Background = transcript ? ModeSelectedBg : System.Windows.Media.Brushes.Transparent;
+        TranscriptScopeButton.Foreground = transcript ? ModeSelectedFg : ModeIdleFg;
     }
 
     /// <summary>Applies selected/idle colors to the captions and summary mode buttons.</summary>
@@ -431,25 +498,38 @@ public partial class OverlayWindow : Window
         Render();
     }
 
-    /// <summary>Rebuilds the caption document from the history and interim line.</summary>
+    /// <summary>Rebuilds the caption document for the current scope (latest line or full transcript).</summary>
     private void Render()
     {
         // Preserve the user's selection length so live interim updates don't fight active copying.
         bool hadSelection = !CaptionBox.Selection.IsEmpty;
 
         var para = new Paragraph();
-        bool first = true;
-        foreach (var line in _history)
-        {
-            if (!first) para.Inlines.Add(new LineBreak());
-            para.Inlines.Add(new Run(line) { Foreground = FinalBrush });
-            first = false;
-        }
 
-        if (_interim.Length > 0)
+        if (_scope == CaptionScope.Latest)
         {
-            if (!first) para.Inlines.Add(new LineBreak());
-            para.Inlines.Add(new Run(_interim) { Foreground = InterimBrush });
+            // Just the current line: the live interim, or the last finalized line when idle.
+            var latest = _interim.Length > 0
+                ? _interim
+                : _history.Count > 0 ? _history.Last!.Value : string.Empty;
+            if (latest.Length > 0)
+                para.Inlines.Add(new Run(latest) { Foreground = _interim.Length > 0 ? InterimBrush : FinalBrush });
+        }
+        else
+        {
+            bool first = true;
+            foreach (var line in _history)
+            {
+                if (!first) para.Inlines.Add(new LineBreak());
+                para.Inlines.Add(new Run(line) { Foreground = FinalBrush });
+                first = false;
+            }
+
+            if (_interim.Length > 0)
+            {
+                if (!first) para.Inlines.Add(new LineBreak());
+                para.Inlines.Add(new Run(_interim) { Foreground = InterimBrush });
+            }
         }
 
         CaptionDoc.Blocks.Clear();
@@ -457,6 +537,8 @@ public partial class OverlayWindow : Window
 
         // Keep the newest text in view unless the user is actively selecting older text.
         if (!hadSelection) CaptionBox.ScrollToEnd();
+
+        ScheduleHeightAdjust();
     }
 
     /// <summary>The entire transcript (history + current interim) as plain text.</summary>
@@ -492,6 +574,27 @@ public partial class OverlayWindow : Window
         Width = area.Width;
         Left = area.Left;
         Top = area.Top;
+
+        // Cap the summary so a long recap scrolls internally rather than running off the bottom.
+        SummaryScroll.MaxHeight = Math.Max(120, area.Height - 120);
+        ApplyCaptionScope();   // set the caption box's height cap for the current scope
+    }
+
+    /// <summary>Queues a height re-fit after the current layout pass (coalesces rapid changes).</summary>
+    private void ScheduleHeightAdjust() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(AdjustHeightToContent));
+
+    /// <summary>
+    /// Sizes the window height to its content (a caption line or the visible recap), clamped between
+    /// <see cref="Window.MinHeight"/> and the screen height so a long recap scrolls inside instead of
+    /// growing off-screen. Width stays full via <see cref="PositionAsTopBar"/>.
+    /// </summary>
+    private void AdjustHeightToContent()
+    {
+        if (!IsLoaded) return;
+        var area = SystemParameters.WorkArea;
+        Bar.Measure(new System.Windows.Size(area.Width, area.Height));
+        Height = Math.Clamp(Bar.DesiredSize.Height, MinHeight, area.Height);
     }
 
     /// <summary>Shows the overlay and forces it above other topmost windows.</summary>

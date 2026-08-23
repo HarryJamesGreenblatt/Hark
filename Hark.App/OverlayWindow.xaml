@@ -76,13 +76,48 @@
                                     </Setter.Value>
                                 </Setter>
                             </Style>
-                            <!-- Section headers within the structured recap. -->
-                            <Style x:Key="RecapSectionHeaderStyle" TargetType="TextBlock">
-                                <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI" />
-                                <Setter Property="FontSize" Value="11" />
-                                <Setter Property="FontWeight" Value="SemiBold" />
+                            <!-- Collapsible section header (MEETING NOTES / FOLLOW-UP TASKS / SPEAKERS):
+                                 a chevron + label that shows/hides its list; the window auto-sizes to the
+                                 revealed content. -->
+                            <Style x:Key="SectionToggleStyle" TargetType="ToggleButton">
+                                <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Foreground" Value="#5F6368" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="HorizontalAlignment" Value="Left" />
                                 <Setter Property="Margin" Value="2,10,0,6" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    Padding="2,3" CornerRadius="6">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Path x:Name="Chevron" Width="7" Height="9"
+                                                          Margin="0,1,8,0" VerticalAlignment="Center"
+                                                          Stretch="Fill" Fill="{TemplateBinding Foreground}"
+                                                          Data="M 0 0 L 5 5 L 0 10 Z"
+                                                          RenderTransformOrigin="0.5,0.5" />
+                                                    <TextBlock Text="{TemplateBinding Content}"
+                                                               FontFamily="Segoe UI Variable, Segoe UI"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{TemplateBinding Foreground}" />
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="Chevron" Property="RenderTransform">
+                                                        <Setter.Value>
+                                                            <RotateTransform Angle="90" />
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Foreground" Value="#9AA0A6" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
 
                             <!-- Converters used by the structured recap templates. -->
@@ -269,7 +304,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
             <!-- Slim header acts as the drag handle and shows live status; hosts the close button. -->
@@ -378,6 +413,17 @@
                 <ComboBox Grid.Column="2" x:Name="StylePicker"
                           Width="130" FontSize="11" Visibility="Collapsed"
                           VerticalAlignment="Center" />
+
+                <!-- Caption scope switch (LATEST line / full TRANSCRIPT); only shown in CAPTIONS mode. -->
+                <Border Grid.Column="2" x:Name="ScopeSwitch" CornerRadius="9" Padding="2"
+                        Background="#1C1E20" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="LatestScopeButton" Content="LATEST"
+                                Style="{StaticResource ModeButtonStyle}" />
+                        <Button x:Name="TranscriptScopeButton" Content="TRANSCRIPT"
+                                Style="{StaticResource ModeButtonStyle}" />
+                    </StackPanel>
+                </Border>
             </Grid>
 
             <!-- Speaker index: one pill per detected speaker; opens that speaker's page. -->
@@ -404,6 +450,7 @@
                          Background="Transparent"
                          BorderThickness="0"
                          Padding="0"
+                         MinHeight="44" MaxHeight="220"
                          Foreground="#FFFFFF"
                          FontFamily="Segoe UI Variable, Segoe UI"
                          FontSize="26"
@@ -441,30 +488,36 @@
                                  FontSize="16"
                                  Text="" />
 
-                        <!-- Structured Teams-style recap: overview, expandable meeting notes, tasks. -->
+                        <!-- Structured Teams-style recap: overview, collapsible meeting notes + tasks. -->
                         <StackPanel x:Name="RecapPanel" Visibility="Collapsed">
                             <TextBlock x:Name="RecapOverview"
                                        FontFamily="Segoe UI Variable, Segoe UI"
                                        FontSize="15" Foreground="#E6E8EA"
                                        TextWrapping="Wrap" Margin="2,0,0,2" />
 
-                            <TextBlock x:Name="NotesHeader" Text="MEETING NOTES"
-                                       Style="{StaticResource RecapSectionHeaderStyle}" />
+                            <ToggleButton x:Name="NotesToggle" Content="MEETING NOTES"
+                                          Style="{StaticResource SectionToggleStyle}" />
                             <ItemsControl x:Name="TopicList"
-                                          ItemTemplate="{StaticResource TopicTemplate}" />
+                                          ItemTemplate="{StaticResource TopicTemplate}"
+                                          Visibility="{Binding IsChecked, ElementName=NotesToggle,
+                                                       Converter={StaticResource BoolToVis}}" />
 
-                            <TextBlock x:Name="TasksHeader" Text="FOLLOW-UP TASKS"
-                                       Style="{StaticResource RecapSectionHeaderStyle}" />
+                            <ToggleButton x:Name="TasksToggle" Content="FOLLOW-UP TASKS"
+                                          Style="{StaticResource SectionToggleStyle}" />
                             <ItemsControl x:Name="TaskList"
-                                          ItemTemplate="{StaticResource TaskTemplate}" />
+                                          ItemTemplate="{StaticResource TaskTemplate}"
+                                          Visibility="{Binding IsChecked, ElementName=TasksToggle,
+                                                       Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
 
-                        <!-- People-pivoted (Speakers) recap: one expandable card per speaker. -->
+                        <!-- People-pivoted (Speakers) recap: collapsible list of per-speaker cards. -->
                         <StackPanel x:Name="SpeakerPanel" Visibility="Collapsed">
-                            <TextBlock x:Name="SpeakersHeader" Text="SPEAKERS"
-                                       Style="{StaticResource RecapSectionHeaderStyle}" />
+                            <ToggleButton x:Name="SpeakersToggle" Content="SPEAKERS"
+                                          Style="{StaticResource SectionToggleStyle}" />
                             <ItemsControl x:Name="SpeakerList"
-                                          ItemTemplate="{StaticResource SpeakerTemplate}" />
+                                          ItemTemplate="{StaticResource SpeakerTemplate}"
+                                          Visibility="{Binding IsChecked, ElementName=SpeakersToggle,
+                                                       Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>
