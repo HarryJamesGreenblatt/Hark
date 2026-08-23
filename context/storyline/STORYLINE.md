@@ -14,16 +14,17 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-22 (end of Episode 9)._
+_Last updated: 2026-08-22 (end of Episode 10)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
   `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
   reliable multi-language captions, real-time speaker diarization, per-speaker pages, and an
-  AI recap with a CAPTIONS/SUMMARY mode switch. The **Teams** recap is now a **nested,
-  Teams-Recap-style** view — an overview, expandable per-topic "Meeting Notes", and a
-  single-level "Follow-up Tasks" list (JSON-schema structured output). It docks as a
-  **full-width top bar** with a **sound-reactive HAL-9000 status eye**. The recap model is
-  provisioned and wired (Azure OpenAI, `gpt-4.1-mini`, keyless) — pending a live end-to-end smoke test.
+  AI recap with a CAPTIONS/SUMMARY mode switch. The recap picker is now **Conversation** (topic-
+  pivoted) / **Speakers** (people-pivoted) — both **structured, expandable** views (JSON-schema output).
+  On Stop, an **offline Fast Transcription second pass** re-diarizes the buffered audio globally and
+  rebuilds the conversation, fixing streaming diarization's host/guest crossups. The bar docks as a
+  **full-width top bar** whose **height fits its content** (collapsible recap sections; a captions
+  **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive HAL-9000 status eye**.
 - **Branch:** `main` · working tree clean.
 - **Apps:** `Hark.Cli` (terminal) and `Hark.App` (WPF tray overlay) drive the shared
   `Hark.Core/HarkSession`. `Hark.App`: starts hidden; `Ctrl+Win+H` toggles the bar; header has a
@@ -34,11 +35,12 @@ _Last updated: 2026-08-22 (end of Episode 9)._
   - Non-diarized: `AzureSpeechTranscriber` with **continuous language identification** (mixed
     languages) when no language is pinned.
   - Diarized: `ConversationDiarizingTranscriber` (`ConversationTranscriber`, pinned language,
-    `Guest-N` labels). Selected via `HarkSession(diarize: …)` — defaults **off** (CLI unchanged).
-  - Recap: `ISummarizer` / `AzureOpenAiSummarizer` (styles: Teams / Narrative / PerSpeaker).
-    **Teams** now uses `SummarizeStructuredAsync` → a `MeetingRecap` (Overview + expandable
-    `Topics[]` + flat `FollowUps[]`) via JSON-schema structured outputs + `ChatCompletionOptions`
-    (temperature 0.4, higher token budget); Narrative/PerSpeaker stay plain text.
+    `Guest-N` labels). Selected via `HarkSession(diarize: …)` — defaults **off** (CLI unchanged). On the
+    desktop, `captureAudio: true` buffers the PCM so `FastTranscriptionRefiner` can re-diarize offline
+    on Stop and rebuild the conversation with globally-clustered speakers.
+  - Recap: `ISummarizer` / `AzureOpenAiSummarizer` — `SummarizeConversationAsync` → `MeetingRecap`
+    (overview + expandable topics + follow-up tasks) and `SummarizeSpeakersAsync` → `SpeakerRecap`
+    (one expandable card per speaker); both via strict JSON-schema structured outputs.
 - **Source of truth (desktop):** `Hark.App/ConversationStore` — combined + per-speaker transcript,
   written UI-thread-only from `OverlaySink` (finalized segments), with a `Revision` counter used to
   cache summaries (reuse when captions unchanged; regenerate on new speech/session).
@@ -82,6 +84,7 @@ _Last updated: 2026-08-22 (end of Episode 9)._
 | 7 | 2026-08-19 | [Overlay UX: Top Bar, SUMMARY Gating & a HAL-9000 Eye](./EP07-overlay-ux-top-bar-and-hal-eye.md) | Full-width top-bar dock; SUMMARY disabled until captions exist; a sound-reactive HAL-9000 status eye, fixed by adopting WavBall's 60fps render-loop reactivity pattern. |
 | 8 | 2026-08-20 | [Infrastructure as Code + Provisioning Pipeline](./EP08-infra-as-code-and-provisioning-pipeline.md) | Codified the Azure stack as Bicep + a keyless GitHub Actions pipeline, with auto-unique naming so it stands up on any subscription in one run. |
 | 9 | 2026-08-22 | [Structured Recap + Diarization & Engine-Boundary Design](./EP09-structured-recap-and-diarization-engine-design.md) | Shipped a nested Teams-Recap-style structured summary (expandable per-topic notes + follow-up tasks); designed the second-pass diarization fix (Fast Transcription) and the HARK engine boundary (typed `HarkEvent` stream + reserved grounding/refinement seams). |
+| 10 | 2026-08-22 | [Conversation/Speakers, Offline Diarization Second Pass & Responsive Overlay](./EP10-conversation-speakers-diarization-secondpass-responsive-overlay.md) | Recap picker → Conversation/Speakers (both structured+expandable); offline Fast Transcription second pass re-diarizes buffered audio on Stop; overlay height fits content with collapsible sections + a LATEST/TRANSCRIPT captions scope switch. |
 
 ---
 
@@ -89,14 +92,12 @@ _Last updated: 2026-08-22 (end of Episode 9)._
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
-- **Speaker distinction — the agreed next build (Episode 9 design):** streaming diarization crosses
-  host/guest up on talk-show audio. Plan: (1) **buffer the session audio** in `HarkSession` (today
-  it's streamed to the recognizer and discarded), then (2) a **Fast Transcription second pass** on
-  Stop (`diarization.maxSpeakers` + phrase list, optionally **LLM Speech (enhanced)** mode) that
-  re-diarizes offline and rebuilds `ConversationStore` → feeds speaker pages + recap. Cheap stopgap:
-  a **phrase list** of expected names on the live path. Research-grade alt (only if *live* accuracy
-  is required): near-online diarization (N-sec delay + MIR front-end + self-enrolling embedding
-  reinforcement + VBx smoothing).
+- **Speaker distinction — baseline shipped (Episode 10):** an offline **Fast Transcription second pass**
+  now re-diarizes the buffered session audio on Stop (`FastTranscriptionRefiner` + `maxSpeakers`),
+  rebuilding the conversation with globally-clustered speakers. Remaining: verify the **Cognitive
+  Services User** RBAC role in the wild; the live CAPTIONS history isn't retroactively re-labeled (needs
+  the engine-boundary `RefinementEvent`); revisit the clamped `maxSpeakers` hint; optional phrase-list of
+  known names on the live path; LLM-Speech enhanced mode.
 - **Engine boundary (sketched, ready to build behavior-preserving):** promote the pipeline to a
   typed `HarkEvent` stream in `Hark.Core` (`SegmentEvent`/`AudioLevelEvent`/`StatusEvent` + reserved
   `RefinementEvent`/`GroundingEvent`), add `event Action<HarkEvent> Events` to `HarkSession`
@@ -122,10 +123,12 @@ These are unresolved at the end of the latest episode — natural starting point
 - **Personal Azure resources (deferred):** provision Speech **and** Azure OpenAI resources under a
   personal subscription, `az login` as that identity, assign the data-plane roles, and point
   `dotnet user-secrets` at them — fully decouples HARK from the enterprise account.
-- **Recap styles / persistence:** Teams is the default and now renders as a **structured, nested
-  recap** (overview → expandable per-topic notes → follow-up tasks, via JSON-schema output);
-  consider persisting the chosen style, an expand-by-default/animation option, and richer
-  per-speaker recaps.
+- **Recap styles / persistence:** the picker is now **Conversation** / **Speakers**, both structured
+  and expandable (Narrative dropped). Consider persisting the chosen style/scope and an
+  expand-by-default option.
+- **Overlay refinement (minor, Episode 10):** a "spot of refinement" on the responsive layout \u2014 e.g. the
+  cross-fade height settle on mode switch, the LATEST-scope wrap cap, the LATEST/TRANSCRIPT labels, and
+  the default caption scope.
 - **Diarization caveats:** `Guest-N` labels are anonymous and session-scoped and can occasionally
   swap/merge — this is the streaming-diarization limitation the Episode 9 **second-pass** plan
   targets; consider a rename/merge affordance in the interim.
