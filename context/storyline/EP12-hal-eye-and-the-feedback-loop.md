@@ -21,6 +21,9 @@ activity was detected, the light remained very dim." We treated that recap as th
   doubles the transcript, so opt-in is the safe default; headset users flip one button.
 - **Mic glyph.** The toggle used Segoe MDL2 `E7F5` (headphone — read as an "iPod" icon); swapped to
   the Microphone `E720`.
+- **Teams-style mic shortcut.** Added a global **Ctrl+Shift+M** hotkey that toggles microphone mixing
+  while HARK is running, keeps the overlay glyph in sync, and reports through the tray when Windows
+  cannot register the combination. The shortcut was verified manually after implementation.
 
 **HAL eye — kill the washout, then the dimness (`OverlayWindow`)**
 - **De-washed the cornea:** the radial fill's salmon-pink core (`#FF7B6A`) → a tight warm-white core

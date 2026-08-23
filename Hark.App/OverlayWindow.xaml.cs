@@ -408,8 +408,8 @@ public partial class OverlayWindow : Window
     {
         MicButton.Foreground = _micOn ? MicOnBrush : MicOffBrush;
         MicButton.ToolTip = _micOn
-            ? "Microphone on — your voice is captioned (click to mute)"
-            : "Microphone off — click to caption your own voice";
+            ? "Microphone on — your voice is captioned (click or Ctrl+Shift+M to mute)"
+            : "Microphone off — click or press Ctrl+Shift+M to caption your own voice";
     }
 
     /// <summary>Applies selected/idle colors to the captions and summary mode buttons.</summary>

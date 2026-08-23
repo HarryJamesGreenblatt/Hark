@@ -12,8 +12,8 @@ namespace Hark.App;
 
 /// <summary>
 /// HARK desktop host — a tray-resident captions overlay (Live Captions, done right).
-/// Reuses the Hark.Core pipeline via <see cref="HarkSession"/>; a global hotkey (Ctrl+Win+H) toggles
-/// capture and the on-screen overlay. No autostart: the hotkey is live only while the app runs.
+/// Reuses the Hark.Core pipeline via <see cref="HarkSession"/>; global hotkeys toggle capture and
+/// microphone mixing. No autostart: the hotkeys are live only while the app runs.
 /// </summary>
 public partial class App : Application
 {
@@ -27,6 +27,9 @@ public partial class App : Application
 
     /// <summary>The global Ctrl+Win+H hotkey that toggles captions on and off while the app runs.</summary>
     private GlobalHotkey? _hotkey;
+
+    /// <summary>The global Ctrl+Shift+M hotkey that toggles microphone mixing while the app runs.</summary>
+    private GlobalHotkey? _micHotkey;
 
     /// <summary>The active capture/transcription session, or <see langword="null"/> when captions are stopped.</summary>
     private HarkSession? _session;
@@ -134,6 +137,11 @@ public partial class App : Application
         _hotkey = new GlobalHotkey(GlobalHotkey.MOD_CONTROL | GlobalHotkey.MOD_WIN, 0x48 /* 'H' */);
         _hotkey.Pressed += ToggleAsync;
 
+        // Teams-style global mic toggle: Ctrl+Shift+M.
+        _micHotkey = new GlobalHotkey(
+            GlobalHotkey.MOD_CONTROL | GlobalHotkey.MOD_SHIFT, 0x4D /* 'M' */);
+        _micHotkey.Pressed += ToggleMic;
+
         if (!_hotkey.IsRegistered)
         {
             _tray.ShowBalloonTip(
@@ -145,8 +153,16 @@ public partial class App : Application
         {
             _tray.ShowBalloonTip(
                 3000, "HARK is running",
-                "Press Ctrl+Win+H to toggle captions. Right-click the tray icon to exit.",
+                "Ctrl+Win+H toggles captions; Ctrl+Shift+M toggles the microphone.",
                 ToolTipIcon.Info);
+        }
+
+        if (!_micHotkey.IsRegistered)
+        {
+            _tray.ShowBalloonTip(
+                4000, "HARK",
+                "Couldn't register Ctrl+Shift+M (it may be in use). Use the microphone button instead.",
+                ToolTipIcon.Warning);
         }
     }
 
@@ -262,6 +278,14 @@ public partial class App : Application
     {
         _mixMic = enabled;
         _session?.SetMicEnabled(enabled);
+    }
+
+    /// <summary>Toggles microphone mixing from the global shortcut and synchronizes the overlay.</summary>
+    private void ToggleMic()
+    {
+        bool enabled = !_mixMic;
+        _overlay?.SetMicEnabled(enabled);
+        OnMicToggleRequested(enabled);
     }
 
     /// <summary>
@@ -446,6 +470,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _hotkey?.Dispose();
+        _micHotkey?.Dispose();
         try { _session?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* best effort */ }
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }
         base.OnExit(e);
