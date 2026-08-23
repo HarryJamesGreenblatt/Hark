@@ -1,14 +1,20 @@
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 
 namespace Hark.Installer;
 
-/// <summary>A single-window installer that trusts the signing cert then installs the embedded MSIX.</summary>
+/// <summary>
+/// A single-window installer: trusts the signing cert, installs the embedded MSIX, then — only if
+/// HARK isn't already configured — collects the (non-secret) Azure resource locations and writes
+/// <c>%APPDATA%\Hark\config.json</c> so the user never has to hunt down the README.
+/// </summary>
 internal sealed class InstallerForm : Form
 {
     // ── HAL palette ──
     static readonly Color Plate      = Color.FromArgb(12, 12, 12);
     static readonly Color Panel      = Color.FromArgb(20, 20, 22);
+    static readonly Color Field      = Color.FromArgb(30, 30, 34);
     static readonly Color HalRed     = Color.FromArgb(255, 40, 26);
     static readonly Color HalDeep    = Color.FromArgb(150, 10, 4);
     static readonly Color TextDim    = Color.FromArgb(200, 205, 212);
@@ -17,12 +23,23 @@ internal sealed class InstallerForm : Form
     readonly Label _statusLabel;
     readonly ProgressBar _progressBar;
     readonly Button _actionButton;
-    bool _done;
+    readonly Panel _configPanel;
+    readonly TextBox _regionBox;
+    readonly TextBox _resourceBox;
+    readonly TextBox _aoaiEndpointBox;
+    readonly TextBox _aoaiDeploymentBox;
+
+    enum Phase { Install, Configure, Done }
+    Phase _phase = Phase.Install;
+
+    /// <summary>Non-secret external config the desktop app reads at runtime.</summary>
+    static string ConfigPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hark", "config.json");
 
     public InstallerForm()
     {
         Text = "HARK Setup";
-        ClientSize = new Size(560, 300);
+        ClientSize = new Size(580, 500);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -40,7 +57,7 @@ internal sealed class InstallerForm : Form
         }
         catch { /* form icon is cosmetic */ }
 
-        var topBar = new Panel { Location = new Point(0, 0), Size = new Size(560, 96), BackColor = Panel };
+        var topBar = new Panel { Location = new Point(0, 0), Size = new Size(580, 96), BackColor = Panel };
         Controls.Add(topBar);
 
         int titleX = 24;
@@ -86,31 +103,39 @@ internal sealed class InstallerForm : Form
             Text = "Click Install to set up HARK. It lives in the system tray; press Ctrl+Win+H to caption.",
             Font = new Font("Segoe UI", 10.5f),
             ForeColor = TextDim,
-            Size = new Size(520, 44),
+            Size = new Size(540, 44),
             Location = new Point(20, 112),
         };
         Controls.Add(_statusLabel);
 
         _progressBar = new ProgressBar
         {
-            Location = new Point(20, 164),
-            Size = new Size(520, 20),
+            Location = new Point(20, 158),
+            Size = new Size(540, 18),
             Minimum = 0,
             Maximum = 100,
             Value = 0,
         };
         Controls.Add(_progressBar);
 
-        var bottomPanel = new Panel { Location = new Point(0, 208), Size = new Size(560, 92), BackColor = Panel };
+        // ── Config panel (revealed after install only when config.json is absent) ──
+        _configPanel = new Panel { Location = new Point(20, 190), Size = new Size(540, 232), Visible = false };
+        Controls.Add(_configPanel);
+        _regionBox         = AddConfigField(0,   "Azure Speech region",          "e.g. eastus2");
+        _resourceBox       = AddConfigField(58,  "Speech resource ID (ARM id)",  "/subscriptions/.../Microsoft.CognitiveServices/accounts/...");
+        _aoaiEndpointBox   = AddConfigField(116, "Azure OpenAI endpoint (optional — enables SUMMARY)", "https://<name>.openai.azure.com/");
+        _aoaiDeploymentBox = AddConfigField(174, "OpenAI deployment (optional)", "e.g. gpt-4.1-mini");
+
+        var bottomPanel = new Panel { Location = new Point(0, 430), Size = new Size(580, 70), BackColor = Panel };
         Controls.Add(bottomPanel);
-        bottomPanel.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(560, 2), BackColor = HalRed });
+        bottomPanel.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(580, 2), BackColor = HalRed });
 
         _actionButton = new Button
         {
             Text = "Install",
             Font = new Font("Segoe UI Semibold", 12f),
-            Size = new Size(160, 42),
-            Location = new Point(200, 24),
+            Size = new Size(180, 40),
+            Location = new Point(200, 16),
             BackColor = HalDeep,
             ForeColor = TextBright,
             FlatStyle = FlatStyle.Flat,
@@ -122,6 +147,31 @@ internal sealed class InstallerForm : Form
         bottomPanel.Controls.Add(_actionButton);
     }
 
+    /// <summary>Adds a labeled textbox to the config panel and returns the textbox.</summary>
+    TextBox AddConfigField(int y, string label, string placeholder)
+    {
+        _configPanel.Controls.Add(new Label
+        {
+            Text = label,
+            Font = new Font("Segoe UI", 9.5f),
+            ForeColor = TextDim,
+            AutoSize = true,
+            Location = new Point(0, y),
+        });
+        var box = new TextBox
+        {
+            Location = new Point(0, y + 24),
+            Size = new Size(538, 26),
+            BackColor = Field,
+            ForeColor = TextBright,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Segoe UI", 10f),
+            PlaceholderText = placeholder,
+        };
+        _configPanel.Controls.Add(box);
+        return box;
+    }
+
     void UpdateStatus(string text, int pct)
     {
         _statusLabel.Text = text;
@@ -131,7 +181,24 @@ internal sealed class InstallerForm : Form
 
     async void OnActionClick(object? sender, EventArgs e)
     {
-        if (_done) { Close(); return; }
+        switch (_phase)
+        {
+            case Phase.Configure:
+                SaveConfigIfProvided();
+                _phase = Phase.Done;
+                _actionButton.Text = "Close";
+                UpdateStatus("All set. Launch HARK from Start / Search and press Ctrl+Win+H to caption.", 100);
+                return;
+            case Phase.Done:
+                Close();
+                return;
+        }
+
+        await RunInstallAsync();
+    }
+
+    async Task RunInstallAsync()
+    {
         _actionButton.Enabled = false;
 
         // Step 1: trust the signing cert (elevated — one UAC prompt), unless already trusted.
@@ -205,22 +272,61 @@ internal sealed class InstallerForm : Form
                 if (proc.ExitCode != 0 && !string.IsNullOrWhiteSpace(stderr))
                     throw new InvalidOperationException(stderr.Trim());
             }
-            UpdateStatus("HARK installed. Find it in Start / Search. Set your Azure config (see README) to caption.", 100);
         }
         catch
         {
             UpdateStatus("Opening App Installer...", 85);
             Process.Start(new ProcessStartInfo(msixPath) { UseShellExecute = true });
-            UpdateStatus("Follow the App Installer prompts to complete setup.", 100);
+            UpdateStatus("Follow the App Installer prompts, then re-run this setup to configure Azure.", 100);
+            _actionButton.Text = "Close";
+            _phase = Phase.Done;
+            _actionButton.Enabled = true;
+            return;
         }
         finally
         {
             try { File.Delete(msixPath); } catch { /* temp cleanup is best-effort */ }
         }
 
-        _done = true;
-        _actionButton.Text = "Close";
+        // Step 4: configure — skip if the user already has a config.json.
         _actionButton.Enabled = true;
+        if (File.Exists(ConfigPath))
+        {
+            _phase = Phase.Done;
+            _actionButton.Text = "Close";
+            UpdateStatus("HARK installed and already configured. Find it in Start / Search.", 100);
+            return;
+        }
+
+        _phase = Phase.Configure;
+        _configPanel.Visible = true;
+        _actionButton.Text = "Save & Finish";
+        UpdateStatus("HARK installed. Enter your Azure resource locations (or leave blank to set up later).", 90);
+    }
+
+    /// <summary>Writes config.json when a Speech region + resource id are supplied; a blank pair skips it.</summary>
+    void SaveConfigIfProvided()
+    {
+        var region = _regionBox.Text.Trim();
+        var resource = _resourceBox.Text.Trim();
+        if (region.Length == 0 || resource.Length == 0) return;   // treat blank as "skip, set up later"
+
+        var map = new Dictionary<string, string>
+        {
+            ["HARK_SPEECH_REGION"] = region,
+            ["HARK_SPEECH_RESOURCE_ID"] = resource,
+        };
+        var endpoint = _aoaiEndpointBox.Text.Trim();
+        var deployment = _aoaiDeploymentBox.Text.Trim();
+        if (endpoint.Length > 0) map["HARK_AOAI_ENDPOINT"] = endpoint;
+        if (deployment.Length > 0) map["HARK_AOAI_DEPLOYMENT"] = deployment;
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+            File.WriteAllText(ConfigPath, JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { /* leave config unwritten; the app shows a friendly note and the README covers it */ }
     }
 
     /// <summary>Writes the embedded MSIX to a temp file and returns its path.</summary>
