@@ -339,6 +339,15 @@ public partial class App : Application
             var segments = await refiner.RefineAsync(pcm, maxSpeakers);
             if (segments.Count == 0) return;
 
+            // Recognition-mode oracle (Stage 0): a text-only semantic pass re-labels the acoustic
+            // segments (merging over-splits, fixing cross-ups) with the text left immutable. Optional —
+            // reuses the recap AOAI config and is skipped (leaving the acoustic result) when unconfigured.
+            if (!string.IsNullOrWhiteSpace(_aoaiEndpoint) && !string.IsNullOrWhiteSpace(_aoaiDeployment))
+            {
+                var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+                segments = await semantic.RefineAsync(segments);
+            }
+
             Dispatcher.BeginInvoke(() =>
             {
                 _overlay?.ClearSpeakers();
