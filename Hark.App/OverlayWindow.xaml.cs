@@ -80,7 +80,7 @@ public partial class OverlayWindow : Window
     private bool _running;
 
     /// <summary>Whether the mic toggle is on (the local microphone is mixed into the captions).</summary>
-    private bool _micOn = true;
+    private bool _micOn;
 
     /// <summary>Latest audio level target (0..1), published by the audio callback, eased in the render loop.</summary>
     private double _audioTarget;

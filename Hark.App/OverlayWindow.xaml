@@ -369,12 +369,12 @@
                            FontSize="11"
                            Foreground="#5F6368" VerticalAlignment="Center" />
 
-                <!-- Mic toggle (headset): mixes the local microphone — your own voice — into the
-                     captioned stream. Lit = on. State/glyph set in code-behind. -->
+                <!-- Mic toggle: mixes the local microphone — your own voice — into the captioned
+                     stream. Lit = on. State/glyph set in code-behind. -->
                 <Button Grid.Column="3" x:Name="MicButton"
                         Width="22" Height="22" Margin="10,0,0,0" Padding="0"
                         FontFamily="Segoe MDL2 Assets" FontSize="13"
-                        Content="&#xE7F5;"
+                        Content="&#xE720;"
                         Foreground="#9AA0A6" Background="Transparent"
                         BorderThickness="0" Cursor="Hand"
                         ToolTip="Mix in your microphone (your voice)">

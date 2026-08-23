@@ -50,11 +50,12 @@ public partial class App : Application
     private string? _aoaiDeployment;
 
     /// <summary>
-    /// Whether to capture and mix the local microphone into the transcribed stream. Defaults on so a
-    /// headset user's own voice is captioned; set <c>HARK_MIX_MIC=0</c> to disable (e.g. on speakers,
-    /// where the mic would re-capture playback and double the transcript).
+    /// Whether to capture and mix the local microphone into the transcribed stream. Defaults off
+    /// (loopback-only, like native Live Captions); set <c>HARK_MIX_MIC=1</c> to enable, or toggle the
+    /// headset button live. Kept off by default because on speakers the mic re-captures playback and
+    /// doubles the transcript — headset users opt in.
     /// </summary>
-    private bool _mixMic = true;
+    private bool _mixMic;
 
     /// <summary>Guards <see cref="ToggleAsync(CancellationToken)"/> against re-entrancy while starting or stopping.</summary>
     private bool _busy;
@@ -105,10 +106,10 @@ public partial class App : Application
         _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
         _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
 
-        // Mic mixing is on by default; only an explicit 0/false opts out.
+        // Mic mixing is off by default; only an explicit 1/true opts in.
         var mixMic = config["HARK_MIX_MIC"];
-        _mixMic = !(string.Equals(mixMic, "0", StringComparison.OrdinalIgnoreCase)
-                 || string.Equals(mixMic, "false", StringComparison.OrdinalIgnoreCase));
+        _mixMic = string.Equals(mixMic, "1", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(mixMic, "true", StringComparison.OrdinalIgnoreCase);
 
         // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();

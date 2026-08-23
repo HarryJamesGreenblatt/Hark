@@ -36,8 +36,8 @@ _Last updated: 2026-08-22 (end of Episode 11)._
 - **Pipeline engines (`Hark.Core`):**
   - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
     `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
-    stream in the float domain (loopback is the clock; mic is queued ~1 s) — **default off** (CLI
-    unchanged); the app defaults it **on**, `HARK_MIX_MIC=0` opts out (speakers/echo case).
+    stream in the float domain (mic clocks the stream when active; loopback is queued ~1 s) — **default off** (CLI
+    unchanged); the app defaults it **off** too, `HARK_MIX_MIC=1` or the overlay mic toggle opts in (headset case).
   - Non-diarized: `AzureSpeechTranscriber` with **continuous language identification** (mixed
     languages) when no language is pinned.
   - Diarized: `ConversationDiarizingTranscriber` (`ConversationTranscriber`, pinned language,
@@ -91,7 +91,7 @@ _Last updated: 2026-08-22 (end of Episode 11)._
 | 8 | 2026-08-20 | [Infrastructure as Code + Provisioning Pipeline](./EP08-infra-as-code-and-provisioning-pipeline.md) | Codified the Azure stack as Bicep + a keyless GitHub Actions pipeline, with auto-unique naming so it stands up on any subscription in one run. |
 | 9 | 2026-08-22 | [Structured Recap + Diarization & Engine-Boundary Design](./EP09-structured-recap-and-diarization-engine-design.md) | Shipped a nested Teams-Recap-style structured summary (expandable per-topic notes + follow-up tasks); designed the second-pass diarization fix (Fast Transcription) and the HARK engine boundary (typed `HarkEvent` stream + reserved grounding/refinement seams). |
 | 10 | 2026-08-22 | [Conversation/Speakers, Offline Diarization Second Pass & Responsive Overlay](./EP10-conversation-speakers-diarization-secondpass-responsive-overlay.md) | Recap picker → Conversation/Speakers (both structured+expandable); offline Fast Transcription second pass re-diarizes buffered audio on Stop; overlay height fits content with collapsible sections + a LATEST/TRANSCRIPT captions scope switch. |
-| 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the loopback stream (float-domain sum, loopback-clocked, ~1 s mic queue); on by default on the desktop, `HARK_MIX_MIC=0` opts out — a headset user's own voice is now captioned. |
+| 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the transcribed stream (float-domain sum, mic-clocked with a ~1 s loopback queue); a live overlay mic toggle, off by default, `HARK_MIX_MIC=1` opts in — a headset user's own voice is now captioned. |
 
 ---
 
@@ -142,12 +142,12 @@ These are unresolved at the end of the latest episode — natural starting point
 - **Cost hygiene:** the Azure OpenAI resource is billable; delete/purge when experimentation winds
   down (`az cognitiveservices account delete` + `purge`).
 - **Mic mixing — shipped (Episode 11):** `Hear` now also captures the local mic and mixes it into the
-  loopback stream (`MicCaptureService` + float-domain sum, loopback-clocked, ~1 s drop-oldest queue),
-  on by default on the desktop (`HARK_MIX_MIC=0` to opt out). Remaining: the total-silence loopback
-  stall queues mic audio until playback resumes (fine for meetings; a timer-pulled mixer would remove
-  it); **speakers** re-capture playback → echo/double transcript unless mic is toggled off (an AEC pass
-  would fix it properly); a per-source "this is me" diarization hint could label the local speaker
-  deterministically.
+  transcribed stream (`MicCaptureService` + float-domain sum, mic-clocked when active with a ~1 s
+  drop-oldest loopback queue), off by default with a live overlay mic toggle (`HARK_MIX_MIC=1` opts
+  in). The mic-as-clock design fixed the total-silence stall (loopback fires no callbacks with nothing
+  playing). Remaining: **speakers** re-capture playback → echo/double transcript unless mic is left off
+  (an AEC pass would fix it properly); a per-source "this is me" diarization hint could label the local
+  speaker deterministically.
 - **Tests:** no coverage yet for `PcmConverter`, the `HarkSession` lifecycle, or `ConversationStore`.
 - **Overlay polish (optional):** drag-from-anywhere (except while selecting); click-through toggle;
   persistent settings (position, opacity, font size) vs env vars.

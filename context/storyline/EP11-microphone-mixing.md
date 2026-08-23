@@ -5,8 +5,8 @@
 > stream, so a headset user's own voice is captioned alongside the far side — closing the "with a
 > headset, nothing I say is captured" gap. When the mic is on it **clocks** the mixed stream (a capture
 > endpoint runs continuously; loopback goes silent with no playback) and loopback is queued and mixed
-> in the float domain; a **headset toggle** in the overlay flips it live; on by default, `HARK_MIX_MIC=0`
-> opts out.
+> in the float domain; a **mic toggle** in the overlay flips it live; off by default (loopback-only),
+> `HARK_MIX_MIC=1` or the button opts in.
 
 ## 🎯 Intent
 Until now `Hear` was **loopback only** (system playback / the far side). On a headset the far side
@@ -47,10 +47,11 @@ because it only *visualizes*. HARK feeds a single PCM stream to Azure Speech, so
   the next start), so the overlay's headset button flips mixing without a restart.
 
 **Desktop wiring (`Hark.App/App.xaml.cs` + overlay)**
-- Mic mixing is **on by default** (`mixMicrophone: _mixMic`); `HARK_MIX_MIC=0`/`false` (via the same
-  env → `%APPDATA%\Hark\config.json` → user-secrets precedence) disables it for the speaker case.
-- A **headset toggle** in the overlay's top bar (lit = on, dim = off) calls `SetMicEnabled` live and
-  seeds its initial state from the configured default.
+- Mic mixing is **off by default** (`mixMicrophone: _mixMic`, loopback-only like native Live Captions);
+  `HARK_MIX_MIC=1`/`true` (via the same env → `%APPDATA%\Hark\config.json` → user-secrets precedence)
+  or the overlay toggle opts in.
+- A **mic toggle** in the overlay's top bar (Segoe MDL2 microphone glyph, lit = on, dim = off) calls
+  `SetMicEnabled` live and seeds its initial state from the configured default.
 
 ## 🧠 Decisions
 - **Mix real audio, not spectra — unlike WavBall** — **because** HARK transcribes; the recognizer needs
@@ -61,9 +62,9 @@ because it only *visualizes*. HARK feeds a single PCM stream to Azure Speech, so
   nothing is playing. Clocking off the mic guarantees the user's own voice is always emitted; loopback
   (which only matters when the far side is actually playing) is mixed in from a small queue. When the
   mic is off, loopback clocks directly as before.
-- **On by default, `HARK_MIX_MIC=0` to opt out** — **because** the headset scenario (the actual ask)
-  has no acoustic echo, so mixing is a pure win; on **speakers** the mic re-captures playback and
-  would double the transcript, so users there need one flag to turn it off.
+- **Off by default, `HARK_MIX_MIC=1` or the toggle to opt in** — **because** on **speakers** the mic
+  re-captures playback and doubles the transcript, so the safe default is loopback-only (matching
+  native Live Captions); the headset user who actually wants their own voice flips one button.
 - **Missing mic is non-fatal** — **because** HARK's premise is loopback-first; a machine with no input
   device (or a denied mic) must still caption system audio.
 
