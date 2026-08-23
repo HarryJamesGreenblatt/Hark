@@ -31,6 +31,9 @@ public sealed class PcmConverter
     /// <summary>Scratch buffer for reading resampled float samples before 16-bit quantization.</summary>
     private readonly float[] _scratch = new float[TargetSampleRate]; // up to ~1s of mono audio
 
+    /// <summary>Reused accumulator for one call's worth of resampled float output (avoids per-call growth churn).</summary>
+    private readonly List<float> _floatAccum = new(TargetSampleRate);
+
     #endregion
 
     #region Constructor(s)
@@ -73,26 +76,47 @@ public sealed class PcmConverter
     /// </summary>
     /// <param name="input">The raw capture buffer.</param>
     /// <param name="bytes">The number of valid bytes in <paramref name="input"/>.</param>
-    public byte[] Convert(byte[] input, int bytes)
+    public byte[] Convert(byte[] input, int bytes) => QuantizeToPcm16(ConvertToFloat(input, bytes));
+
+    /// <summary>
+    /// Feeds one capture buffer through the chain and returns the resulting 16 kHz mono float samples
+    /// (still in [-1, 1], not yet quantized). Exposed so multiple sources can be summed before
+    /// quantization — mixing in the float domain avoids double-clipping. May return an empty array
+    /// when not enough input has accumulated to produce output.
+    /// </summary>
+    /// <param name="input">The raw capture buffer.</param>
+    /// <param name="bytes">The number of valid bytes in <paramref name="input"/>.</param>
+    public float[] ConvertToFloat(byte[] input, int bytes)
     {
         _buffer.AddSamples(input, 0, bytes);
 
-        using var pcm = new MemoryStream();
+        _floatAccum.Clear();
         int read;
         while ((read = _resampled.Read(_scratch, 0, _scratch.Length)) > 0)
-        {
             for (int i = 0; i < read; i++)
-            {
-                // Clamp to [-1, 1] then scale to signed 16-bit, little-endian.
-                float f = _scratch[i];
-                f = f > 1f ? 1f : f < -1f ? -1f : f;
-                short s = (short)(f * short.MaxValue);
-                pcm.WriteByte((byte)(s & 0xFF));
-                pcm.WriteByte((byte)((s >> 8) & 0xFF));
-            }
+                _floatAccum.Add(_scratch[i]);
+
+        return _floatAccum.ToArray();
+    }
+
+    /// <summary>
+    /// Quantizes 16 kHz mono float samples (in [-1, 1]) to signed 16-bit little-endian PCM bytes,
+    /// clamping out-of-range values that summing multiple sources can produce.
+    /// </summary>
+    /// <param name="samples">The float samples to quantize.</param>
+    public static byte[] QuantizeToPcm16(ReadOnlySpan<float> samples)
+    {
+        var pcm = new byte[samples.Length * 2];
+        for (int i = 0; i < samples.Length; i++)
+        {
+            float f = samples[i];
+            f = f > 1f ? 1f : f < -1f ? -1f : f;
+            short s = (short)(f * short.MaxValue);
+            pcm[i * 2] = (byte)(s & 0xFF);
+            pcm[i * 2 + 1] = (byte)((s >> 8) & 0xFF);
         }
 
-        return pcm.ToArray();
+        return pcm;
     }
 
     #endregion

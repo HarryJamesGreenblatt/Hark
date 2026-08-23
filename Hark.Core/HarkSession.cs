@@ -40,6 +40,12 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Whether to retain the converted PCM for an offline refinement pass.</summary>
     private readonly bool _captureAudio;
 
+    /// <summary>
+    /// Whether the local microphone is currently mixed into the transcribed stream. Seeded from the
+    /// constructor and toggleable live via <see cref="SetMicEnabled"/>.
+    /// </summary>
+    private bool _micEnabled;
+
     /// <summary>Cap on buffered audio (~20 min at 16 kHz mono 16-bit) to bound memory.</summary>
     private const long MaxBufferedAudioBytes = 16_000L * 2 * 60 * 20;
 
@@ -52,8 +58,28 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>The active WASAPI loopback capture, or <see langword="null"/> when not running.</summary>
     private LoopbackCaptureService? _capture;
 
-    /// <summary>Converts captured audio to 16 kHz mono 16-bit PCM, or <see langword="null"/> when not running.</summary>
+    /// <summary>Converts captured loopback audio to 16 kHz mono float/PCM, or <see langword="null"/> when not running.</summary>
     private PcmConverter? _converter;
+
+    /// <summary>The active microphone capture, or <see langword="null"/> when mic mixing is off or unavailable.</summary>
+    private MicCaptureService? _micCapture;
+
+    /// <summary>Converts captured mic audio to 16 kHz mono float, or <see langword="null"/> when mic mixing is off.</summary>
+    private PcmConverter? _micConverter;
+
+    /// <summary>Guards <see cref="_loopbackSamples"/> against the concurrent mic/loopback capture threads.</summary>
+    private readonly object _micLock = new();
+
+    /// <summary>
+    /// 16 kHz mono float loopback (far-side/system) samples awaiting mixing, drained by the mic
+    /// callback. When the mic is active it clocks the mixed stream — a capture endpoint delivers
+    /// continuous audio, whereas WASAPI loopback goes silent (no callbacks) when nothing is playing —
+    /// so this queue absorbs the timing jitter between the two capture threads.
+    /// </summary>
+    private readonly Queue<float> _loopbackSamples = new();
+
+    /// <summary>Cap on queued loopback samples (~1s) so the far side drifting ahead of the mic can't grow unbounded.</summary>
+    private const int LoopbackQueueCap = PcmConverter.TargetSampleRate;
 
     /// <summary>Whether a capture/recognition session is active.</summary>
     private bool _running;
@@ -70,6 +96,9 @@ public sealed class HarkSession : IAsyncDisposable
 
     /// <summary>True while a capture/recognition session is active.</summary>
     public bool IsRunning => _running;
+
+    /// <summary>Whether the local microphone is currently being mixed into the transcribed stream.</summary>
+    public bool MicEnabled => _micEnabled;
 
     #endregion
 
@@ -109,6 +138,12 @@ public sealed class HarkSession : IAsyncDisposable
     /// When true, uses a diarizing engine that attributes each segment to an anonymous speaker
     /// (<see cref="TranscriptSegment.SpeakerId"/>). Diarization pins a single language.
     /// </param>
+    /// <param name="captureAudio">When true, retains the converted PCM for an offline refinement pass.</param>
+    /// <param name="mixMicrophone">
+    /// When true, also captures the local microphone and mixes it into the transcribed stream, so the
+    /// user's own voice is heard alongside system/far-side playback (essential when wearing a headset).
+    /// Silently falls back to loopback-only if no capture device is present.
+    /// </param>
     public HarkSession(
         string region,
         string resourceId,
@@ -116,7 +151,8 @@ public sealed class HarkSession : IAsyncDisposable
         TokenCredential? credential = null,
         ITranscriptSink? sink = null,
         bool diarize = false,
-        bool captureAudio = false)
+        bool captureAudio = false,
+        bool mixMicrophone = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(region);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
@@ -128,6 +164,7 @@ public sealed class HarkSession : IAsyncDisposable
         _sink = sink;
         _diarize = diarize;
         _captureAudio = captureAudio;
+        _micEnabled = mixMicrophone;
     }
 
     #endregion
@@ -166,10 +203,76 @@ public sealed class HarkSession : IAsyncDisposable
         _converter = new PcmConverter(format);
         _capture.DataAvailable += OnDataAvailable;
 
+        // Hear (self) — optionally add the local microphone, mixed into the same stream. Loopback
+        // remains the clock; mic buffers are queued and mixed in on each loopback callback.
+        if (_micEnabled)
+            TryStartMic();
+
         // Retain the converted audio for an optional offline refinement pass after stopping.
         _audioBuffer = _captureAudio ? new MemoryStream() : null;
 
         _running = true;
+    }
+
+    /// <summary>
+    /// Turns microphone mixing on or off while running (and remembers the choice for the next start).
+    /// Enabling opens the default capture device and mixes it into the transcribed stream; disabling
+    /// stops and releases it. A no-op if already in the requested state.
+    /// </summary>
+    /// <param name="enabled">Whether the microphone should be mixed in.</param>
+    public void SetMicEnabled(bool enabled)
+    {
+        _micEnabled = enabled;
+        if (!_running) return;
+
+        if (enabled)
+        {
+            if (_micCapture is null) TryStartMic();
+        }
+        else
+        {
+            StopMic();
+        }
+    }
+
+    /// <summary>
+    /// Opens the default microphone and wires it into the mix. Non-fatal on failure (no device, or it
+    /// won't open): the session carries on with system audio only and reports the reason via
+    /// <see cref="Error"/>.
+    /// </summary>
+    private void TryStartMic()
+    {
+        try
+        {
+            _micCapture = new MicCaptureService();
+            _micCapture.Start();
+            var micFormat = _micCapture.WaveFormat
+                ?? throw new InvalidOperationException("Microphone did not expose a wave format after starting.");
+            _micConverter = new PcmConverter(micFormat);
+            _micCapture.DataAvailable += OnMicData;
+        }
+        catch (Exception ex)
+        {
+            // No mic (or it failed to open) is non-fatal: carry on with system audio only.
+            Error?.Invoke($"Microphone unavailable; continuing with system audio only. {ex.Message}");
+            _micCapture?.Dispose();
+            _micCapture = null;
+            _micConverter = null;
+        }
+    }
+
+    /// <summary>Stops and releases the microphone capture and drains any queued loopback samples.</summary>
+    private void StopMic()
+    {
+        if (_micCapture is not null)
+        {
+            _micCapture.DataAvailable -= OnMicData;
+            _micCapture.Stop();
+            _micCapture.Dispose();
+            _micCapture = null;
+        }
+        _micConverter = null;
+        lock (_micLock) _loopbackSamples.Clear();
     }
 
     /// <summary>Stops capture and recognition, flushing pending results. Safe to call when not running.</summary>
@@ -178,6 +281,8 @@ public sealed class HarkSession : IAsyncDisposable
     {
         if (!_running) return;
         _running = false;
+
+        StopMic();
 
         if (_capture is not null)
         {
@@ -200,21 +305,75 @@ public sealed class HarkSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Feeds one converted PCM buffer to the transcriber and reports the audio level.</summary>
-    /// <param name="buffer">The converted PCM buffer.</param>
+    /// <summary>
+    /// Handles one loopback (far-side/system) buffer. When the mic is active it clocks the mixed
+    /// stream, so loopback is merely queued here for the mic callback to mix in; otherwise loopback
+    /// is the clock and is emitted directly.
+    /// </summary>
+    /// <param name="buffer">The raw loopback capture buffer.</param>
     /// <param name="bytes">The number of valid bytes in <paramref name="buffer"/>.</param>
     private void OnDataAvailable(byte[] buffer, int bytes)
     {
-        var pcm = _converter?.Convert(buffer, bytes);
-        if (pcm is { Length: > 0 })
-        {
-            _transcriber?.Write(pcm, pcm.Length);
-            ReportAudioLevel(pcm);
+        var samples = _converter?.ConvertToFloat(buffer, bytes);
+        if (samples is not { Length: > 0 }) return;
 
-            // Buffer for the offline refinement pass, capped to bound memory on long sessions.
-            if (_audioBuffer is not null && _audioBuffer.Length < MaxBufferedAudioBytes)
-                _audioBuffer.Write(pcm, 0, pcm.Length);
+        // With the mic active, the mic clocks the stream (a capture endpoint is continuous, whereas
+        // loopback stops firing when nothing is playing). Queue loopback for the mic callback to mix.
+        if (_micCapture is not null)
+        {
+            lock (_micLock)
+            {
+                foreach (var s in samples)
+                    _loopbackSamples.Enqueue(s);
+                while (_loopbackSamples.Count > LoopbackQueueCap)
+                    _loopbackSamples.Dequeue();
+            }
+            return;
         }
+
+        Emit(samples);
+    }
+
+    /// <summary>
+    /// Handles one microphone buffer, mixing in any queued loopback (far-side) audio and emitting the
+    /// result. The mic clocks the combined stream so the user's own voice is never dropped, even when
+    /// the system is silent (which suppresses loopback callbacks entirely).
+    /// </summary>
+    /// <param name="buffer">The raw mic capture buffer.</param>
+    /// <param name="bytes">The number of valid bytes in <paramref name="buffer"/>.</param>
+    private void OnMicData(byte[] buffer, int bytes)
+    {
+        var samples = _micConverter?.ConvertToFloat(buffer, bytes);
+        if (samples is not { Length: > 0 }) return;
+
+        // Mix in queued loopback in the float domain (a single clamp at quantization avoids
+        // double-clipping); when nothing is playing the queue is empty and this is a no-op.
+        lock (_micLock)
+        {
+            int n = Math.Min(samples.Length, _loopbackSamples.Count);
+            for (int i = 0; i < n; i++)
+                samples[i] += _loopbackSamples.Dequeue();
+        }
+
+        Emit(samples);
+    }
+
+    /// <summary>
+    /// Quantizes mixed float samples to 16-bit PCM, writes them to the transcriber, drives the level
+    /// meter, and buffers them for the optional offline refinement pass.
+    /// </summary>
+    /// <param name="samples">The mixed 16 kHz mono float samples to emit.</param>
+    private void Emit(float[] samples)
+    {
+        var pcm = PcmConverter.QuantizeToPcm16(samples);
+        if (pcm.Length == 0) return;
+
+        _transcriber?.Write(pcm, pcm.Length);
+        ReportAudioLevel(pcm);
+
+        // Buffer for the offline refinement pass, capped to bound memory on long sessions.
+        if (_audioBuffer is not null && _audioBuffer.Length < MaxBufferedAudioBytes)
+            _audioBuffer.Write(pcm, 0, pcm.Length);
     }
 
     /// <summary>

@@ -20,8 +20,8 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 
 | Stage | Type | Responsibility |
 |---|---|---|
-| **Hear** | `Capture/LoopbackCaptureService` | Taps the default render endpoint via WASAPI loopback |
-| **Adapt** | `Audio/PcmConverter` | Downmix → resample to 16 kHz mono → 16-bit PCM |
+| **Hear** | `Capture/LoopbackCaptureService` (+ `MicCaptureService`) | Taps the default render endpoint via WASAPI loopback; the desktop app also captures the local mic and mixes it in, so a headset user's own voice is captioned too |
+| **Adapt** | `Audio/PcmConverter` | Downmix → resample to 16 kHz mono → 16-bit PCM (loopback + mic mixed in the float domain) |
 | **Recognize** | `Transcription/AzureSpeechTranscriber` | Streams PCM to Azure Speech; raises `Interim`/`Final` |
 | **Keep** | `Output/*Sink` | Fans results to stdout, rolling text, JSON Lines, SRT |
 
@@ -37,6 +37,9 @@ It exists to replace accessibility-only tooling (Live Captions, Voice Typing) wi
 - _(Optional, desktop only)_ An **Azure OpenAI** resource with a **chat model deployment** for AI
   recaps, and the **Cognitive Services OpenAI User** role on it. Without this, captions and speaker
   pages work fully; only the **SUMMARY** view is disabled (it shows a "not configured" note).
+- _(Desktop only)_ **Microphone mixing** is on by default so your own voice is captioned alongside
+  system/far-side audio (headset scenario). On speakers, where the mic would re-capture playback and
+  double the transcript, disable it with `HARK_MIX_MIC=0`.
 
 ## Configuration
 

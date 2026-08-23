@@ -49,6 +49,13 @@ public partial class App : Application
     /// <summary>Azure OpenAI deployment name used for recap summarization, sourced from user-secrets.</summary>
     private string? _aoaiDeployment;
 
+    /// <summary>
+    /// Whether to capture and mix the local microphone into the transcribed stream. Defaults on so a
+    /// headset user's own voice is captioned; set <c>HARK_MIX_MIC=0</c> to disable (e.g. on speakers,
+    /// where the mic would re-capture playback and double the transcript).
+    /// </summary>
+    private bool _mixMic = true;
+
     /// <summary>Guards <see cref="ToggleAsync(CancellationToken)"/> against re-entrancy while starting or stopping.</summary>
     private bool _busy;
 
@@ -98,12 +105,19 @@ public partial class App : Application
         _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
         _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
 
+        // Mic mixing is on by default; only an explicit 0/false opts out.
+        var mixMic = config["HARK_MIX_MIC"];
+        _mixMic = !(string.Equals(mixMic, "0", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(mixMic, "false", StringComparison.OrdinalIgnoreCase));
+
         // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();
         _overlay.SetRunning(false);
         _overlay.CloseRequested += () => Shutdown();
         _overlay.SpeakerSelected += OpenSpeakerWindow;
         _overlay.SummaryRequested += OnSummaryRequested;
+        _overlay.MicToggleRequested += OnMicToggleRequested;
+        _overlay.SetMicEnabled(_mixMic);   // reflect the configured default in the toggle
 
         // New speakers discovered by diarization surface as pills in the CONVERSATION index.
         _store.SpeakerAdded += speaker =>
@@ -204,7 +218,8 @@ public partial class App : Application
                     credential: new AzureCliCredential(),
                     sink: _overlay is null ? null : new OverlaySink(_overlay, _store),
                     diarize: true,
-                    captureAudio: true);
+                    captureAudio: true,
+                    mixMicrophone: _mixMic);
                 _session.Error += OnSessionError;
                 _session.AudioLevel += OnAudioLevel;
 
@@ -226,8 +241,7 @@ public partial class App : Application
 
     /// <summary>Surfaces a recognizer error via a tray balloon tip and the overlay status line.</summary>
     /// <param name="message">The error message reported by the recognizer.</param>
-    private void OnSessionError(string message) =>
-        Dispatcher.BeginInvoke(() =>
+    private void OnSessionError(string message) =>        Dispatcher.BeginInvoke(() =>
         {
             _tray?.ShowBalloonTip(4000, "HARK — recognizer", message, ToolTipIcon.Warning);
             _overlay?.ShowStatus($"Recognizer: {message}");
@@ -237,6 +251,17 @@ public partial class App : Application
     /// <param name="level">The current normalized audio level.</param>
     private void OnAudioLevel(double level) =>
         Dispatcher.BeginInvoke(() => _overlay?.SetAudioLevel(level));
+
+    /// <summary>
+    /// Handles the overlay's mic toggle: remembers the choice (so the next session honors it) and,
+    /// when a session is live, starts or stops microphone mixing immediately.
+    /// </summary>
+    /// <param name="enabled">Whether the microphone should be mixed into the captions.</param>
+    private void OnMicToggleRequested(bool enabled)
+    {
+        _mixMic = enabled;
+        _session?.SetMicEnabled(enabled);
+    }
 
     /// <summary>
     /// After capture stops, re-diarizes the buffered session audio in one offline pass (Azure Fast

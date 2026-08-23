@@ -14,17 +14,19 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-22 (end of Episode 10)._
+_Last updated: 2026-08-22 (end of Episode 11)._
 
 - **Status:** CLI MVP + desktop overlay working, published to the public personal repo
   `github.com/HarryJamesGreenblatt/Hark`. The overlay is a **multi-speaker** experience:
   reliable multi-language captions, real-time speaker diarization, per-speaker pages, and an
-  AI recap with a CAPTIONS/SUMMARY mode switch. The recap picker is now **Conversation** (topic-
-  pivoted) / **Speakers** (people-pivoted) — both **structured, expandable** views (JSON-schema output).
-  On Stop, an **offline Fast Transcription second pass** re-diarizes the buffered audio globally and
-  rebuilds the conversation, fixing streaming diarization's host/guest crossups. The bar docks as a
-  **full-width top bar** whose **height fits its content** (collapsible recap sections; a captions
-  **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive HAL-9000 status eye**.
+  AI recap with a CAPTIONS/SUMMARY mode switch. `Hear` now captures **loopback + the local mic**
+  (mixed), so a headset user's own voice is captioned alongside the far side. The recap picker is now
+  **Conversation** (topic-pivoted) / **Speakers** (people-pivoted) — both **structured, expandable**
+  views (JSON-schema output). On Stop, an **offline Fast Transcription second pass** re-diarizes the
+  buffered audio globally and rebuilds the conversation, fixing streaming diarization's host/guest
+  crossups. The bar docks as a **full-width top bar** whose **height fits its content** (collapsible
+  recap sections; a captions **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive HAL-9000
+  status eye**.
 - **Branch:** `main` · working tree clean.
 - **Apps:** `Hark.Cli` (terminal) and `Hark.App` (WPF tray overlay) drive the shared
   `Hark.Core/HarkSession`. `Hark.App`: starts hidden; `Ctrl+Win+H` toggles the bar; header has a
@@ -32,6 +34,10 @@ _Last updated: 2026-08-22 (end of Episode 10)._
   `Guest-N` speakers, each with a clickable pill that opens a dedicated page; a segmented
   **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap.
 - **Pipeline engines (`Hark.Core`):**
+  - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
+    `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
+    stream in the float domain (loopback is the clock; mic is queued ~1 s) — **default off** (CLI
+    unchanged); the app defaults it **on**, `HARK_MIX_MIC=0` opts out (speakers/echo case).
   - Non-diarized: `AzureSpeechTranscriber` with **continuous language identification** (mixed
     languages) when no language is pinned.
   - Diarized: `ConversationDiarizingTranscriber` (`ConversationTranscriber`, pinned language,
@@ -85,6 +91,7 @@ _Last updated: 2026-08-22 (end of Episode 10)._
 | 8 | 2026-08-20 | [Infrastructure as Code + Provisioning Pipeline](./EP08-infra-as-code-and-provisioning-pipeline.md) | Codified the Azure stack as Bicep + a keyless GitHub Actions pipeline, with auto-unique naming so it stands up on any subscription in one run. |
 | 9 | 2026-08-22 | [Structured Recap + Diarization & Engine-Boundary Design](./EP09-structured-recap-and-diarization-engine-design.md) | Shipped a nested Teams-Recap-style structured summary (expandable per-topic notes + follow-up tasks); designed the second-pass diarization fix (Fast Transcription) and the HARK engine boundary (typed `HarkEvent` stream + reserved grounding/refinement seams). |
 | 10 | 2026-08-22 | [Conversation/Speakers, Offline Diarization Second Pass & Responsive Overlay](./EP10-conversation-speakers-diarization-secondpass-responsive-overlay.md) | Recap picker → Conversation/Speakers (both structured+expandable); offline Fast Transcription second pass re-diarizes buffered audio on Stop; overlay height fits content with collapsible sections + a LATEST/TRANSCRIPT captions scope switch. |
+| 11 | 2026-08-22 | [Microphone Mixing (Hear Yourself Too)](./EP11-microphone-mixing.md) | Added `MicCaptureService`; `HarkSession` mixes the local mic into the loopback stream (float-domain sum, loopback-clocked, ~1 s mic queue); on by default on the desktop, `HARK_MIX_MIC=0` opts out — a headset user's own voice is now captioned. |
 
 ---
 
@@ -134,6 +141,13 @@ These are unresolved at the end of the latest episode — natural starting point
   targets; consider a rename/merge affordance in the interim.
 - **Cost hygiene:** the Azure OpenAI resource is billable; delete/purge when experimentation winds
   down (`az cognitiveservices account delete` + `purge`).
+- **Mic mixing — shipped (Episode 11):** `Hear` now also captures the local mic and mixes it into the
+  loopback stream (`MicCaptureService` + float-domain sum, loopback-clocked, ~1 s drop-oldest queue),
+  on by default on the desktop (`HARK_MIX_MIC=0` to opt out). Remaining: the total-silence loopback
+  stall queues mic audio until playback resumes (fine for meetings; a timer-pulled mixer would remove
+  it); **speakers** re-capture playback → echo/double transcript unless mic is toggled off (an AEC pass
+  would fix it properly); a per-source "this is me" diarization hint could label the local speaker
+  deterministically.
 - **Tests:** no coverage yet for `PcmConverter`, the `HarkSession` lifecycle, or `ConversationStore`.
 - **Overlay polish (optional):** drag-from-anywhere (except while selecting); click-through toggle;
   persistent settings (position, opacity, font size) vs env vars.

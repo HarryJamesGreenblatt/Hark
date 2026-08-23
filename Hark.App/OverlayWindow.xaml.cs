@@ -58,6 +58,12 @@ public partial class OverlayWindow : Window
     /// <summary>Foreground color for the idle (unselected) captions/summary mode button.</summary>
     private static readonly Brush ModeIdleFg = new SolidColorBrush(Color.FromRgb(0x9A, 0xA0, 0xA6));
 
+    /// <summary>Glyph color for the mic toggle when the microphone is on (mixed in).</summary>
+    private static readonly Brush MicOnBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x7D, 0xDD));
+
+    /// <summary>Glyph color for the mic toggle when the microphone is off.</summary>
+    private static readonly Brush MicOffBrush = new SolidColorBrush(Color.FromRgb(0x5F, 0x63, 0x68));
+
     /// <summary>Which content (captions or summary) is currently displayed.</summary>
     private ViewMode _mode = ViewMode.Captions;
 
@@ -72,6 +78,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Whether capture is currently running, driving the HAL eye and hint text.</summary>
     private bool _running;
+
+    /// <summary>Whether the mic toggle is on (the local microphone is mixed into the captions).</summary>
+    private bool _micOn = true;
 
     /// <summary>Latest audio level target (0..1), published by the audio callback, eased in the render loop.</summary>
     private double _audioTarget;
@@ -105,6 +114,9 @@ public partial class OverlayWindow : Window
     /// </summary>
     public event Action<SummaryStyle>? SummaryRequested;
 
+    /// <summary>Raised when the user toggles the mic; the argument is the requested on/off state.</summary>
+    public event Action<bool>? MicToggleRequested;
+
     #endregion
 
     #region Constructor(s)
@@ -121,6 +133,8 @@ public partial class OverlayWindow : Window
         ModeSelectedBg.Freeze();
         ModeSelectedFg.Freeze();
         ModeIdleFg.Freeze();
+        MicOnBrush.Freeze();
+        MicOffBrush.Freeze();
 
         Loaded += (_, _) => PositionAsTopBar();
         DragHandle.MouseLeftButtonDown += OnDragHandlePressed;
@@ -128,6 +142,14 @@ public partial class OverlayWindow : Window
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
         CloseButton.Click += (_, _) => CloseRequested?.Invoke();
+
+        // Mic toggle: flip state, update the glyph, and notify the host to start/stop mixing.
+        MicButton.Click += (_, _) =>
+        {
+            _micOn = !_micOn;
+            UpdateMicButton();
+            MicToggleRequested?.Invoke(_micOn);
+        };
 
         // Mode switch + recap-style picker.
         CaptionsModeButton.Click += (_, _) => SetMode(ViewMode.Captions);
@@ -144,6 +166,7 @@ public partial class OverlayWindow : Window
         UpdateModeButtons();
         UpdateScopeButtons();
         UpdateStyleButtons();
+        UpdateMicButton();
         SetSummaryAvailable(false);   // nothing to summarize until captions arrive
 
         // Re-fit the bar when the summary's own content changes (section / card expansion). Captions
@@ -359,6 +382,23 @@ public partial class OverlayWindow : Window
         ConversationStyleButton.Foreground = speakers ? ModeIdleFg : ModeSelectedFg;
         SpeakersStyleButton.Background = speakers ? ModeSelectedBg : System.Windows.Media.Brushes.Transparent;
         SpeakersStyleButton.Foreground = speakers ? ModeSelectedFg : ModeIdleFg;
+    }
+
+    /// <summary>Reflects the mic toggle's on/off state without notifying the host (initial sync).</summary>
+    /// <param name="enabled">Whether the microphone is being mixed in.</param>
+    public void SetMicEnabled(bool enabled)
+    {
+        _micOn = enabled;
+        UpdateMicButton();
+    }
+
+    /// <summary>Lights (on) or dims (off) the headset glyph and updates its tooltip.</summary>
+    private void UpdateMicButton()
+    {
+        MicButton.Foreground = _micOn ? MicOnBrush : MicOffBrush;
+        MicButton.ToolTip = _micOn
+            ? "Microphone on — your voice is captioned (click to mute)"
+            : "Microphone off — click to caption your own voice";
     }
 
     /// <summary>Applies selected/idle colors to the captions and summary mode buttons.</summary>
