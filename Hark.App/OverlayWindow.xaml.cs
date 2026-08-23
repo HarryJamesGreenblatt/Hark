@@ -522,7 +522,7 @@ public partial class OverlayWindow : Window
         // Envelope follower: a fast attack snaps to a speech peak; a slow release lets the eye hold
         // near-full through the dips between syllables and resonate briefly after speech, then cool.
         const double attackTau = 0.025;   // seconds — snappy onset
-        const double releaseTau = 0.38;   // seconds — sustain/resonate, then ease back to a dim ember
+        const double releaseTau = 0.22;   // seconds — brief sustain, then a lively cool-down
         double tau = target > _eyeLevel ? attackTau : releaseTau;
         double alpha = 1.0 - Math.Exp(-dt / tau);
         _eyeLevel += (target - _eyeLevel) * alpha;

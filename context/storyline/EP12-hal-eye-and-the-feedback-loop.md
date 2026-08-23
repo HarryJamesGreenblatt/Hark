@@ -40,6 +40,15 @@ activity was detected, the light remained very dim." We treated that recap as th
   resonates briefly after* before cooling — fixing "cools off too quickly." The level boost went
   `4.5→…→11×` so **normal conversational speech** (not just sustained shouts) reaches full brightness.
 
+**HAL eye — windowed RMS (still slow/inconsistent → structural fix, `HarkSession`)**
+- Post-tuning the eye still read as "slow and inconsistent." Root cause was **structural, not
+  parametric:** `ReportAudioLevel` **dropped** every PCM chunk arriving within its 50 ms throttle
+  window and reported the RMS of the single chunk that happened to cross the boundary — so the eye was
+  driven by a *snapshot of one arbitrary chunk*, which flickers. **Fix:** accumulate sum-of-squares
+  over **every** emitted sample and report a true **windowed RMS** each ~50 ms (reset the accumulator
+  after). The eye now sees a smooth, representative loudness. Paired with dropping the release
+  `0.38 → 0.22 s` so it cools promptly instead of lingering.
+
 **Copy what's shown (`OverlayWindow`)**
 - A recap follow-up task literally asked for a copy button (we were screenshotting recaps to feed them
   back). Added a **copy button in the header** (Segoe MDL2 `E8C8`, ✓ flash on success) that copies

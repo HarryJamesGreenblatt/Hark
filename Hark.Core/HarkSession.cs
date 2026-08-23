@@ -90,6 +90,12 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Tick count of the last <see cref="AudioLevel"/> notification, used to throttle to ~20 Hz.</summary>
     private long _lastLevelTick;
 
+    /// <summary>Running sum of squared samples since the last level report, for a windowed RMS.</summary>
+    private double _levelSumSquares;
+
+    /// <summary>Sample count accumulated since the last level report, paired with <see cref="_levelSumSquares"/>.</summary>
+    private long _levelSampleCount;
+
     #endregion
 
     #region Properties
@@ -386,8 +392,9 @@ public sealed class HarkSession : IAsyncDisposable
 
     /// <summary>
     /// Raises <see cref="AudioLevel"/> with the normalized RMS (0..1) of the converted PCM,
-    /// throttled to ~20 Hz. RMS (loudness) is far more dynamic than peak for system audio, which
-    /// tends to sit near full-scale — making a reactive indicator actually move.
+    /// throttled to ~20 Hz. Every sample since the last report is accumulated so the value is a
+    /// representative window average, not a snapshot of one arbitrary chunk (which flickers). RMS
+    /// (loudness) is far more dynamic than peak for system audio, which tends to sit near full-scale.
     /// </summary>
     /// <param name="pcm">The converted 16-bit PCM buffer to measure.</param>
     private void ReportAudioLevel(byte[] pcm)
@@ -395,20 +402,20 @@ public sealed class HarkSession : IAsyncDisposable
         var handler = AudioLevel;
         if (handler is null) return;
 
+        for (int i = 0; i + 1 < pcm.Length; i += 2)
+        {
+            double sample = (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768.0;
+            _levelSumSquares += sample * sample;
+            _levelSampleCount++;
+        }
+
         long now = Environment.TickCount64;
         if (now - _lastLevelTick < 50) return;
         _lastLevelTick = now;
 
-        double sumSquares = 0;
-        int count = 0;
-        for (int i = 0; i + 1 < pcm.Length; i += 2)
-        {
-            double sample = (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768.0;
-            sumSquares += sample * sample;
-            count++;
-        }
-
-        double rms = count > 0 ? Math.Sqrt(sumSquares / count) : 0.0;
+        double rms = _levelSampleCount > 0 ? Math.Sqrt(_levelSumSquares / _levelSampleCount) : 0.0;
+        _levelSumSquares = 0;
+        _levelSampleCount = 0;
         handler(rms);
     }
 

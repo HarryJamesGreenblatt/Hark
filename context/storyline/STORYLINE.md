@@ -119,9 +119,10 @@ These are unresolved at the end of the latest episode — natural starting point
   + privacy posture are prerequisites.
 - **HAL eye — refined (Episode 12):** de-washed (saturated cornea + confined top-only gloss) and made
   genuinely reactive (RMS **noise gate** so silence reads dark, full 0.28–1.0 range, an **ADSR envelope
-  follower** — fast attack + 0.38 s sustain so speech peaks hold and resonate before cooling). HARK's
-  own recap validated it ("improved reflexive responsiveness… not too bad"). Optional: an idle
-  "breathing" shimmer; per-device gate-floor tuning.
+  follower**). A follow-up caught the last "slow/inconsistent" complaint as **structural, not tuning:**
+  the level meter dropped every PCM chunk inside its 50 ms throttle and reported one arbitrary chunk's
+  RMS (flicker) — fixed to a true **windowed RMS** over every sample, release tightened `0.38→0.22 s`.
+  Optional: an idle "breathing" shimmer; per-device gate-floor tuning.
 - **Copy what's shown — shipped (Episode 12):** a header **copy button** copies whatever the window
   displays per the toggles — captions (LATEST line / full TRANSCRIPT) or the active recap serialized to
   markdown with its nested bullets. Surfaced as a recap follow-up task (to stop screenshotting recaps).
