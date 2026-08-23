@@ -36,6 +36,11 @@ internal sealed class InstallerForm : Form
     static string ConfigPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hark", "config.json");
 
+    /// <summary>Hark.App's user-secrets file — the app loads it too (the id is compiled into the assembly).</summary>
+    static string UserSecretsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Microsoft", "UserSecrets", "d2185b7b-b2db-438e-9a76-f08d51c63093", "secrets.json");
+
     public InstallerForm()
     {
         Text = "HARK Setup";
@@ -288,9 +293,10 @@ internal sealed class InstallerForm : Form
             try { File.Delete(msixPath); } catch { /* temp cleanup is best-effort */ }
         }
 
-        // Step 4: configure — skip if the user already has a config.json.
+        // Step 4: configure — skip if HARK is already configured by any source the app reads
+        // (env vars, config.json, or user-secrets), so configured machines aren't prompted again.
         _actionButton.Enabled = true;
-        if (File.Exists(ConfigPath))
+        if (IsAlreadyConfigured())
         {
             _phase = Phase.Done;
             _actionButton.Text = "Close";
@@ -327,6 +333,39 @@ internal sealed class InstallerForm : Form
             File.WriteAllText(ConfigPath, JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { /* leave config unwritten; the app shows a friendly note and the README covers it */ }
+    }
+
+    /// <summary>
+    /// True when a Speech region + resource id are available from any source the app reads:
+    /// environment variables, <c>config.json</c>, or user-secrets — mirroring the app's precedence.
+    /// </summary>
+    static bool IsAlreadyConfigured()
+    {
+        if (HasSpeechConfig(
+                Environment.GetEnvironmentVariable("HARK_SPEECH_REGION"),
+                Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID")))
+            return true;
+
+        return JsonHasSpeechConfig(ConfigPath) || JsonHasSpeechConfig(UserSecretsPath);
+    }
+
+    static bool HasSpeechConfig(string? region, string? resourceId)
+        => !string.IsNullOrWhiteSpace(region) && !string.IsNullOrWhiteSpace(resourceId);
+
+    /// <summary>True if the JSON file at <paramref name="path"/> has non-empty Speech region + resource id.</summary>
+    static bool JsonHasSpeechConfig(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return false;
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            string? Value(string name) =>
+                root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            return HasSpeechConfig(Value("HARK_SPEECH_REGION"), Value("HARK_SPEECH_RESOURCE_ID"));
+        }
+        catch { return false; }
     }
 
     /// <summary>Writes the embedded MSIX to a temp file and returns its path.</summary>
