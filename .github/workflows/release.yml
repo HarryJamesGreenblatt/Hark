@@ -108,8 +108,15 @@ jobs:
         with:
           path: artifacts
 
+      # Ship the installer inside a zip: SmartScreen's download-reputation block targets bare
+      # executables, not archives, so the browser download stays clean (the zip holds one exe).
+      - name: Zip the installer
+        run: |
+          cd artifacts/Hark-Setup
+          zip -r ../Hark-Setup.zip Hark-Setup.exe
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/Hark-Setup/Hark-Setup.exe
+          files: artifacts/Hark-Setup.zip
           generate_release_notes: true
