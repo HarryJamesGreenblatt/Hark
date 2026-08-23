@@ -409,10 +409,17 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Recap style picker; only meaningful in SUMMARY mode. -->
-                <ComboBox Grid.Column="2" x:Name="StylePicker"
-                          Width="130" FontSize="11" Visibility="Collapsed"
-                          VerticalAlignment="Center" />
+                <!-- Recap style switch (CONVERSATION / SPEAKERS); only shown in SUMMARY mode. -->
+                <Border Grid.Column="2" x:Name="StyleSwitch" CornerRadius="9" Padding="2"
+                        Background="#1C1E20" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="ConversationStyleButton" Content="CONVERSATION"
+                                Style="{StaticResource ModeButtonStyle}" />
+                        <Button x:Name="SpeakersStyleButton" Content="SPEAKERS"
+                                Style="{StaticResource ModeButtonStyle}" />
+                    </StackPanel>
+                </Border>
 
                 <!-- Caption scope switch (LATEST line / full TRANSCRIPT); only shown in CAPTIONS mode. -->
                 <Border Grid.Column="2" x:Name="ScopeSwitch" CornerRadius="9" Padding="2"

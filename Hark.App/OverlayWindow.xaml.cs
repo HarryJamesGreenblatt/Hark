@@ -64,6 +64,9 @@ public partial class OverlayWindow : Window
     /// <summary>Whether captions show just the latest line or the full, scrollable transcript.</summary>
     private CaptionScope _scope = CaptionScope.Latest;
 
+    /// <summary>The recap style currently chosen (Conversation or Speakers).</summary>
+    private SummaryStyle _style = SummaryStyle.Conversation;
+
     /// <summary>Whether at least one speaker pill has been added to the index.</summary>
     private bool _hasSpeakers;
 
@@ -84,8 +87,7 @@ public partial class OverlayWindow : Window
     #region Properties
 
     /// <summary>The recap style currently chosen in the picker.</summary>
-    public SummaryStyle SelectedStyle =>
-        StylePicker.SelectedItem is SummaryStyle s ? s : SummaryStyle.Conversation;
+    public SummaryStyle SelectedStyle => _style;
 
     #endregion
 
@@ -135,16 +137,13 @@ public partial class OverlayWindow : Window
         LatestScopeButton.Click += (_, _) => SetScope(CaptionScope.Latest);
         TranscriptScopeButton.Click += (_, _) => SetScope(CaptionScope.Transcript);
 
-        StylePicker.ItemsSource = Enum.GetValues<SummaryStyle>();
-        StylePicker.SelectedItem = SummaryStyle.Conversation;
-        StylePicker.SelectionChanged += (_, _) =>
-        {
-            if (_mode == ViewMode.Summary && StylePicker.SelectedItem is SummaryStyle)
-                SummaryRequested?.Invoke(SelectedStyle);
-        };
+        // Recap style switch (Conversation vs Speakers).
+        ConversationStyleButton.Click += (_, _) => SetStyle(SummaryStyle.Conversation);
+        SpeakersStyleButton.Click += (_, _) => SetStyle(SummaryStyle.Speakers);
 
         UpdateModeButtons();
         UpdateScopeButtons();
+        UpdateStyleButtons();
         SetSummaryAvailable(false);   // nothing to summarize until captions arrive
 
         // Re-fit the bar when the summary's own content changes (section / card expansion). Captions
@@ -275,7 +274,7 @@ public partial class OverlayWindow : Window
         UpdateModeButtons();
         UpdateSpeakerBarVisibility();
 
-        StylePicker.Visibility = mode == ViewMode.Summary ? Visibility.Visible : Visibility.Collapsed;
+        StyleSwitch.Visibility = mode == ViewMode.Summary ? Visibility.Visible : Visibility.Collapsed;
         ScopeSwitch.Visibility = mode == ViewMode.Captions ? Visibility.Visible : Visibility.Collapsed;
 
         if (mode == ViewMode.Summary)
@@ -340,6 +339,26 @@ public partial class OverlayWindow : Window
         LatestScopeButton.Foreground = transcript ? ModeIdleFg : ModeSelectedFg;
         TranscriptScopeButton.Background = transcript ? ModeSelectedBg : System.Windows.Media.Brushes.Transparent;
         TranscriptScopeButton.Foreground = transcript ? ModeSelectedFg : ModeIdleFg;
+    }
+
+    /// <summary>Switches the recap style (Conversation vs Speakers) and re-requests the summary.</summary>
+    /// <param name="style">The recap style to switch to.</param>
+    private void SetStyle(SummaryStyle style)
+    {
+        if (_style == style) return;
+        _style = style;
+        UpdateStyleButtons();
+        if (_mode == ViewMode.Summary) SummaryRequested?.Invoke(_style);
+    }
+
+    /// <summary>Applies selected/idle colors to the CONVERSATION / SPEAKERS style buttons.</summary>
+    private void UpdateStyleButtons()
+    {
+        bool speakers = _style == SummaryStyle.Speakers;
+        ConversationStyleButton.Background = speakers ? System.Windows.Media.Brushes.Transparent : ModeSelectedBg;
+        ConversationStyleButton.Foreground = speakers ? ModeIdleFg : ModeSelectedFg;
+        SpeakersStyleButton.Background = speakers ? ModeSelectedBg : System.Windows.Media.Brushes.Transparent;
+        SpeakersStyleButton.Foreground = speakers ? ModeSelectedFg : ModeIdleFg;
     }
 
     /// <summary>Applies selected/idle colors to the captions and summary mode buttons.</summary>
