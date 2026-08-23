@@ -339,29 +339,57 @@ public partial class App : Application
             var segments = await refiner.RefineAsync(pcm, maxSpeakers);
             if (segments.Count == 0) return;
 
+            int acousticSpeakers = DistinctSpeakers(segments);
+            string note;
+
             // Recognition-mode oracle (Stage 0): a text-only semantic pass re-labels the acoustic
             // segments (merging over-splits, fixing cross-ups) with the text left immutable. Optional —
             // reuses the recap AOAI config and is skipped (leaving the acoustic result) when unconfigured.
+            // A semantic failure degrades to the acoustic result but is reported, not swallowed.
             if (!string.IsNullOrWhiteSpace(_aoaiEndpoint) && !string.IsNullOrWhiteSpace(_aoaiDeployment))
             {
-                var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
-                segments = await semantic.RefineAsync(segments);
+                try
+                {
+                    var acoustic = segments;
+                    var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+                    segments = await semantic.RefineAsync(acoustic);
+
+                    int relabeled = 0;
+                    for (int i = 0; i < segments.Count; i++)
+                        if (!string.Equals(segments[i].SpeakerId, acoustic[i].SpeakerId, StringComparison.OrdinalIgnoreCase))
+                            relabeled++;
+
+                    note = $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, {relabeled} lines relabeled";
+                }
+                catch (Exception ex)
+                {
+                    note = $"semantic pass failed ({ex.Message}); using acoustic";
+                }
+            }
+            else
+            {
+                note = $"acoustic only, {acousticSpeakers} speakers (set HARK_AOAI_* to enable semantic refine)";
             }
 
+            var rebuilt = segments;
             Dispatcher.BeginInvoke(() =>
             {
                 _overlay?.ClearSpeakers();
-                _store.Rebuild(segments.Select(s => new ConversationStore.Entry(
+                _store.Rebuild(rebuilt.Select(s => new ConversationStore.Entry(
                     string.IsNullOrEmpty(s.SpeakerId) ? ConversationStore.DefaultSpeaker : s.SpeakerId!,
                     s.Text)));
+
+                // Re-render the caption transcript from the refined result so the TRANSCRIPT/LATEST view
+                // reflects the corrected attribution too — not just the speaker pages and recaps.
+                _overlay?.SetCaptionLines(rebuilt.Select(s =>
+                    string.IsNullOrEmpty(s.SpeakerId) ? s.Text : $"{s.SpeakerId}: {s.Text}"));
 
                 // The refined transcript supersedes any cached recap.
                 _cachedRecap = null;
                 _cachedSpeakerRecap = null;
                 _cachedRevision = -1;
 
-                _tray?.ShowBalloonTip(
-                    3000, "HARK", "Refined speaker attribution for this session.", ToolTipIcon.Info);
+                _tray?.ShowBalloonTip(4000, "HARK — refined", $"Speaker attribution: {note}.", ToolTipIcon.Info);
             });
         }
         catch (Exception ex)
@@ -369,6 +397,18 @@ public partial class App : Application
             Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(
                 4000, "HARK — refine", $"Couldn't refine speakers: {ex.Message}", ToolTipIcon.Warning));
         }
+    }
+
+    /// <summary>Counts the distinct (non-blank) speaker labels across the segments.</summary>
+    /// <param name="segments">The segments to inspect.</param>
+    /// <returns>The number of distinct speaker labels.</returns>
+    private static int DistinctSpeakers(IReadOnlyList<TranscriptSegment> segments)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in segments)
+            if (!string.IsNullOrWhiteSpace(s.SpeakerId))
+                set.Add(s.SpeakerId!);
+        return set.Count;
     }
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>

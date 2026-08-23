@@ -17,8 +17,9 @@ namespace Hark.Core.Transcription;
 /// <para>
 /// It is strictly non-destructive: the model returns only an <c>index → speaker</c> map; the segment
 /// <b>text, offset and duration are copied verbatim</b> (only <see cref="TranscriptSegment.SpeakerId"/>
-/// can change). Empty input, a single speaker, or any failure returns the input unchanged, so the pass
-/// is never worse than the acoustic result.
+/// can change). Empty input, a single speaker, or an over-merge guard returns the input unchanged;
+/// genuine service failures <b>throw</b> for the caller to handle (which keeps the acoustic result),
+/// so the fallback is explicit rather than silent.
 /// </para>
 /// <para>
 /// Keyless, mirroring <see cref="Summarization.AzureOpenAiSummarizer"/>: the signed-in identity must
@@ -71,30 +72,17 @@ public sealed class SemanticDiarizationRefiner
         if (segments is null || segments.Count == 0) return segments ?? Array.Empty<TranscriptSegment>();
 
         // Nothing to disambiguate with a single (or no) acoustic speaker.
-        int acousticSpeakers = CountDistinctSpeakers(segments);
-        if (acousticSpeakers <= 1) return segments;
+        if (CountDistinctSpeakers(segments) <= 1) return segments;
 
-        try
-        {
-            var map = await RequestAssignmentsAsync(segments, cancellationToken).ConfigureAwait(false);
-            if (map.Count == 0) return segments;
+        var map = await RequestAssignmentsAsync(segments, cancellationToken).ConfigureAwait(false);
+        if (map.Count == 0) return segments;
 
-            var relabeled = ApplyAssignments(segments, map);
+        var relabeled = ApplyAssignments(segments, map);
 
-            // Over-merge guard: if the model collapsed a clearly multi-speaker session to one, distrust it.
-            if (CountDistinctSpeakers(relabeled) <= 1) return segments;
+        // Over-merge guard: if the model collapsed a clearly multi-speaker session to one, distrust it.
+        if (CountDistinctSpeakers(relabeled) <= 1) return segments;
 
-            return Canonicalize(relabeled);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Never worse than the acoustic result.
-            return segments;
-        }
+        return Canonicalize(relabeled);
     }
 
     /// <summary>Asks the model for an index→speaker remap of the segments.</summary>

@@ -574,6 +574,25 @@ public partial class OverlayWindow : Window
         Render();
     }
 
+    /// <summary>
+    /// Replaces the caption history with a refined transcript so the TRANSCRIPT/LATEST caption view
+    /// reflects the offline second pass's corrected speaker attribution — not just the store that
+    /// drives the speaker pages and recaps.
+    /// </summary>
+    /// <param name="lines">The refined, speaker-prefixed lines, in order.</param>
+    public void SetCaptionLines(IEnumerable<string> lines)
+    {
+        _history.Clear();
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            _history.AddLast(line.Trim());
+            while (_history.Count > MaxHistoryLines) _history.RemoveFirst();
+        }
+        _interim = string.Empty;
+        Render();
+    }
+
     /// <summary>Rebuilds the caption document for the current scope (latest line or full transcript).</summary>
     private void Render()
     {
