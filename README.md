@@ -2,7 +2,7 @@
 
 **Hear. Adapt. Recognize. Keep.**
 
-A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on Windows 11 (WASAPI loopback — no microphone) and transcribes it in near real time via **Azure AI Speech**, emitting clean text to stdout plus optional rolling text, JSON Lines, and SRT outputs.
+A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via **Azure AI Speech**, emitting clean text to stdout plus optional rolling text, JSON Lines, and SRT outputs. The desktop overlay can optionally mix in your **local microphone** too, so a headset user's own voice is captioned alongside the far side.
 
 It exists to replace accessibility-only tooling (Live Captions, Voice Typing) with something **owned, automatable, and agent-friendly**.
 
