@@ -137,10 +137,13 @@ These are unresolved at the end of the latest episode — natural starting point
   is an **art-director refine** producing **one iconic, metaphor-not-literal `visual_concept`** — which
   **already exists, grounded**, in the sibling project `sequitur_studios` (the **Production Designer**
   agent + Azure `gpt-image-1` backend; reuse its `visual_concept` / `concept_stance` UNDERSCORE·CONTRAST
-  / `motifs` vocabulary). Cristóbal = **HARK (live source) ⨝ sequitur (studio)**; the one new piece is a
-  **beat detector** (rolling transcript → an evolving `Brief`), plus the async-supersession cadence
-  (each beat's concept clobbers the last → a slow-dissolve mood image). It is the **augmentation** half
-  of the grounding oracle: a `GroundingEvent` producer, with Cristóbal's image agent as consumer.
+  / `motifs` vocabulary). Cristóbal = **HARK (live source) ⨝ sequitur (studio)**, but reusing only
+  sequitur's grounded **judgment + `gpt-image-1` backend as stateless calls** — **not** its gated,
+  human-in-the-loop `Engine`/`Gate` pipeline (that *dailies* model is synchronous by design; wrong for a
+  live stream). The **runtime is the async grounding oracle** (debounced, autonomous, superseding); the
+  "beat detector" is just the **oracle's trigger**. Cadence: each beat's concept clobbers the last (via
+  `Revision`) → a slow-dissolve mood image. It is the **augmentation** half of the oracle: a
+  `GroundingEvent` producer, with Cristóbal's image agent as consumer.
   **Enabling spine = the engine boundary (Phases 1–2 below).** Full design: [`context/cristobal-vision.md`](../cristobal-vision.md).
 - **HAL eye — refined (Episode 12):** de-washed (saturated cornea + confined top-only gloss) and made
   genuinely reactive (RMS **noise gate** so silence reads dark, full 0.28–1.0 range, an **ADSR envelope

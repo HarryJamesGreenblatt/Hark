@@ -45,14 +45,37 @@ same kid, tangled string, overcast (quiet irony). A deliberate expressive choice
 
 Adopt sequitur's proven `Contribution` vocabulary instead of inventing a parallel `VisualConcept`.
 
+## Runtime = the oracle (async), NOT sequitur's gated pipeline
+`sequitur_studios` has **two separable layers**, and only one belongs in Cristóbal:
+- **Grounded judgment (borrow this):** the Production Designer's craft — theme → one iconic,
+  metaphor-not-literal `visual_concept` (+ `concept_stance`, `motifs`), plus the render grammar and the
+  Azure `gpt-image-1` backend. A pure, **stateless** "conjure a concept/image from this theme."
+- **Orchestration shell (drop this):** the `Engine` dispatching phases, the `Director` reconciling a
+  whole crew, and the Producer **`Gate`** — approve/revise at each phase (the *dailies* model). That
+  loop is **synchronous and human-in-the-loop by design**: built to curate *one film* deliberately.
+
+Cristóbal's regime is the opposite — **live, evolving, unattended** speech. Gating each image on a HITL
+approval would force a synchronous pipeline onto an inherently asynchronous stream. So Cristóbal's
+**runtime is the oracle** (EP09): a parallel, **debounced, autonomous, confidence-gated** blackboard over
+the live transcript that **supersedes** prior output (the async "quietly clobber" spine) with **no gate
+per image**. It *calls* sequitur's art-director judgment; it does not adopt sequitur's `Engine`/`Director`/`Gate`.
+
+Consequences:
+- The **"beat detector" is not a separate component** — it is the **oracle's trigger** (when to fire,
+  debounced on thematic beats). The oracle's *augmentation* mode is the art-director call.
+- A human affordance can still exist (pin / veto / nudge a concept) but **non-blocking** — it never gates
+  the stream, the opposite of approve-before-spend. This is precisely the async-supersession regime
+  already chosen for the engine road: the oracle is the *latent clobber*; a gate would be a *synchronous block*.
+
 ## The seam: Cristóbal = HARK (source) ⨝ sequitur (studio)
 sequitur's premise is authored (a Screenwriter's scene); HARK's premise is **derived live from speech
-and evolves**. The only genuinely new piece is the **beat detector**:
+and evolves**. The new piece is the **oracle** — whose *trigger* turns the rolling transcript into an
+evolving `Brief`:
 
 ```
 HARK engine ─(GroundingEvent: a debounced thematic "beat")→ a Brief (premise + mood)
-     │  (the beat detector = the one new component:                    │
-     │   rolling transcript → evolving premise/mood)                   ▼
+     │  (the oracle's trigger:                                         │
+     │   rolling transcript → evolving premise/mood — no HITL gate)    ▼
      │                                       sequitur Production Designer → visual_concept (+ stance/motifs)
      │                                                                  │
      │                                    build_prompt + ImageStudio (Azure gpt-image-1)
@@ -61,9 +84,9 @@ HARK engine ─(GroundingEvent: a debounced thematic "beat")→ a Brief (premise
 ```
 
 Everything downstream of the `Brief` already exists in sequitur. Cristóbal adds the ear (HARK) + the
-beat detector + the **async-supersession cadence**: each new beat lands a new `visual_concept` that
-**clobbers** the last (via HARK's projection `Revision` key) → the image *slow-dissolves* as the theme
-develops, rather than flickering per sentence.
+**oracle** (its beat trigger + **async-supersession cadence**): each new beat lands a new `visual_concept`
+that **clobbers** the last (via HARK's projection `Revision` key) → the image *slow-dissolves* as the
+theme develops, rather than flickering per sentence.
 
 ## How it rides HARK's engine road (see STORYLINE → engine boundary)
 - It is the **augmentation** half of the oracle layer: a `GroundingEvent(… SuggestedVisual)` **producer**;
@@ -84,9 +107,9 @@ develops, rather than flickering per sentence.
 ## Integration reality
 `sequitur_studios` is **Python/Azure** (`pip`, `from sequitur import Studio/Engine/Brief`, Key Vault +
 `az login`, Azure `gpt-image-1`); HARK is **.NET**. Clean seam = HARK emits `Brief`s and a bridge
-invokes sequitur's plan+render, returning an image path/URL to HARK's consumer — keep the grounded
-art-director where it already lives (roles → grounding → code intact); HARK becomes "another
-front-of-house source" for the studio.
+invokes sequitur's **Production Designer judgment + image render as stateless calls** (*not* its gated
+`Engine`/`Gate` pipeline), returning an image path/URL to HARK's consumer — keep the grounded
+art-director where it already lives; HARK becomes "another front-of-house source" for the studio.
 
 ## Pointers
 - Repo: `github.com/HarryJamesGreenblatt/sequitur_studios` (public). Key files:
