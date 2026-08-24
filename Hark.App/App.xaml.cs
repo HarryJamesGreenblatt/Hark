@@ -354,12 +354,18 @@ public partial class App : Application
                     var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
                     segments = await semantic.RefineAsync(acoustic);
 
-                    int relabeled = 0;
-                    for (int i = 0; i < segments.Count; i++)
-                        if (!string.Equals(segments[i].SpeakerId, acoustic[i].SpeakerId, StringComparison.OrdinalIgnoreCase))
-                            relabeled++;
+                    // Compare the canonicalized groupings so cosmetic label renumbering isn't counted —
+                    // only genuine regrouping (a line moved to a different speaker cluster) is reported.
+                    var before = CanonicalLabels(acoustic);
+                    var after = CanonicalLabels(segments);
+                    int regrouped = 0;
+                    for (int i = 0; i < after.Length; i++)
+                        if (!string.Equals(before[i], after[i], StringComparison.Ordinal))
+                            regrouped++;
 
-                    note = $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, {relabeled} lines relabeled";
+                    note = regrouped == 0
+                        ? $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, grouping unchanged"
+                        : $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, {regrouped} lines regrouped";
                 }
                 catch (Exception ex)
                 {
@@ -409,6 +415,27 @@ public partial class App : Application
             if (!string.IsNullOrWhiteSpace(s.SpeakerId))
                 set.Add(s.SpeakerId!);
         return set.Count;
+    }
+
+    /// <summary>
+    /// Renumbers a segment sequence's speaker labels to contiguous <c>Guest-N</c> by first appearance,
+    /// so two sequences can be compared for genuine regrouping without being fooled by label renumbering.
+    /// </summary>
+    /// <param name="segments">The segments whose labels to canonicalize.</param>
+    /// <returns>The per-index canonical label (empty string for unattributed lines).</returns>
+    private static string[] CanonicalLabels(IReadOnlyList<TranscriptSegment> segments)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var result = new string[segments.Count];
+        int next = 1;
+        for (int i = 0; i < segments.Count; i++)
+        {
+            var id = segments[i].SpeakerId;
+            if (string.IsNullOrWhiteSpace(id)) { result[i] = string.Empty; continue; }
+            if (!map.TryGetValue(id, out var label)) { label = $"Guest-{next++}"; map[id] = label; }
+            result[i] = label;
+        }
+        return result;
     }
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
