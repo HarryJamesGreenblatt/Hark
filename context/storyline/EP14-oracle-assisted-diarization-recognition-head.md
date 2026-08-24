@@ -1,11 +1,13 @@
-# 🎬 Episode 14 — The Oracle's Recognition Head: Semantic Diarization Refinement (Stage 0 Plan)
+# 🎬 Episode 14 — The Oracle's Recognition Head: Semantic Diarization Refinement (Stage 0 Shipped & Validated)
 
-> **Date:** 2026-08-23 · **Branch:** `main` · **Commits:** _(design only — no code this session)_
+> **Date:** 2026-08-23 · **Branch:** `main` · **Commits:** `52eea82` (design) · `54d0351`, `135211d`, `7fd0d0d` (Stage 0)
 > **One-liner:** Reframed the long-planned **grounding oracle** as two-headed — Cristóbal only ever used
 > the *augmentation* head; the unused *recognition* head is exactly the mechanism to repair diarization
-> — and laid a concrete **Stage 0** plan: a text-only LLM **semantic post-pass** that re-labels the
-> offline refiner's segments (merging over-splits, fixing host/guest cross-ups) with **immutable text**,
-> reusing the existing Azure OpenAI infra and requiring no engine-boundary work.
+> — then **shipped Stage 0**: a text-only LLM **semantic post-pass** (`SemanticDiarizationRefiner`) that
+> re-labels the offline refiner's segments (merging over-splits, fixing host/guest cross-ups) with
+> **immutable text**, reusing the recap Azure OpenAI infra and needing no engine-boundary work — and
+> **validated it live** (pathological synthetic audio still drifts; a real Larry King/Nixon interview
+> diarizes host↔guest correctly, `4→3 speakers, 30 lines regrouped`).
 
 ## 🎯 Intent
 Discuss whether the **oracle layer** — designed in Episode 9 and so far associated only with the
@@ -17,9 +19,28 @@ persist. The session set out to validate the idea and, if it held up, **commence
 the cheapest first increment (Stage 0)**.
 
 ## 🛠️ What changed
-**No code this session** — this is a design + planning episode (like Episode 9's diarization/engine
-sketch). The deliverable is the **Decisions** below and the **Stage 0 build plan**, captured concretely
-enough to implement directly next session.
+The session moved from design straight into implementation and live validation.
+
+- `Hark.Core/Transcription/SemanticDiarizationRefiner.cs` (new) — the recognition-mode oracle. Renders
+  the acoustic segments as an indexed, labeled list, asks the chat deployment (strict JSON schema,
+  `Temperature = 0`) for an `index → speaker` remap, and re-stamps **only** `SpeakerId` on the existing
+  segments (`seg with { SpeakerId = … }`). Guards: empty input / ≤1 speaker (no call), an over-merge
+  guard (a clearly multi-speaker session collapsed to one is distrusted), and canonicalization to
+  contiguous `Guest-N`. Genuine service failures **throw** for the caller to handle (explicit fallback,
+  not silent).
+- `Hark.App/App.xaml.cs` — chained the semantic pass into `RefineDiarizationAsync` between
+  `FastTranscriptionRefiner.RefineAsync(...)` and `ConversationStore.Rebuild(...)`; skipped (acoustic
+  result stands) when `HARK_AOAI_*` is unconfigured. A **diagnostic balloon** now reports the real
+  effect — `acoustic→semantic` speaker counts and lines **regrouped** (comparing *canonicalized*
+  groupings so cosmetic label renumbering isn't counted), or the semantic error, or "grouping
+  unchanged".
+- `Hark.App/OverlayWindow.xaml.cs` — `SetCaptionLines(...)` re-renders the **caption transcript** from
+  the refined segments, so the TRANSCRIPT/LATEST view reflects the corrected attribution — not just the
+  store that drives speaker pages + recaps (closing the EP10 "live captions aren't retroactively
+  relabeled" gap for the *stop-time* pass).
+
+_The original Stage 0 build plan (below, under **Stage 0 — concrete build plan**) is what was built;
+it is kept as the design record._
 
 ## 🧠 Decisions
 
@@ -175,28 +196,67 @@ the existing background `RefineDiarizationAsync` path (off the UI thread). No ca
 once per session Stop.
 
 ## ✅ Verification
-Design/planning only — nothing to run yet. The Stage 0 plan above is the artifact; its own verification
-plan is defined inline for the implementation session.
+Shipped and exercised against two live clips on the installed app:
+
+- **Pathological synthetic (Space Ghost / Zorak)** — near-identical synthetic timbres, overlap, low-fi,
+  garbled ASR. Stage 0 relabeled but the *visible* drift persisted, which exposed the honest limit: the
+  remaining errors were a **mixed-speaker segment** (a clause welded onto the wrong turn) and an **ASR
+  mis-transcription** — neither of which whole-segment remap or immutable-text can touch. Worst-case
+  input, as predicted.
+- **Realistic human interview (Larry King Live / Nixon)** — the discriminating axis is **correct**:
+  every Nixon answer clusters to one speaker, every King question to another; the residual fuzz is
+  confined to the intro montage (CNN ident / promo announcer / King's open) and a brief social
+  exchange. The **recap is accurate and correctly attributed** ("Larry King introduces Richard
+  Nixon…"). The balloon read **`4→3 speakers, 30 lines regrouped`** — the semantic pass did real,
+  benign work (merged an over-segmented intro voice; King↔Nixon separation survived).
+- **Conclusion:** the concept is validated on the target domain. Stage 0's LLM call earns its keep on
+  realistic audio; the whole-segment text oracle cannot fix sub-segment boundary errors or ASR
+  fidelity (those are Fork A and a separate fidelity pass, below).
+- `dotnet build` green; `get_errors` clean on all edited files.
+
+## 🚧 Problems & resolutions
+- **Symptom:** "I don't see any refinement" after Stop. → **Root cause:** the refine rebuilt the store
+  (speaker pages + recaps) but the **caption transcript** is a separate document (`_history`) the pass
+  never touched — the TRANSCRIPT view kept the live labels. → **Fix:** `OverlayWindow.SetCaptionLines`
+  re-renders captions from the refined segments.
+- **Symptom:** the balloon's "15 lines relabeled" looked large yet nothing seemed to change. →
+  **Root cause:** the metric compared label *strings*, but canonicalization renumbers `Guest-N` by
+  first appearance, so an unchanged grouping still reported every line changed. → **Fix:** compare
+  *canonicalized groupings* on both sides and report genuine **regrouping** (or "grouping unchanged").
+- **Symptom:** the Space Ghost clause "…I don't want to give Moltar my key" stayed on the wrong speaker.
+  → **Root cause:** Stage 0 remaps **whole immutable segments**; it cannot split a mixed-speaker
+  segment or rewrite garbled ASR. → **Resolution:** recorded as the boundary between Stage 0 and Fork A
+  (split-capable) / a separate fidelity pass — not a bug to tune away.
+- **Note:** the refine runs on **Stop** (which is also "hide overlay") as one bounded, fire-and-forget
+  background job — one Fast Transcription call + one chat call, then done. Not synchronous, not a loop,
+  no runaway spend; both passes need the *whole* recording to cluster globally, so they cannot run live.
 
 ## 🔓 Open threads
-- **Stage 0 — ready to build (this episode's plan):** `SemanticDiarizationRefiner` + one chained call in
-  `RefineDiarizationAsync`. Highest-value, lowest-risk increment; reuses recap infra; no engine boundary.
-- **Stage 0.5 — name/role binding:** let recognition promote `Guest-N` → a real name/role on a confident
-  self-introduction ("I'm joined by…", "thanks for having me"). Requires a UI rename affordance on pills
-  + speaker pages; keeps the "never invent names" guard (bind only on explicit evidence).
+- **Stage 0 — shipped & validated (this episode).** `SemanticDiarizationRefiner` + the chained call,
+  caption re-render, and honest regrouping metric are live. Earns its keep on realistic audio.
+- **Fork A — split-capable refine (the residual diarization fix):** let the model partition a segment
+  into ordered `(speaker, fragment)` pieces, validated so the fragments' concatenation is byte-identical
+  to the original (slice the *original* at boundaries; reject on mismatch) — keeps text non-destructive
+  while fixing mixed-speaker segments (the Zorak clause, the King/Nixon "flowers" exchange). Optional
+  polish now that the substantive axis is clean.
+- **Fidelity (WHAT was said) is a separate axis from WHO:** ASR mis-transcriptions ("get Moltar" vs
+  "give Moltar my key") are unreachable by any label-remap; they need Azure **LLM-Speech enhanced** mode
+  or a deliberate text-cleanup pass (which would relax immutability). Explicitly out of Stage 0/Fork A.
+- **Corpus recognition (Fork B) — deferred/likely dropped:** snapping text+speaker to a known script is
+  the strongest fix for *known* material but is infeasible for arbitrary conversations; not pursued.
+- **Research-grade acoustic front-end (only if text hits its ceiling):** MIR separation + x-vector
+  embeddings + self-enrolling centroids + VBx smoothing — the real fix for *signal-level* confusion
+  (overlap, near-identical voices), where text reasoning can't add information. Heavy; deferred.
 - **Stage 1 — promote onto the engine boundary:** once the typed `HarkEvent` stream + `ConversationStore`
   move into `Hark.Core`, the semantic refiner becomes a `RefinementEvent(SupersedesRevision, Segments)`
-  **producer** that can also **re-label live caption history** (the piece Episode 10 left deferred), not
-  just the store.
+  **producer** that can also re-label **live** caption history (Stage 0 already relabels the stop-time
+  transcript).
 - **Stage 2 — live debounced recognition oracle:** run recognition continuously, **debounced on thematic
-  beats** (not per word), confidence-gated — feeding both diarization refinement *and*, eventually,
-  Cristóbal as a second `GroundingEvent` consumer. This is where the recognition and augmentation heads
-  reunite on one spine.
+  beats**, confidence-gated — feeding both diarization refinement *and*, eventually, Cristóbal as a
+  second `GroundingEvent` consumer. Where the recognition and augmentation heads reunite on one spine.
 - **`maxSpeakers` interplay:** with a semantic merge downstream, the acoustic pass could safely *raise*
-  its ceiling and let the LLM merge down; left as-is for Stage 0, revisit after measuring.
-- **Over-merge risk:** watch for the model collapsing two genuinely-distinct speakers; the single-speaker
-  guard is the first line — tune with real clips.
+  its ceiling and let the LLM merge down; left as-is, revisit after measuring.
 
 _(Carried forward from earlier episodes: the engine boundary, Codename Cristóbal, RBAC verification for
-Fast Transcription, live-caption retroactive re-labeling, and the standing cost/test/overlay-polish
-threads all remain in `STORYLINE.md` → Open threads.)_
+Fast Transcription, and the standing cost/test/overlay-polish threads all remain in `STORYLINE.md` →
+Open threads.)_
