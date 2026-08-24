@@ -1,15 +1,30 @@
 # 🔭 Codename Cristóbal — the visualization seam (design north star)
 
-> **Status:** vision / design (no HARK code yet). Captured 2026-08-22 (during Episode 13's tail).
-> **One-liner:** a *separate* project where an agent dispatches a **generative image model** to
-> conjure live **didactic visualizations** of what HARK is capturing — with the key realization that
-> **HARK's summaries are the wrong seed**, and the right seed is an **art-director refine** that already
-> exists, grounded, in the sibling project **`sequitur_studios`**.
+> **Status:** design north star — **partly shipped**. The Oracle spike (`Hark.Oracle.Vision`) landed in
+> **EP15**, which **superseded the original integration plan**: Cristóbal reproduces the art-director
+> judgment **natively in .NET** (distilling sequitur's *grounding*, not calling its Python) and is a
+> **mode of HARK**, not a separate project. Sections below are reconciled to that; the vision *substance*
+> (why summaries fail, the art-director seed, the async oracle) is unchanged. Captured 2026-08-22;
+> reconciled 2026-08-23.
+> **One-liner:** a live **crystal ball** — an agent dispatches a **generative image model** to conjure
+> **didactic visualizations** of what HARK is capturing — with the key realization that **HARK's
+> summaries are the wrong seed**, and the right seed is an **art-director refine** whose craft is
+> **grounded** in the sibling project **`sequitur_studios`** (now reproduced natively, not called).
 
 ## What Cristóbal is
 A project that hooks into HARK's engine so an **agent dispatches a generative image model** to
 visualize the *essence* of an ongoing conversation — a live "crystal ball" (e.g. for a headset /
 presentation). HARK is the **ear**; Cristóbal renders the **eye**.
+
+## Form & layering (as shipped — EP15)
+Cristóbal is **not a separate project** but a **mode of HARK**: the **HAL eye dilates** into a full-window
+crystal ball. Identity: **HAL is the eye** (the display/face); **Cristóbal is the mind** (the interpreting
+oracle) — anatomy, not rival brands, so there is no user-facing "Cristóbal." Code layering:
+`Hark.Core` (ear) → `Hark.Oracle` (mind) → `Hark.Oracle.Vision` (render) — a sibling stack **on top of**
+the engine (never `Hark.Core.Oracle`, which would drag studio-specific rendering into the clean engine).
+`Vision` is **two-tier**: `ConceptDesigner` (art-director persona → `VisualConcept`) →
+`VisionPromptComposer` + `VisionRenderer` (→ gpt-image prompt → Azure OpenAI `ImageClient`, keyless).
+Proven live in EP15 (`UNDERSCORE`/`CONTRAST`); the render tier awaits a `gpt-image-1` deployment.
 
 ## The core insight (why summaries don't work as the seed)
 Even good recaps are the **wrong artifact** to seed an image prompt:
@@ -36,20 +51,26 @@ an **art director**, not a note-taker. **`sequitur_studios` already implements e
 - **`.github/skills/keyartist/SKILL.md`** + `compose_key_art.py` — composes a one-sheet from the PD's
   concept (poster archetype + type). Cristóbal likely wants the PD's `visual_concept`, not the poster
   layer, but the "single strong image / anti-clutter" discipline applies.
-- **Render path:** sequitur's model-agnostic grammar → `build_prompt` + `ImageStudio` → **Azure
-  `gpt-image-1`** still backend (`sequitur/prompt.py`, `sequitur/image.py`). Grounding also in
-  *Directing the Story* Ch.9 "how to make images speak" / Ch.10 "convey and suggest meaning".
+- **Render path (reproduced natively — EP15):** the grammar of sequitur's `build_poster_prompt` (a
+  *scene of the world*, closing with an **anti-literal counter**) + the `gpt-image` call are reproduced
+  in .NET as `Hark.Oracle.Vision.VisionPromptComposer` + `VisionRenderer` (Azure OpenAI `ImageClient`,
+  keyless) — **not** a call into `sequitur/prompt.py` / `image.py`. Grounding also in *Directing the
+  Story* Ch.7 (direct the eye) / Ch.9 (how images speak) / Ch.10 (convey meaning) / Ch.11 (irony) / Ch.13
+  (aim for the heart).
 
 **`concept_stance` is the gem to reuse:** UNDERSCORE = kite at golden hour (echoes hope); CONTRAST =
 same kid, tangled string, overcast (quiet irony). A deliberate expressive choice, not just illustration.
 
-Adopt sequitur's proven `Contribution` vocabulary instead of inventing a parallel `VisualConcept`.
+**Port sequitur's proven `Contribution` vocabulary into a native `VisualConcept`** — done in EP15
+(`Hark.Oracle.Vision.VisualConcept`: `Theme`, `Concept`, `Stance`, `StanceReason`, `Motifs`,
+`Composition`, `Aesthetic`, `Palette`). Reuse the *grammar*; reproduce it in .NET — don't call sequitur.
 
 ## Runtime = the oracle (async), NOT sequitur's gated pipeline
 `sequitur_studios` has **two separable layers**, and only one belongs in Cristóbal:
-- **Grounded judgment (borrow this):** the Production Designer's craft — theme → one iconic,
+- **Grounded judgment (reproduce this natively):** the Production Designer's craft — theme → one iconic,
   metaphor-not-literal `visual_concept` (+ `concept_stance`, `motifs`), plus the render grammar and the
-  Azure `gpt-image-1` backend. A pure, **stateless** "conjure a concept/image from this theme."
+  Azure `gpt-image` backend. A pure, **stateless** "conjure a concept/image from this theme" — distilled
+  into a native .NET prompt (EP15), not a call into Python.
 - **Orchestration shell (drop this):** the `Engine` dispatching phases, the `Director` reconciling a
   whole crew, and the Producer **`Gate`** — approve/revise at each phase (the *dailies* model). That
   loop is **synchronous and human-in-the-loop by design**: built to curate *one film* deliberately.
@@ -58,7 +79,7 @@ Cristóbal's regime is the opposite — **live, evolving, unattended** speech. G
 approval would force a synchronous pipeline onto an inherently asynchronous stream. So Cristóbal's
 **runtime is the oracle** (EP09): a parallel, **debounced, autonomous, confidence-gated** blackboard over
 the live transcript that **supersedes** prior output (the async "quietly clobber" spine) with **no gate
-per image**. It *calls* sequitur's art-director judgment; it does not adopt sequitur's `Engine`/`Director`/`Gate`.
+per image**. It **reproduces** sequitur's art-director judgment natively; it does not adopt sequitur's `Engine`/`Director`/`Gate`.
 
 Consequences:
 - The **"beat detector" is not a separate component** — it is the **oracle's trigger** (when to fire,
@@ -67,7 +88,7 @@ Consequences:
   the stream, the opposite of approve-before-spend. This is precisely the async-supersession regime
   already chosen for the engine road: the oracle is the *latent clobber*; a gate would be a *synchronous block*.
 
-## The seam: Cristóbal = HARK (source) ⨝ sequitur (studio)
+## The seam: Cristóbal = HARK (source) + a native art-director oracle
 sequitur's premise is authored (a Screenwriter's scene); HARK's premise is **derived live from speech
 and evolves**. The new piece is the **oracle** — whose *trigger* turns the rolling transcript into an
 evolving `Brief`:
@@ -76,14 +97,15 @@ evolving `Brief`:
 HARK engine ─(GroundingEvent: a debounced thematic "beat")→ a Brief (premise + mood)
      │  (the oracle's trigger:                                         │
      │   rolling transcript → evolving premise/mood — no HITL gate)    ▼
-     │                                       sequitur Production Designer → visual_concept (+ stance/motifs)
+     │                          Oracle.Vision.ConceptDesigner (native) → visual_concept (+ stance/motifs)
      │                                                                  │
-     │                                    build_prompt + ImageStudio (Azure gpt-image-1)
+     │                     VisionPromptComposer + VisionRenderer (Azure gpt-image, native)
      ▼                                                                  │
   HARK/Cristóbal "crystal ball"  ◀──────────────── image ──────────────┘
 ```
 
-Everything downstream of the `Brief` already exists in sequitur. Cristóbal adds the ear (HARK) + the
+Everything downstream of the `Brief` is **reproduced natively in `Hark.Oracle.Vision`** (EP15) —
+distilled from sequitur's grounding, not called. Cristóbal adds the ear (HARK) + the
 **oracle** (its beat trigger + **async-supersession cadence**): each new beat lands a new `visual_concept`
 that **clobbers** the last (via HARK's projection `Revision` key) → the image *slow-dissolves* as the
 theme develops, rather than flickering per sentence.
@@ -104,17 +126,30 @@ theme develops, rather than flickering per sentence.
 - **Privacy posture:** "researching/visualizing the stream" means content **leaves the box** — a
   deliberate constraint for the headset/presentation use case.
 
-## Integration reality
-`sequitur_studios` is **Python/Azure** (`pip`, `from sequitur import Studio/Engine/Brief`, Key Vault +
-`az login`, Azure `gpt-image-1`); HARK is **.NET**. Clean seam = HARK emits `Brief`s and a bridge
-invokes sequitur's **Production Designer judgment + image render as stateless calls** (*not* its gated
-`Engine`/`Gate` pipeline), returning an image path/URL to HARK's consumer — keep the grounded
-art-director where it already lives; HARK becomes "another front-of-house source" for the studio.
+## Integration reality (reconciled — EP15)
+The original plan was a **Python bridge**: HARK emits `Brief`s and calls sequitur's PD + render as
+stateless services, "another front-of-house source for the studio." **EP15 superseded that.**
+`sequitur_studios` is Python and under active development, so calling it would add Python deps and couple
+HARK to a moving target (package drift). Cristóbal needs only two things from sequitur — the PD
+*judgment* and the `gpt-image` render — and **both are native in .NET**: a structured chat call (the
+`AzureOpenAiSummarizer` pattern) and the Azure OpenAI `ImageClient` already in the dependency tree. So
+the decision is **reproduce natively, don't reference**:
+
+- The durable IP is sequitur's **grounding** (Rizzo Ch.4 · Glebas 7/9/10/11/13) + its `Contribution`
+  **vocabulary** — both **transformative `reference/` abridgments** (verbatim `source/` is gitignored).
+- **Distill-and-bake:** the grounding was read *once at authoring time* and crystallized into the
+  `ConceptDesigner` system prompt (provenance: pinned @ `4150645`). The running Oracle makes **zero**
+  calls to sequitur or GitHub — no Python, no runtime coupling, no live feed (an unpinned feed would
+  reintroduce the very drift being avoided).
+- Fallback preserved: if native concept quality ever disappoints, calling sequitur remains an option —
+  but there is no reason to *start* coupled.
 
 ## Pointers
 - Repo: `github.com/HarryJamesGreenblatt/sequitur_studios` (public). Key files:
   `.github/agents/production_designer.agent.md`, `.github/skills/keyartist/SKILL.md`,
   `sequitur/crew/production_design.py`, `sequitur/prompt.py`, `sequitur/image.py`,
-  `artifacts/the art direction handbook for tv and film/`, `artifacts/directing the story/` (Ch.9–10).
-- HARK side: `EP09` (engine-boundary + grounding-oracle design), STORYLINE → _Open threads_ (engine
-  boundary; this doc).
+  `artifacts/the art direction handbook for tv and film/`, `artifacts/directing the story/` (Ch.7/9/10/11/13).
+  These are the **grounding source distilled at authoring time** (pinned @ `4150645`) — **not** a runtime dependency.
+- HARK side: `EP09` (engine-boundary + grounding-oracle design), `EP14` (recognition head / Stage 0
+  diarization), `EP15` (this Oracle spike — native Vision, the reconciliation this doc now reflects),
+  STORYLINE → _Open threads_ (engine boundary; this doc).
