@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-23 (end of Episode 15)._
+_Last updated: 2026-08-23 (end of Episode 16)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -35,7 +35,10 @@ _Last updated: 2026-08-23 (end of Episode 15)._
   ✕ close button; **Ctrl+Shift+M** toggles microphone mixing globally and stays synchronized with
   the overlay mic control. In the desktop app, diarization is on — captions are attributed to
   anonymous `Guest-N` speakers, each with a clickable pill that opens a dedicated page; a segmented
-  **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap.
+  **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the HAL eye** dilates it
+  into a full-window "crystal ball" **Vision page** (corner→centre match-cut zoom; the large eye stays
+  audio-reactive) — a UX shell for the north-star visualization, currently a placeholder pending the
+  image render tier.
 - **Pipeline engines (`Hark.Core`):**
   - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
     `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
@@ -105,6 +108,7 @@ _Last updated: 2026-08-23 (end of Episode 15)._
 | 13 | 2026-08-22 | [Installable Release: MSIX, a Single-File Setup & the SmartScreen Lesson](./EP13-installable-release-and-installer-pipeline.md) | HARK became a shippable Windows app — a HAL-eye icon set, a signed MSIX, and a single self-contained `Hark-Setup.exe` embedding the package, published by a `v*`-tag release pipeline. Five point releases (v0.1.0→v0.1.4) shook out SmartScreen (ship the exe zipped), a duplicate-instance bug (single-instance mutex), and an in-installer Azure-config step that detects existing config across env/config.json/user-secrets. |
 | 14 | 2026-08-23 | [The Oracle's Recognition Head: Semantic Diarization Refinement (Stage 0 Shipped & Validated)](./EP14-oracle-assisted-diarization-recognition-head.md) | Reframed the grounding oracle as two-headed — Cristóbal used only the *augmentation* head; the unused *recognition* head is the mechanism to repair diarization. **Shipped Stage 0**: a text-only LLM **semantic post-pass** (`SemanticDiarizationRefiner`) that re-labels the offline refiner's segments (merge over-splits, fix cross-ups) with **immutable text**, reusing the recap AOAI infra, chained into `RefineDiarizationAsync`, no engine boundary; plus a caption re-render + an honest regrouping metric. **Validated live**: synthetic worst-case still drifts, but a real Larry King/Nixon interview diarizes host↔guest correctly (`4→3 speakers, 30 lines regrouped`). |
 | 15 | 2026-08-23 | [The Oracle Spike: Vision's Concept Judgment, Native and Proven](./EP15-oracle-spike-vision-concept.md) | Pinned Cristóbal's true form (a **mode of HARK** — HAL is the eye, Cristóbal the mind) and scaffolded `Hark.Oracle` / `Hark.Oracle.Vision`: a **two-tier** augmentation service (art-director **Concept** → gpt-image **Render**) **distilled natively** from sequitur's film-craft grounding (Rizzo Ch.4 + Glebas 7/9/10/11/13 @ `4150645`) — no Python, no runtime coupling. **Concept judgment proven live** (`UNDERSCORE` on nostalgia, `CONTRAST` visual-irony on an ironic window). Render tier valid but untested (needs a `gpt-image-1` deployment). |
+| 16 | 2026-08-23 | [The Eye Dilates: HAL-Eye Vision Mode (UX Shell) + the Zoom That Fought Back](./EP16-hal-eye-vision-mode-shell.md) | Built the **UX shell** of the Vision mode: clicking the bar's HAL eye dilates into a full-window "crystal ball" page via a cinematic **corner→centre match-cut zoom** (chrome fades, then the matched eye flies to centre and scales up; the large eye stays audio-reactive). Also fixed an **invalid `Hark.slnx`** (duplicate project entries). The zoom's every-other-time bug took three theories to crack — the real cause was measuring the eye's centre via `TransformToVisual` **before** resetting its render transform. Render tier still deferred (needs `gpt-image-1`). |
 
 ---
 
@@ -148,19 +152,25 @@ These are unresolved at the end of the latest episode — natural starting point
   (non-breaking), and move `ConversationStore` into `Hark.Core` as the materialized projection
   (`Revision` = supersession key). Turns future features (second-pass diarizer, grounding oracle,
   a "crystal-ball" live-visual aid) into subscribers rather than rewrites.
-- **Oracle spike — Vision's Concept judgment proven (Episode 15):** Cristóbal's form is settled — a
-  **mode of HARK** where the **HAL eye** dilates into a crystal ball; **HAL is the eye, Cristóbal the
-  mind** (no user-facing "Cristóbal"; the codename lives on the engine). New `Hark.Oracle` library, a
-  sibling layer **on top of** `Hark.Core` (`Core` ear → `Oracle` mind → `Oracle.Vision` render). `Vision`
-  is **two-tier**: `ConceptDesigner` (art-director persona → `VisualConcept`, strict JSON) →
-  `VisionPromptComposer` + `VisionRenderer` (→ gpt-image prompt → Azure OpenAI `ImageClient`, keyless).
-  The judgment is **distilled natively** from sequitur's transformative `reference/` grounding (Rizzo
-  Ch.4 + Glebas 7/9/10/11/13 @ `4150645`) — **no Python, no runtime coupling, no live feed** (distilled
-  once into a baked prompt). **Proven live** (`UNDERSCORE`/`CONTRAST`); Render tier valid but untested.
-  Remaining: provision **`gpt-image-1`** (infra) to see pixels; host as the HAL-eye Vision mode in
-  `Hark.App`; the Stage 2 live beat-intelligence (topic structure, debounce, O(n²) guard);
-  conditioning-**morph** + the topic-driven **cut-vs-morph** policy. Full record:
-  [`EP15`](./EP15-oracle-spike-vision-concept.md).
+- **Oracle spike — Vision's Concept judgment proven (Episode 15); Vision UX shell shipped (Episode 16):**
+  Cristóbal's form is settled — a **mode of HARK** where the **HAL eye** dilates into a crystal ball;
+  **HAL is the eye, Cristóbal the mind** (no user-facing "Cristóbal"; the codename lives on the engine).
+  New `Hark.Oracle` library, a sibling layer **on top of** `Hark.Core` (`Core` ear → `Oracle` mind →
+  `Oracle.Vision` render). `Vision` is **two-tier**: `ConceptDesigner` (art-director persona →
+  `VisualConcept`, strict JSON) → `VisionPromptComposer` + `VisionRenderer` (→ gpt-image prompt → Azure
+  OpenAI `ImageClient`, keyless). The judgment is **distilled natively** from sequitur's transformative
+  `reference/` grounding (Rizzo Ch.4 + Glebas 7/9/10/11/13 @ `4150645`) — **no Python, no runtime
+  coupling, no live feed** (distilled once into a baked prompt). **Proven live** (`UNDERSCORE`/`CONTRAST`);
+  Render tier valid but untested. **Episode 16 shipped the Vision UX shell** in `Hark.App`: clicking the
+  bar's HAL eye dilates into a full-window "crystal ball" page via a **corner→centre match-cut zoom**
+  (chrome fades to darkness, then the matched large eye flies to centre and scales up, staying
+  audio-reactive); click the eye to return. **Placeholder only** — no image yet.
+  Remaining: provision **`gpt-image-1`** (infra) + reference `Hark.Oracle` from `Hark.App` and call
+  `VisionService` on open to render real pixels into the page; the Stage 2 live beat-intelligence (topic
+  structure, debounce, O(n²) guard); conditioning-**morph** + the topic-driven **cut-vs-morph** policy;
+  in-Vision affordances (Esc-to-return / minimal in-page controls, since the chrome sits behind the opaque
+  canvas while open). Full records: [`EP15`](./EP15-oracle-spike-vision-concept.md),
+  [`EP16`](./EP16-hal-eye-vision-mode-shell.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
   that dispatches a generative image model to render live *didactic* visualizations. The hard-won
   insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed

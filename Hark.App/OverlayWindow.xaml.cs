@@ -88,6 +88,15 @@ public partial class OverlayWindow : Window
     /// <summary>Whether the mic toggle is on (the local microphone is mixed into the captions).</summary>
     private bool _micOn;
 
+    /// <summary>Whether the full-window HAL-eye Vision page is currently open.</summary>
+    private bool _visionOpen;
+
+    /// <summary>The large Vision eye's start transform (matched over the bar's small eye) for the zoom.</summary>
+    private double _visionStartX, _visionStartY, _visionStartScale = 0.08;
+
+    /// <summary>Whether an open/close Vision transition is mid-animation, to reject overlapping clicks.</summary>
+    private bool _visionAnimating;
+
     /// <summary>Latest audio level target (0..1), published by the audio callback, eased in the render loop.</summary>
     private double _audioTarget;
 
@@ -144,6 +153,13 @@ public partial class OverlayWindow : Window
 
         Loaded += (_, _) => PositionAsTopBar();
         DragHandle.MouseLeftButtonDown += OnDragHandlePressed;
+
+        // Click the HAL eye to dilate into the full-window Vision page. Open on the button's *release*
+        // (not press) so this same click's mouse-up can't land on the just-revealed big eye and
+        // immediately close it; the press only suppresses the drag-handle's window move.
+        HalEye.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        HalEye.MouseLeftButtonUp += OnHalEyeReleased;
+        HalEyeBig.MouseLeftButtonUp += (_, _) => { if (!_visionAnimating) CloseVision(); };
 
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
@@ -551,6 +567,147 @@ public partial class OverlayWindow : Window
             HalGlow.BlurRadius = 0;
             HalScale.ScaleX = HalScale.ScaleY = 1.0;
         }
+
+        // Drive the large Vision eye with the same envelope (scaled for its size) while it's open.
+        if (_visionOpen)
+        {
+            if (_running)
+            {
+                HalCorneaBig.Opacity = 0.30 + 0.70 * l;
+                HalGlowBig.Opacity = 0.90 * l;
+                HalGlowBig.BlurRadius = 30 + 120 * l;
+                HalScaleBig.ScaleX = HalScaleBig.ScaleY = 0.92 + 0.12 * l;
+            }
+            else
+            {
+                HalCorneaBig.Opacity = 0.30 + 0.10 * l;
+                HalGlowBig.Opacity = 0.0;
+                HalGlowBig.BlurRadius = 0;
+                HalScaleBig.ScaleX = HalScaleBig.ScaleY = 1.0;
+            }
+        }
+    }
+
+    /// <summary>Opens the Vision page when the bar's HAL eye is released (ignored mid-transition).</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The mouse button event arguments.</param>
+    private void OnHalEyeReleased(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (!_visionAnimating && !_visionOpen) OpenVision();
+    }
+
+    /// <summary>
+    /// Dilates the eye into the full-window Vision page in two staged beats: the bar chrome fades to
+    /// darkness while a matched tiny eye holds over the real one, then that eye zooms to the centre and
+    /// scales up — a continuous "push into the eye" rather than a separate fade + pop.
+    /// </summary>
+    private void OpenVision()
+    {
+        if (_visionOpen) return;
+        _visionOpen = true;
+        _visionAnimating = true;
+
+        Height = SystemParameters.WorkArea.Height;
+
+        // Present the canvas (still invisible) and force a layout pass so we can measure where the
+        // large eye rests vs. where the bar's small eye sits, and match the two for a seamless zoom.
+        VisionCanvas.Visibility = Visibility.Visible;
+        VisionCanvas.BeginAnimation(OpacityProperty, null);   // release any held clock so Opacity=0 applies
+        VisionCanvas.Opacity = 0;
+
+        // Reset the eye to its identity (resting) transform BEFORE measuring: TransformToVisual includes
+        // the render transform, so a leftover held pose from a prior cycle would corrupt the measured
+        // centre (making the start offset ~0 → "teleports to centre and scales in place"). Release the
+        // held clocks first so these identity values actually take effect.
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        VisionEyeScale.ScaleX = VisionEyeScale.ScaleY = 1.0;
+        VisionEyeTranslate.X = VisionEyeTranslate.Y = 0.0;
+        UpdateLayout();
+
+        var smallCentre = HalEye.TransformToVisual(VisionCanvas)
+            .Transform(new System.Windows.Point(HalEye.ActualWidth / 2, HalEye.ActualHeight / 2));
+        var bigCentre = HalEyeBig.TransformToVisual(VisionCanvas)
+            .Transform(new System.Windows.Point(HalEyeBig.ActualWidth / 2, HalEyeBig.ActualHeight / 2));
+
+        _visionStartScale = HalEyeBig.ActualWidth > 0 ? HalEye.ActualWidth / HalEyeBig.ActualWidth : 0.08;
+        _visionStartX = smallCentre.X - bigCentre.X;
+        _visionStartY = smallCentre.Y - bigCentre.Y;
+
+        // Now park the large eye tiny and directly over the bar eye as the zoom's start pose.
+        VisionEyeScale.ScaleX = VisionEyeScale.ScaleY = _visionStartScale;
+        VisionEyeTranslate.X = _visionStartX;
+        VisionEyeTranslate.Y = _visionStartY;
+
+        // Beat 1 — other components fade to darkness (the eye stays, being the large matched one).
+        // Beat 2 (the zoom) is chained on this fade's completion, so the eye holds its parked pose
+        // through beat 1 rather than depending on a BeginTime delay's ambiguous held value.
+        Bar.BeginAnimation(OpacityProperty, null);
+        Bar.Opacity = 1;
+        Bar.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(180))));
+
+        var canvasFade = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(180)));
+        canvasFade.Completed += (_, _) => ZoomVisionEyeToCentre();
+        VisionCanvas.BeginAnimation(OpacityProperty, canvasFade);
+    }
+
+    /// <summary>Beat 2 of the open: zoom the parked eye from the bar corner to the centred full size.</summary>
+    private void ZoomVisionEyeToCentre()
+    {
+        if (!_visionOpen) return;   // closed during the fade — abort the zoom
+
+        var zoom = new Duration(TimeSpan.FromMilliseconds(560));
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+        var grow = new DoubleAnimation(_visionStartScale, 1.0, zoom) { EasingFunction = ease };
+        grow.Completed += (_, _) => _visionAnimating = false;
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(_visionStartX, 0, zoom) { EasingFunction = ease });
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(_visionStartY, 0, zoom) { EasingFunction = ease });
+    }
+
+    /// <summary>Collapses the Vision page back into the bar: the eye zooms back to the bar, then the
+    /// chrome fades in and the window shrinks to the docked bar.</summary>
+    private void CloseVision()
+    {
+        if (!_visionOpen) return;
+        _visionAnimating = true;
+
+        var zoom = new Duration(TimeSpan.FromMilliseconds(320));
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+
+        var shrink = new DoubleAnimation(1.0, _visionStartScale, zoom) { EasingFunction = ease };
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+        VisionEyeScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(0, _visionStartX, zoom) { EasingFunction = ease });
+        VisionEyeTranslate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(0, _visionStartY, zoom) { EasingFunction = ease });
+
+        // Bring the chrome back (hidden behind the still-dark canvas), then fade the canvas out over it.
+        Bar.BeginAnimation(OpacityProperty, null);
+        Bar.Opacity = 1;
+
+        var fade = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(220)))
+        {
+            BeginTime = TimeSpan.FromMilliseconds(180),
+        };
+        fade.Completed += (_, _) =>
+        {
+            VisionCanvas.Visibility = Visibility.Collapsed;
+            _visionOpen = false;
+            _visionAnimating = false;
+            AdjustHeightToContent();   // shrink the window back down to the bar
+        };
+        VisionCanvas.BeginAnimation(OpacityProperty, fade);
     }
 
     /// <summary>
@@ -773,6 +930,7 @@ public partial class OverlayWindow : Window
     {
         if (!IsLoaded) return;
         var area = SystemParameters.WorkArea;
+        if (_visionOpen) { Height = area.Height; return; }   // Vision fills the working area
         Bar.Measure(new System.Windows.Size(area.Width, area.Height));
         Height = Math.Clamp(Bar.DesiredSize.Height, MinHeight, area.Height);
     }
