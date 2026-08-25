@@ -1,7 +1,7 @@
 name: Provision Azure Infra
 
 # Stands up HARK's Azure resources (Speech + optional OpenAI) on any subscription.
-# Auth is keyless via OpenID Connect (federated credentials) — no secrets/keys stored in GitHub.
+# Auth is keyless via OpenID Connect (federated credentials) ï¿½ no secrets/keys stored in GitHub.
 #
 # One-time setup (per subscription) before this runs:
 #   1. Create an Entra app / service principal with a federated credential for this repo:
@@ -23,6 +23,11 @@ on:
         default: 'eastus2'
       deployOpenAi:
         description: 'Also deploy Azure OpenAI (desktop SUMMARY recaps)'
+        type: boolean
+        required: true
+        default: false
+      deployOpenAiImage:
+        description: 'Also deploy gpt-image-1 (desktop Vision render tier; requires deployOpenAi)'
         type: boolean
         required: true
         default: false
@@ -57,8 +62,10 @@ jobs:
           # push runs carry no workflow inputs, so fall back to sensible defaults.
           LOCATION="${{ github.event.inputs.location }}"
           DEPLOY_OPENAI="${{ github.event.inputs.deployOpenAi }}"
+          DEPLOY_OPENAI_IMAGE="${{ github.event.inputs.deployOpenAiImage }}"
           echo "location=${LOCATION:-eastus2}" >> "$GITHUB_OUTPUT"
           echo "deployOpenAi=${DEPLOY_OPENAI:-false}" >> "$GITHUB_OUTPUT"
+          echo "deployOpenAiImage=${DEPLOY_OPENAI_IMAGE:-false}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve principal id for role assignments
         id: principal
@@ -83,7 +90,8 @@ jobs:
               --parameters location="${{ steps.inputs.outputs.location }}" \
                            principalId="${{ steps.principal.outputs.principalId }}" \
                            principalType="${{ steps.principal.outputs.principalType }}" \
-                           deployOpenAi=${{ steps.inputs.outputs.deployOpenAi }}
+                           deployOpenAi=${{ steps.inputs.outputs.deployOpenAi }} \
+                           deployOpenAiImage=${{ steps.inputs.outputs.deployOpenAiImage }}
 
       - name: Deploy infrastructure
         id: deploy
@@ -99,6 +107,7 @@ jobs:
                            principalId="${{ steps.principal.outputs.principalId }}" \
                            principalType="${{ steps.principal.outputs.principalType }}" \
                            deployOpenAi=${{ steps.inputs.outputs.deployOpenAi }} \
+                           deployOpenAiImage=${{ steps.inputs.outputs.deployOpenAiImage }} \
               --query properties.outputs -o json > outputs.json
             cat outputs.json
 
@@ -113,4 +122,5 @@ jobs:
           echo "HARK_SPEECH_RESOURCE_ID = $(jq -r '.speechResourceId.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
           echo "HARK_AOAI_ENDPOINT      = $(jq -r '.openAiEndpoint.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
           echo "HARK_AOAI_DEPLOYMENT    = $(jq -r '.openAiDeployment.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "HARK_AOAI_IMAGE_DEPLOYMENT = $(jq -r '.openAiImageDeployment.value' outputs.json)" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

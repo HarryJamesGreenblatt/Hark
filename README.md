@@ -103,7 +103,8 @@ CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dot
 >   "HARK_SPEECH_REGION": "eastus2",
 >   "HARK_SPEECH_RESOURCE_ID": "<your-speech-resource-arm-id>",
 >   "HARK_AOAI_ENDPOINT": "https://<your-aoai>.openai.azure.com/",
->   "HARK_AOAI_DEPLOYMENT": "<your-chat-deployment-name>"
+>   "HARK_AOAI_DEPLOYMENT": "<your-chat-deployment-name>",
+>   "HARK_AOAI_IMAGE_DEPLOYMENT": "<your-image-deployment-name>"
 > }
 > ```
 
@@ -121,6 +122,10 @@ only — no keys):
 dotnet user-secrets set "HARK_AOAI_ENDPOINT" "https://<your-aoai>.openai.azure.com/" --project Hark.App
 dotnet user-secrets set "HARK_AOAI_DEPLOYMENT" "<your-chat-deployment-name>" --project Hark.App
 ```
+
+> The optional **`HARK_AOAI_IMAGE_DEPLOYMENT`** (e.g. a `gpt-image-1` deployment) enables the desktop
+> **Vision** render tier (the HAL-eye crystal ball). Same keyless auth; leave it unset to keep Vision
+> in placeholder mode.
 
 Auth is the same keyless `AzureCliCredential`; your `az login` identity needs the
 **Cognitive Services OpenAI User** role on the resource. If these secrets are absent, the SUMMARY

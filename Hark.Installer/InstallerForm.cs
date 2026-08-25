@@ -28,6 +28,7 @@ internal sealed class InstallerForm : Form
     readonly TextBox _resourceBox;
     readonly TextBox _aoaiEndpointBox;
     readonly TextBox _aoaiDeploymentBox;
+    readonly TextBox _aoaiImageDeploymentBox;
 
     enum Phase { Install, Configure, Done }
     Phase _phase = Phase.Install;
@@ -44,7 +45,7 @@ internal sealed class InstallerForm : Form
     public InstallerForm()
     {
         Text = "HARK Setup";
-        ClientSize = new Size(580, 500);
+        ClientSize = new Size(580, 558);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -124,14 +125,15 @@ internal sealed class InstallerForm : Form
         Controls.Add(_progressBar);
 
         // ── Config panel (revealed after install only when config.json is absent) ──
-        _configPanel = new Panel { Location = new Point(20, 190), Size = new Size(540, 232), Visible = false };
+        _configPanel = new Panel { Location = new Point(20, 190), Size = new Size(540, 290), Visible = false };
         Controls.Add(_configPanel);
         _regionBox         = AddConfigField(0,   "Azure Speech region",          "e.g. eastus2");
         _resourceBox       = AddConfigField(58,  "Speech resource ID (ARM id)",  "/subscriptions/.../Microsoft.CognitiveServices/accounts/...");
         _aoaiEndpointBox   = AddConfigField(116, "Azure OpenAI endpoint (optional — enables SUMMARY)", "https://<name>.openai.azure.com/");
-        _aoaiDeploymentBox = AddConfigField(174, "OpenAI deployment (optional)", "e.g. gpt-4.1-mini");
+        _aoaiDeploymentBox = AddConfigField(174, "OpenAI chat deployment (optional)", "e.g. gpt-4.1-mini");
+        _aoaiImageDeploymentBox = AddConfigField(232, "OpenAI image deployment (optional — enables Vision)", "e.g. gpt-image-1");
 
-        var bottomPanel = new Panel { Location = new Point(0, 430), Size = new Size(580, 70), BackColor = Panel };
+        var bottomPanel = new Panel { Location = new Point(0, 488), Size = new Size(580, 70), BackColor = Panel };
         Controls.Add(bottomPanel);
         bottomPanel.Controls.Add(new Panel { Location = new Point(0, 0), Size = new Size(580, 2), BackColor = HalRed });
 
@@ -324,8 +326,10 @@ internal sealed class InstallerForm : Form
         };
         var endpoint = _aoaiEndpointBox.Text.Trim();
         var deployment = _aoaiDeploymentBox.Text.Trim();
+        var imageDeployment = _aoaiImageDeploymentBox.Text.Trim();
         if (endpoint.Length > 0) map["HARK_AOAI_ENDPOINT"] = endpoint;
         if (deployment.Length > 0) map["HARK_AOAI_DEPLOYMENT"] = deployment;
+        if (imageDeployment.Length > 0) map["HARK_AOAI_IMAGE_DEPLOYMENT"] = imageDeployment;
 
         try
         {
