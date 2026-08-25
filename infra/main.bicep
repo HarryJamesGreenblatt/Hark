@@ -1,11 +1,11 @@
-// HARK — Azure infrastructure (Infrastructure-as-Code)
+// HARK ï¿½ Azure infrastructure (Infrastructure-as-Code)
 //
 // Subscription-scoped deployment that stands up everything HARK needs on a fresh subscription:
-//   • an Azure AI Speech resource (kind=SpeechServices, S0) for the core transcription pipeline
-//   • (optional) an Azure OpenAI resource + chat deployment for the desktop SUMMARY recaps
-//   • keyless RBAC role assignments granting a signed-in principal the data-plane roles
+//   ï¿½ an Azure AI Speech resource (kind=SpeechServices, S0) for the core transcription pipeline
+//   ï¿½ (optional) an Azure OpenAI resource + chat deployment for the desktop SUMMARY recaps
+//   ï¿½ keyless RBAC role assignments granting a signed-in principal the data-plane roles
 //
-// Auth stays keyless (Entra ID) end-to-end — no account keys are ever emitted or stored.
+// Auth stays keyless (Entra ID) end-to-end ï¿½ no account keys are ever emitted or stored.
 //
 // Deploy:
 //   az deployment sub create --location eastus2 --template-file infra/main.bicep \
@@ -55,6 +55,21 @@ param openAiModelVersion string = '2025-04-14'
 @description('Deployment SKU capacity (in thousands of tokens per minute).')
 param openAiCapacity int = 10
 
+@description('Deploy the gpt-image image model deployment (the Vision crystal-ball render tier). Requires deployOpenAi=true.')
+param deployOpenAiImage bool = false
+
+@description('Image model deployment name for the Vision render tier.')
+param openAiImageDeploymentName string = 'gpt-image-1'
+
+@description('Image model name.')
+param openAiImageModelName string = 'gpt-image-1'
+
+@description('Image model version.')
+param openAiImageModelVersion string = '2025-04-15'
+
+@description('Image deployment SKU capacity (requests per minute).')
+param openAiImageCapacity int = 1
+
 // Short, stable, globally-distinct suffix derived from the target subscription. Keeps default
 // resource names unique across subscriptions while remaining deterministic across re-runs.
 var uniqueSuffix = substring(uniqueString(subscription().id), 0, 6)
@@ -73,7 +88,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// Speech (required) — deployed into the resource group via a module
+// Speech (required) ï¿½ deployed into the resource group via a module
 // ---------------------------------------------------------------------------
 
 module speech 'modules/speech.bicep' = {
@@ -88,7 +103,7 @@ module speech 'modules/speech.bicep' = {
 }
 
 // ---------------------------------------------------------------------------
-// Azure OpenAI (optional) — recaps for the desktop overlay
+// Azure OpenAI (optional) ï¿½ recaps for the desktop overlay
 // ---------------------------------------------------------------------------
 
 module openAi 'modules/openai.bicep' = if (deployOpenAi) {
@@ -103,11 +118,16 @@ module openAi 'modules/openai.bicep' = if (deployOpenAi) {
     capacity: openAiCapacity
     principalId: principalId
     principalType: principalType
+    deployImage: deployOpenAiImage
+    imageDeploymentName: openAiImageDeploymentName
+    imageModelName: openAiImageModelName
+    imageModelVersion: openAiImageModelVersion
+    imageCapacity: openAiImageCapacity
   }
 }
 
 // ---------------------------------------------------------------------------
-// Outputs — feed these straight into `dotnet user-secrets`
+// Outputs ï¿½ feed these straight into `dotnet user-secrets`
 // ---------------------------------------------------------------------------
 
 @description('The Speech resource region (HARK_SPEECH_REGION).')
@@ -121,3 +141,6 @@ output openAiEndpoint string = deployOpenAi ? openAi!.outputs.endpoint : ''
 
 @description('The Azure OpenAI chat deployment name (HARK_AOAI_DEPLOYMENT), empty when not deployed.')
 output openAiDeployment string = deployOpenAi ? openAiDeploymentName : ''
+
+@description('The Azure OpenAI gpt-image deployment name (HARK_AOAI_IMAGE_DEPLOYMENT), empty when not deployed.')
+output openAiImageDeployment string = (deployOpenAi && deployOpenAiImage) ? openAi!.outputs.imageDeployment : ''

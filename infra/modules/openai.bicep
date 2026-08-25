@@ -1,4 +1,4 @@
-// HARK — Azure OpenAI resource, chat deployment, and keyless role assignment (resource-group scope).
+// HARK ï¿½ Azure OpenAI resource, chat deployment, and keyless role assignment (resource-group scope).
 
 @description('Azure region for the Azure OpenAI account.')
 param location string
@@ -24,7 +24,22 @@ param principalId string
 @description('Principal type for the role assignment.')
 param principalType string
 
-// Cognitive Services OpenAI User — data-plane role used for keyless recaps.
+@description('Deploy a gpt-image image model deployment (the Vision crystal-ball render tier).')
+param deployImage bool = false
+
+@description('Image model deployment name.')
+param imageDeploymentName string = 'gpt-image-1'
+
+@description('Image model name.')
+param imageModelName string = 'gpt-image-1'
+
+@description('Image model version.')
+param imageModelVersion string = '2025-04-15'
+
+@description('Image deployment SKU capacity (requests per minute).')
+param imageCapacity int = 1
+
+// Cognitive Services OpenAI User ï¿½ data-plane role used for keyless recaps.
 var openAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 
 resource openAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
@@ -56,6 +71,27 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
   }
 }
 
+// Optional gpt-image deployment â€” the Vision crystal-ball render tier. dependsOn the chat deployment
+// because Cognitive Services serializes deployment operations per account (parallel creates conflict).
+resource imageDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (deployImage) {
+  parent: openAi
+  name: imageDeploymentName
+  sku: {
+    name: 'GlobalStandard'
+    capacity: imageCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: imageModelName
+      version: imageModelVersion
+    }
+  }
+  dependsOn: [
+    chatDeployment
+  ]
+}
+
 resource openAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(openAi.id, principalId, openAiUserRoleId)
   scope: openAi
@@ -68,3 +104,6 @@ resource openAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 @description('The Azure OpenAI endpoint.')
 output endpoint string = openAi.properties.endpoint
+
+@description('The gpt-image deployment name (HARK_AOAI_IMAGE_DEPLOYMENT), empty when not deployed.')
+output imageDeployment string = deployImage ? imageDeploymentName : ''

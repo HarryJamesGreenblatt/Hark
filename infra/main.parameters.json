@@ -28,6 +28,21 @@
     },
     "openAiCapacity": {
       "value": 10
+    },
+    "deployOpenAiImage": {
+      "value": false
+    },
+    "openAiImageDeploymentName": {
+      "value": "gpt-image-1"
+    },
+    "openAiImageModelName": {
+      "value": "gpt-image-1"
+    },
+    "openAiImageModelVersion": {
+      "value": "2025-04-15"
+    },
+    "openAiImageCapacity": {
+      "value": 1
     }
   }
 }

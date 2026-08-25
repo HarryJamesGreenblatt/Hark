@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-23 (end of Episode 16)._
+_Last updated: 2026-08-23 (end of Episode 16; gpt-image-1 provisioned)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -65,10 +65,13 @@ _Last updated: 2026-08-23 (end of Episode 16)._
   — both stay out of the repo. Only resource *locations* are stored (region/ARM id, AOAI
   endpoint/deployment); auth stays keyless. Missing recap config shows a friendly inline note.
 - **Summary infra:** an Azure OpenAI resource in `rg-hark` with a `gpt-4.1-mini` chat deployment
-  backs the SUMMARY view. Provisioning is now **codified** (see below) rather than hand-run.
+  backs the SUMMARY view. A **`gpt-image-1`** image deployment (GlobalStandard, `2025-04-15`) is also
+  provisioned on the same account for the Vision render tier (`eastus2` supports it; low RPM quota).
+  Provisioning is now **codified** (see below) rather than hand-run.
   Billable; delete/purge when done experimenting.
 - **Infra as Code:** the full Azure stack (resource group, Speech resource, optional Azure OpenAI
-  account + deployment, and the keyless RBAC role assignments) is defined as **Bicep** under
+  account + chat deployment, an **optional `gpt-image-1` image deployment** for the Vision render tier
+  (`deployOpenAiImage=true`), and the keyless RBAC role assignments) is defined as **Bicep** under
   `infra/` and deployed by a keyless **GitHub Actions** pipeline
   (`.github/workflows/provision-infra.yml`, OIDC). Resource names auto-generate as globally-unique
   by default, so the stack stands up cleanly on any subscription. Deployment outputs map directly to
@@ -165,12 +168,14 @@ These are unresolved at the end of the latest episode — natural starting point
   bar's HAL eye dilates into a full-window "crystal ball" page via a **corner→centre match-cut zoom**
   (chrome fades to darkness, then the matched large eye flies to centre and scales up, staying
   audio-reactive); click the eye to return. **Placeholder only** — no image yet.
-  Remaining: provision **`gpt-image-1`** (infra) + reference `Hark.Oracle` from `Hark.App` and call
-  `VisionService` on open to render real pixels into the page; the Stage 2 live beat-intelligence (topic
-  structure, debounce, O(n²) guard); conditioning-**morph** + the topic-driven **cut-vs-morph** policy;
-  in-Vision affordances (Esc-to-return / minimal in-page controls, since the chrome sits behind the opaque
-  canvas while open). Full records: [`EP15`](./EP15-oracle-spike-vision-concept.md),
-  [`EP16`](./EP16-hal-eye-vision-mode-shell.md).
+  **`gpt-image-1` is now provisioned** (Bicep `deployOpenAiImage=true` → a GlobalStandard `2025-04-15`
+  image deployment on `aoai-hark-svl5li`, `eastus2`; output `HARK_AOAI_IMAGE_DEPLOYMENT=gpt-image-1`).
+  Remaining: reference `Hark.Oracle` from `Hark.App` and call `VisionService` on open (set
+  `HARK_AOAI_IMAGE_DEPLOYMENT` in user-secrets/config) to render real pixels into the page; the Stage 2
+  live beat-intelligence (topic structure, debounce, O(n²) guard); conditioning-**morph** + the
+  topic-driven **cut-vs-morph** policy; in-Vision affordances (Esc-to-return / minimal in-page controls,
+  since the chrome sits behind the opaque canvas while open). Full records:
+  [`EP15`](./EP15-oracle-spike-vision-concept.md), [`EP16`](./EP16-hal-eye-vision-mode-shell.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
   that dispatches a generative image model to render live *didactic* visualizations. The hard-won
   insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed
