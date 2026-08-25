@@ -51,8 +51,15 @@ public sealed class VisionRenderer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
-        // Square canvas for the crystal ball; other aspects deferred until the surface needs them.
-        var options = new ImageGenerationOptions { Size = GeneratedImageSize.W1024xH1024 };
+        // Square canvas for the crystal ball; "medium" quality trades a little fidelity for a much
+        // faster render than the default — right for a live, ambient mood image (use "low" for even
+        // faster, "high" for a print-grade picture). GeneratedImageQuality is an extensible value type,
+        // so the gpt-image-1 quality tiers are passed by name.
+        var options = new ImageGenerationOptions
+        {
+            Size = GeneratedImageSize.W1024xH1024,
+            Quality = new GeneratedImageQuality("medium"),
+        };
 
         var image = await _images.GenerateImageAsync(prompt, options, cancellationToken).ConfigureAwait(false);
         var bytes = image.Value.ImageBytes

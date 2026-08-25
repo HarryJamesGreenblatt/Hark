@@ -6,6 +6,7 @@ using Azure.Identity;
 using Hark.Core;
 using Hark.Core.Summarization;
 using Hark.Core.Transcription;
+using Hark.Oracle.Vision;
 using Microsoft.Extensions.Configuration;
 
 namespace Hark.App;
@@ -55,6 +56,9 @@ public partial class App : Application
     /// <summary>Azure OpenAI deployment name used for recap summarization, sourced from user-secrets.</summary>
     private string? _aoaiDeployment;
 
+    /// <summary>Azure OpenAI image deployment used for the Vision render tier, sourced from config (optional).</summary>
+    private string? _aoaiImageDeployment;
+
     /// <summary>
     /// Whether to capture and mix the local microphone into the transcribed stream. Defaults off
     /// (loopback-only, like native Live Captions); set <c>HARK_MIX_MIC=1</c> to enable, or toggle the
@@ -77,6 +81,18 @@ public partial class App : Application
 
     /// <summary>The most recently generated people-pivoted (Speakers) recap, cached alongside the Conversation one.</summary>
     private SpeakerRecap? _cachedSpeakerRecap;
+
+    /// <summary>Lazily created Vision service (art-director concept + optional render), or null when unconfigured.</summary>
+    private VisionService? _vision;
+
+    /// <summary>Cancellation for the in-flight Vision conjure, cancelled when superseded or the page closes.</summary>
+    private CancellationTokenSource? _visionCts;
+
+    /// <summary>The last rendered Vision image, reused when the eye is re-opened on unchanged captions.</summary>
+    private byte[]? _cachedVisionImage;
+
+    /// <summary>The store revision the cached Vision image was conjured from.</summary>
+    private int _cachedVisionRevision = -1;
 
     /// <summary>The <see cref="ConversationStore.Revision"/> that the cached recaps were generated from.</summary>
     private int _cachedRevision = -1;
@@ -121,6 +137,7 @@ public partial class App : Application
         _resourceId = config["HARK_SPEECH_RESOURCE_ID"];
         _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
         _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
+        _aoaiImageDeployment = config["HARK_AOAI_IMAGE_DEPLOYMENT"];
 
         // Mic mixing is off by default; only an explicit 1/true opts in.
         var mixMic = config["HARK_MIX_MIC"];
@@ -134,6 +151,8 @@ public partial class App : Application
         _overlay.SpeakerSelected += OpenSpeakerWindow;
         _overlay.SummaryRequested += OnSummaryRequested;
         _overlay.MicToggleRequested += OnMicToggleRequested;
+        _overlay.VisionRequested += OnVisionRequested;
+        _overlay.VisionClosed += () => _visionCts?.Cancel();
         _overlay.SetMicEnabled(_mixMic);   // reflect the configured default in the toggle
 
         // New speakers discovered by diarization surface as pills in the CONVERSATION index.
@@ -566,6 +585,87 @@ public partial class App : Application
         {
             _overlay.SetSummaryText($"Couldn't generate recap: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Conjures a Vision image when the HAL eye dilates open — the augmentation oracle's manual trigger.
+    /// One call per eye-open (human-paced), superseding and cached by store revision so re-opening on
+    /// unchanged captions doesn't re-bill. The render tier is optional: with no image deployment the
+    /// art-director concept is shown as text instead. Auto-firing on topic beats is a later stage.
+    /// </summary>
+    private async void OnVisionRequested()
+    {
+        if (_overlay is null) return;
+
+        // Concept needs the chat deployment; the image additionally needs the image deployment.
+        if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment))
+        {
+            _overlay.SetVisionStatus("Vision isn't configured. Set HARK_AOAI_ENDPOINT and HARK_AOAI_DEPLOYMENT.");
+            return;
+        }
+        if (_store.All.Count == 0)
+        {
+            _overlay.SetVisionStatus("Start captioning — a visual concept of the conversation will appear here.");
+            return;
+        }
+
+        int revision = _store.Revision;
+
+        // Re-opening the eye with unchanged captions: reuse the last image, no service call.
+        if (revision == _cachedVisionRevision && _cachedVisionImage is not null)
+        {
+            _overlay.SetVisionImage(_cachedVisionImage);
+            return;
+        }
+
+        // Supersede any in-flight conjure (rapid re-opens / a close).
+        _visionCts?.Cancel();
+        var cts = _visionCts = new CancellationTokenSource();
+
+        _overlay.SetVisionStatus("Conjuring a vision…");
+
+        // A recent window (not the whole transcript) keeps the concept focused and token cost bounded.
+        var window = string.Join(
+            Environment.NewLine,
+            _store.All.TakeLast(40).Select(entry => $"{entry.Speaker}: {entry.Text}"));
+
+        try
+        {
+            _vision ??= BuildVisionService();
+            var result = await _vision.ConjureAsync(window, cts.Token);
+            if (cts.IsCancellationRequested || result is null) return;
+
+            if (result.Image is not null)
+            {
+                _cachedVisionImage = result.Image;
+                _cachedVisionRevision = revision;
+                // Caption is the conversation's master feeling (Theme), not the image description.
+                _overlay.SetVisionImage(result.Image, result.Concept.Theme);
+            }
+            else
+            {
+                // Concept-only (no render tier configured): show the art director's judgment as text.
+                _overlay.SetVisionConcept(result.Concept.Concept);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded or the page was closed; ignore.
+        }
+        catch (Exception ex)
+        {
+            _overlay.SetVisionStatus($"Couldn't conjure a vision: {ex.Message}");
+        }
+    }
+
+    /// <summary>Builds the Vision service: the art-director concept tier, plus the render tier when an image deployment is configured.</summary>
+    private VisionService BuildVisionService()
+    {
+        var designer = new ConceptDesigner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+        var renderer = string.IsNullOrWhiteSpace(_aoaiImageDeployment)
+            ? null
+            : new VisionRenderer(_aoaiEndpoint!, _aoaiImageDeployment!, new AzureCliCredential());
+        return new VisionService(designer, renderer);
     }
 
     /// <summary>Releases the hotkey, session, and tray icon when the application shuts down.</summary>

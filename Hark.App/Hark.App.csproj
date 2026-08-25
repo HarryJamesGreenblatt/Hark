@@ -15,6 +15,7 @@
 
   <ItemGroup>
 	<ProjectReference Include="..\Hark.Core\Hark.Core.csproj" />
+	<ProjectReference Include="..\Hark.Oracle\Hark.Oracle.csproj" />
   </ItemGroup>
 
   <ItemGroup>

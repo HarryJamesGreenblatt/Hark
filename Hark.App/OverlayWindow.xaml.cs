@@ -1,9 +1,11 @@
 using System.Text;
+using System.IO;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Hark.Core.Summarization;
 
@@ -131,6 +133,12 @@ public partial class OverlayWindow : Window
 
     /// <summary>Raised when the user toggles the mic; the argument is the requested on/off state.</summary>
     public event Action<bool>? MicToggleRequested;
+
+    /// <summary>Raised when the HAL eye dilates open, asking the host to conjure a Vision image.</summary>
+    public event Action? VisionRequested;
+
+    /// <summary>Raised when the Vision page collapses, so the host can cancel any in-flight conjure.</summary>
+    public event Action? VisionClosed;
 
     #endregion
 
@@ -653,6 +661,8 @@ public partial class OverlayWindow : Window
         var canvasFade = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(180)));
         canvasFade.Completed += (_, _) => ZoomVisionEyeToCentre();
         VisionCanvas.BeginAnimation(OpacityProperty, canvasFade);
+
+        VisionRequested?.Invoke();   // ask the host to conjure while the eye zooms in
     }
 
     /// <summary>Beat 2 of the open: zoom the parked eye from the bar corner to the centred full size.</summary>
@@ -680,6 +690,7 @@ public partial class OverlayWindow : Window
     {
         if (!_visionOpen) return;
         _visionAnimating = true;
+        VisionClosed?.Invoke();   // cancel any in-flight conjure
 
         var zoom = new Duration(TimeSpan.FromMilliseconds(320));
         var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
@@ -708,6 +719,59 @@ public partial class OverlayWindow : Window
             AdjustHeightToContent();   // shrink the window back down to the bar
         };
         VisionCanvas.BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>Shows a status line on the Vision page (idle hint, "conjuring…", unconfigured, or error).</summary>
+    /// <param name="message">The status text to display.</param>
+    public void SetVisionStatus(string message)
+    {
+        HideVisionOrb();
+        VisionStatusText.Text = message;
+        VisionStatusText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Shows the art-director concept as text when there's no render tier (or it failed).</summary>
+    /// <param name="concept">The one-line visual concept.</param>
+    public void SetVisionConcept(string concept)
+    {
+        HideVisionOrb();
+        VisionStatusText.Text = concept;
+        VisionStatusText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Renders a Vision image (PNG bytes) inside the HAL eye's orb — the cornea becomes the crystal
+    /// ball — with a conversation-relative caption (the concept's theme) beneath it.
+    /// </summary>
+    /// <param name="png">The rendered image as PNG bytes.</param>
+    /// <param name="caption">Optional caption about the conversation (the concept theme).</param>
+    public void SetVisionImage(byte[] png, string? caption = null)
+    {
+        var bmp = new BitmapImage();
+        using (var ms = new MemoryStream(png))
+        {
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;   // decode now so the stream can be disposed
+            bmp.StreamSource = ms;
+            bmp.EndInit();
+        }
+        bmp.Freeze();
+
+        VisionOrbBrush.ImageSource = bmp;
+        VisionOrb.Visibility = Visibility.Visible;
+        VisionOrb.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(500))));
+
+        VisionStatusText.Text = caption ?? string.Empty;
+        VisionStatusText.Visibility = string.IsNullOrWhiteSpace(caption) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Clears the orb image so the eye shows its plain red cornea (idle / conjuring state).</summary>
+    private void HideVisionOrb()
+    {
+        VisionOrb.BeginAnimation(OpacityProperty, null);
+        VisionOrb.Opacity = 0;
+        VisionOrb.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
