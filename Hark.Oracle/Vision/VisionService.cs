@@ -42,15 +42,29 @@ public sealed class VisionService
     /// </summary>
     /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
     /// <param name="cancellationToken">Cancels the in-flight request.</param>
-    public async Task<VisionResult?> ConjureAsync(string transcriptWindow, CancellationToken cancellationToken = default)
+    public Task<VisionResult?> ConjureAsync(string transcriptWindow, CancellationToken cancellationToken = default)
+        => ConjureAsync(transcriptWindow, shouldRender: null, cancellationToken);
+
+    /// <summary>
+    /// Conjures a concept and, when a renderer is configured AND <paramref name="shouldRender"/> approves,
+    /// the image. The predicate lets the caller gate the expensive render on the cheap concept — e.g. only
+    /// render when the concept is a genuinely new beat — so a stable topic doesn't re-bill the image model.
+    /// </summary>
+    /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
+    /// <param name="shouldRender">Decides whether to render this concept; <see langword="null"/> always renders.</param>
+    /// <param name="cancellationToken">Cancels the in-flight request.</param>
+    public async Task<VisionResult?> ConjureAsync(
+        string transcriptWindow,
+        Func<VisualConcept, bool>? shouldRender,
+        CancellationToken cancellationToken = default)
     {
         var concept = await _designer.DesignAsync(transcriptWindow, cancellationToken).ConfigureAwait(false);
         if (concept is null) return null;
 
         var prompt = VisionPromptComposer.Compose(concept);
-        byte[]? image = _renderer is null
-            ? null
-            : await _renderer.RenderAsync(prompt, cancellationToken).ConfigureAwait(false);
+        byte[]? image = _renderer is not null && (shouldRender is null || shouldRender(concept))
+            ? await _renderer.RenderAsync(prompt, cancellationToken).ConfigureAwait(false)
+            : null;
 
         return new VisionResult(concept, prompt, image);
     }

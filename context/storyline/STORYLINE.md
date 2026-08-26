@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-24 (end of Episode 17; Vision render tier wired into the app)._
+_Last updated: 2026-08-25 (end of Episode 18; Vision autonomous beats + concept refinement)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -38,8 +38,11 @@ _Last updated: 2026-08-24 (end of Episode 17; Vision render tier wired into the 
   **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the HAL eye** dilates it
   into a full-window "crystal ball" **Vision page** (corner→centre match-cut zoom; the large eye stays
   audio-reactive) that **conjures a live image — rendered inside the orb — from the conversation** via
-  `Hark.Oracle.Vision` (`gpt-image-1`, keyless), captioned with the conversation's theme. One call per
-  eye-open (human-paced), superseding + revision-cached so idle re-opens don't re-bill.
+  `Hark.Oracle.Vision` (`gpt-image-1`, keyless), captioned with the conversation's theme. While the page
+  stays open it **autonomously re-conjures on genuine topic shifts** (a cheap concept beat-check gates the
+  expensive render; debounced + rate-limited so it can't spam the image model), windowing each new beat to
+  the speech since the last image so the new picture reflects the new topic. Human-paced + superseding +
+  revision-cached.
 - **Pipeline engines (`Hark.Core`):**
   - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
     `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
@@ -114,6 +117,7 @@ _Last updated: 2026-08-24 (end of Episode 17; Vision render tier wired into the 
 | 15 | 2026-08-23 | [The Oracle Spike: Vision's Concept Judgment, Native and Proven](./EP15-oracle-spike-vision-concept.md) | Pinned Cristóbal's true form (a **mode of HARK** — HAL is the eye, Cristóbal the mind) and scaffolded `Hark.Oracle` / `Hark.Oracle.Vision`: a **two-tier** augmentation service (art-director **Concept** → gpt-image **Render**) **distilled natively** from sequitur's film-craft grounding (Rizzo Ch.4 + Glebas 7/9/10/11/13 @ `4150645`) — no Python, no runtime coupling. **Concept judgment proven live** (`UNDERSCORE` on nostalgia, `CONTRAST` visual-irony on an ironic window). Render tier valid but untested (needs a `gpt-image-1` deployment). |
 | 16 | 2026-08-23 | [The Eye Dilates: HAL-Eye Vision Mode (UX Shell) + the Zoom That Fought Back](./EP16-hal-eye-vision-mode-shell.md) | Built the **UX shell** of the Vision mode: clicking the bar's HAL eye dilates into a full-window "crystal ball" page via a cinematic **corner→centre match-cut zoom** (chrome fades, then the matched eye flies to centre and scales up; the large eye stays audio-reactive). Also fixed an **invalid `Hark.slnx`** (duplicate project entries). The zoom's every-other-time bug took three theories to crack — the real cause was measuring the eye's centre via `TransformToVisual` **before** resetting its render transform. Render tier still deferred (needs `gpt-image-1`). |
 | 17 | 2026-08-24 | [The Crystal Ball Sees: Vision Render Wired Into HARK](./EP17-vision-render-wired-into-app.md) | Wired `Hark.Oracle.Vision` into `Hark.App`: clicking the HAL eye now conjures a **real `gpt-image-1` image rendered inside the orb** from the last 40 lines, captioned with the conversation's theme — the **manual, human-paced** increment (one call per eye-open, superseding + revision-cached; autonomous topic-beat trigger deferred). Refined from live tests (Carson clip → an apt porcelain hand; a self-referential test → an eyeball, correctly): image moved **inside** the orb, caption switched to `Theme`, and `medium` quality cut render time to ~30–40 s. |
+| 18 | 2026-08-25 | [The Living Crystal Ball: Autonomous Beats, Concrete Concepts, Per-Beat Windows](./EP18-vision-autonomous-beats-and-concept-refinement.md) | **Stage 2**: while the Vision page is open it **autonomously re-conjures on genuine topic shifts** — a 5 s loop where a cheap concept beat-check (Jaccard vs the shown theme) gates the expensive `gpt-image-1` render, debounced (2.5 s) + rate-limited (12 s beat-check / 40 s render) so it can't spam the model. Then fixed two live-test gaps: concepts were too abstract/samey (grounded prompt now demands a **concrete, particular** scene + **avoids the speakers' obvious domain**; composer drops the object-on-black look) and new beats referenced the first topic (each beat now **windowed to the speech since the last image**, not a rolling 40 lines). |
 
 ---
 
@@ -176,14 +180,20 @@ These are unresolved at the end of the latest episode — natural starting point
   the last 40 lines and renders the `gpt-image-1` image **inside the orb**, captioned with the
   conversation's `Theme` — the **manual, human-paced** trigger (one call per eye-open, superseding +
   revision-cached, `medium` quality ~30–40 s). **Proven live** (Carson clip → apt porcelain hand; a
-  self-referential test → an eye, correctly; duck+boat proved content-tracking).
-  Remaining: the Stage 2 live **beat-intelligence** (debounced topic-boundary trigger + min-interval
-  rate limit + supersession — the autonomous "clobber" that makes it *live*); conditioning-**morph**
-  (edits endpoint, slow dissolve); concept legibility / caption polish (touch the grounded
-  `ConceptDesigner` prompt gently); in-Vision affordances (Esc-to-return / minimal in-page controls,
-  since the chrome sits behind the opaque canvas while open); optional orb size / `low` quality for more
-  speed. Full records: [`EP15`](./EP15-oracle-spike-vision-concept.md),
-  [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md).
+  self-referential test → an eye, correctly; duck+boat proved content-tracking). **Episode 18 shipped
+  Stage 2** — the autonomous beat trigger: while the page is open, a 5 s loop runs a cheap concept
+  beat-check (Jaccard < 0.5 vs the shown theme) that gates the expensive `gpt-image-1` render, debounced
+  (2.5 s) + rate-limited (12 s beat-check / 40 s render) so it can't spam the model; each beat is windowed
+  to the speech **since the last image** (`VisionWindowLines` 16) so the new picture reflects the new
+  topic, not the first. EP18 also **refined the grounded concept** to demand a concrete, particular scene
+  and avoid the speakers' obvious domain (fixing samey spotlit-mic images).
+  Remaining: cross-beat **anti-repetition memory** (pass the previous concept/motifs into `DesignAsync`);
+  conditioning-**morph** (edits endpoint, slow dissolve instead of a hard swap); tune the beat/window
+  constants against a long real conversation; in-Vision affordances (Esc-to-return / minimal in-page
+  controls, since the chrome sits behind the opaque canvas while open); optional orb size / `low` quality
+  for more speed. Full records: [`EP15`](./EP15-oracle-spike-vision-concept.md),
+  [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
+  [`EP18`](./EP18-vision-autonomous-beats-and-concept-refinement.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
   that dispatches a generative image model to render live *didactic* visualizations. The hard-won
   insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed

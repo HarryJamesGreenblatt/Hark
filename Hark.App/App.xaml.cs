@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using Azure.Identity;
 using Hark.Core;
 using Hark.Core.Summarization;
@@ -94,6 +95,34 @@ public partial class App : Application
     /// <summary>The store revision the cached Vision image was conjured from.</summary>
     private int _cachedVisionRevision = -1;
 
+    /// <summary>Whether the full-window Vision page is currently open (drives the auto-conjure loop).</summary>
+    private bool _visionPageOpen;
+
+    /// <summary>Guards against overlapping conjures (manual open, auto beat-check).</summary>
+    private bool _visionConjuring;
+
+    /// <summary>Drives the autonomous beat trigger while the Vision page is open (Stage 2).</summary>
+    private DispatcherTimer? _visionTimer;
+
+    /// <summary>Wall-clock of the last finalized caption, for the mid-utterance debounce.</summary>
+    private DateTime _lastCaptionUtc = DateTime.MinValue;
+
+    /// <summary>Wall-clock of the last (cheap) beat-check, to cap the concept-call rate.</summary>
+    private DateTime _lastBeatCheckUtc = DateTime.MinValue;
+
+    /// <summary>Store revision at the last beat-check, so we only re-check on new content.</summary>
+    private int _lastBeatCheckRevision = -1;
+
+    /// <summary>Wall-clock of the last (expensive) image render, the hard rate limit on gpt-image-1.</summary>
+    private DateTime _lastVisionRenderUtc = DateTime.MinValue;
+
+    /// <summary>Theme of the currently-displayed Vision image, compared against to detect a new beat.</summary>
+    private string? _shownVisionTheme;
+
+    /// <summary>Transcript line count at the last image render, so a new beat is conjured from the material
+    /// spoken SINCE the last image — not a long rolling window that keeps dragging in the earlier topic.</summary>
+    private int _lastVisionRenderIndex;
+
     /// <summary>The <see cref="ConversationStore.Revision"/> that the cached recaps were generated from.</summary>
     private int _cachedRevision = -1;
 
@@ -152,16 +181,20 @@ public partial class App : Application
         _overlay.SummaryRequested += OnSummaryRequested;
         _overlay.MicToggleRequested += OnMicToggleRequested;
         _overlay.VisionRequested += OnVisionRequested;
-        _overlay.VisionClosed += () => _visionCts?.Cancel();
+        _overlay.VisionClosed += OnVisionClosed;
         _overlay.SetMicEnabled(_mixMic);   // reflect the configured default in the toggle
 
         // New speakers discovered by diarization surface as pills in the CONVERSATION index.
         _store.SpeakerAdded += speaker =>
             Dispatcher.BeginInvoke(() => _overlay?.AddSpeaker(speaker));
 
-        // Enable the SUMMARY switch only once there are captions to summarize.
+        // Enable the SUMMARY switch only once there are captions to summarize; stamp the caption clock
+        // for the Vision debounce (Changed fires on the UI thread as segments finalize).
         _store.Changed += () =>
+        {
+            _lastCaptionUtc = DateTime.UtcNow;
             Dispatcher.BeginInvoke(() => _overlay?.SetSummaryAvailable(_store.All.Count > 0));
+        };
 
         _tray = BuildTrayIcon();
 
@@ -495,6 +528,13 @@ public partial class App : Application
         _cachedRecap = null;
         _cachedSpeakerRecap = null;
         _cachedRevision = -1;
+
+        // ...and any Vision state (a cleared store makes the render index and cache stale).
+        _cachedVisionImage = null;
+        _cachedVisionRevision = -1;
+        _lastVisionRenderIndex = 0;
+        _lastBeatCheckRevision = -1;
+        _shownVisionTheme = null;
     }
 
     /// <summary>
@@ -588,14 +628,15 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Conjures a Vision image when the HAL eye dilates open — the augmentation oracle's manual trigger.
-    /// One call per eye-open (human-paced), superseding and cached by store revision so re-opening on
-    /// unchanged captions doesn't re-bill. The render tier is optional: with no image deployment the
-    /// art-director concept is shown as text instead. Auto-firing on topic beats is a later stage.
+    /// Handles the HAL eye dilating open: shows the Vision page and starts the autonomous beat loop.
+    /// The open itself force-renders once (human-paced); the loop then re-conjures only on genuine
+    /// topic shifts, rate-limited, while the page stays open.
     /// </summary>
     private async void OnVisionRequested()
     {
         if (_overlay is null) return;
+        _visionPageOpen = true;
+        StartVisionTimer();
 
         // Concept needs the chat deployment; the image additionally needs the image deployment.
         if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment))
@@ -609,44 +650,125 @@ public partial class App : Application
             return;
         }
 
-        int revision = _store.Revision;
+        _vision ??= BuildVisionService();
 
         // Re-opening the eye with unchanged captions: reuse the last image, no service call.
-        if (revision == _cachedVisionRevision && _cachedVisionImage is not null)
+        if (_store.Revision == _cachedVisionRevision && _cachedVisionImage is not null)
         {
-            _overlay.SetVisionImage(_cachedVisionImage);
+            _overlay.SetVisionImage(_cachedVisionImage, _shownVisionTheme ?? string.Empty);
             return;
         }
 
-        // Supersede any in-flight conjure (rapid re-opens / a close).
+        await ConjureVisionAsync(forceRender: true);
+    }
+
+    /// <summary>Stops the autonomous loop and cancels any in-flight conjure when the page collapses.</summary>
+    private void OnVisionClosed()
+    {
+        _visionPageOpen = false;
+        _visionTimer?.Stop();
+        _visionCts?.Cancel();
+    }
+
+    /// <summary>Starts (or restarts) the 5 s autonomous beat-trigger loop.</summary>
+    private void StartVisionTimer()
+    {
+        _visionTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _visionTimer.Tick -= OnVisionAutoTick;
+        _visionTimer.Tick += OnVisionAutoTick;
+        _visionTimer.Start();
+    }
+
+    // ── Autonomous beat-trigger tuning (Stage 2) ──
+    /// <summary>Quiet gap after the last caption before a beat-check may fire (avoids mid-utterance).</summary>
+    private static readonly TimeSpan VisionDebounce = TimeSpan.FromSeconds(2.5);
+    /// <summary>Minimum spacing between the cheap concept beat-checks.</summary>
+    private static readonly TimeSpan VisionBeatCheckInterval = TimeSpan.FromSeconds(12);
+    /// <summary>Minimum spacing between expensive gpt-image renders — the hard cost/quota cap.</summary>
+    private static readonly TimeSpan VisionRenderInterval = TimeSpan.FromSeconds(40);
+    /// <summary>Max transcript lines fed to a conjure — small so a shifted topic dominates the window fast.</summary>
+    private const int VisionWindowLines = 16;
+
+    /// <summary>
+    /// The autonomous loop: while the page is open, on new + settled speech and no more often than the
+    /// beat-check interval, run a cheap concept beat-check; it renders a new image only on a genuine
+    /// topic shift and no more often than the render interval. Never disturbs the shown image otherwise.
+    /// </summary>
+    private async void OnVisionAutoTick(object? sender, EventArgs e)
+    {
+        if (!_visionPageOpen || _visionConjuring || _overlay is null) return;
+        if (_store.All.Count == 0) return;
+
+        // Self-heal: if the page was opened before captioning, build the service once config + speech exist.
+        if (_vision is null)
+        {
+            if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment)) return;
+            _vision = BuildVisionService();
+        }
+
+        var now = DateTime.UtcNow;
+        if (_store.Revision == _lastBeatCheckRevision) return;      // no new content since last check
+        if (now - _lastCaptionUtc < VisionDebounce) return;         // still mid-utterance
+        if (now - _lastBeatCheckUtc < VisionBeatCheckInterval) return;
+
+        await ConjureVisionAsync(forceRender: false);
+    }
+
+    /// <summary>
+    /// Runs one conjure. <paramref name="forceRender"/> (manual open) always renders; otherwise the
+    /// render is gated on a genuine new beat AND the render rate limit, so a stable topic costs only the
+    /// cheap concept call. Superseding and overlap-guarded; only the manual path shows a busy state.
+    /// </summary>
+    private async Task ConjureVisionAsync(bool forceRender)
+    {
+        if (_overlay is null || _vision is null) return;
+
+        _visionConjuring = true;
         _visionCts?.Cancel();
         var cts = _visionCts = new CancellationTokenSource();
 
-        _overlay.SetVisionStatus("Conjuring a vision…");
+        int revision = _store.Revision;
+        _lastBeatCheckUtc = DateTime.UtcNow;
+        _lastBeatCheckRevision = revision;
 
-        // A recent window (not the whole transcript) keeps the concept focused and token cost bounded.
+        if (forceRender) _overlay.SetVisionStatus("Conjuring a vision…");
+
+        // Window the transcript to the CURRENT beat: a small recent slice, and for an auto beat never
+        // reaching before the last rendered image — so a new image reflects the NEW topic instead of
+        // re-summarising the whole conversation (which keeps referencing the first topic).
+        int count = _store.All.Count;
+        int floor = forceRender ? 0 : Math.Clamp(_lastVisionRenderIndex, 0, count);
+        int start = Math.Max(floor, count - VisionWindowLines);
         var window = string.Join(
             Environment.NewLine,
-            _store.All.TakeLast(40).Select(entry => $"{entry.Speaker}: {entry.Text}"));
+            _store.All.Skip(start).Select(entry => $"{entry.Speaker}: {entry.Text}"));
+
+        // Auto: render only on a genuinely new beat and no sooner than the render rate limit.
+        Func<VisualConcept, bool>? gate = forceRender
+            ? null
+            : concept => IsNewBeat(_shownVisionTheme, concept.Theme)
+                         && DateTime.UtcNow - _lastVisionRenderUtc >= VisionRenderInterval;
 
         try
         {
-            _vision ??= BuildVisionService();
-            var result = await _vision.ConjureAsync(window, cts.Token);
+            var result = await _vision.ConjureAsync(window, gate, cts.Token);
             if (cts.IsCancellationRequested || result is null) return;
 
             if (result.Image is not null)
             {
                 _cachedVisionImage = result.Image;
                 _cachedVisionRevision = revision;
-                // Caption is the conversation's master feeling (Theme), not the image description.
+                _lastVisionRenderUtc = DateTime.UtcNow;
+                _lastVisionRenderIndex = count;             // next beat is windowed from here forward
+                _shownVisionTheme = result.Concept.Theme;   // compare future beats against what's shown
                 _overlay.SetVisionImage(result.Image, result.Concept.Theme);
             }
-            else
+            else if (forceRender)
             {
                 // Concept-only (no render tier configured): show the art director's judgment as text.
                 _overlay.SetVisionConcept(result.Concept.Concept);
             }
+            // Auto + no image = same beat (or within the rate limit): leave the shown image untouched.
         }
         catch (OperationCanceledException)
         {
@@ -654,9 +776,37 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            _overlay.SetVisionStatus($"Couldn't conjure a vision: {ex.Message}");
+            if (forceRender) _overlay.SetVisionStatus($"Couldn't conjure a vision: {ex.Message}");
+        }
+        finally
+        {
+            _visionConjuring = false;
         }
     }
+
+    /// <summary>
+    /// Cheap topic-shift test: treats the new theme as a new beat when it shares less than half its
+    /// words with the theme currently on screen (Jaccard &lt; 0.5). Empty/absent prior theme = new beat.
+    /// </summary>
+    private static bool IsNewBeat(string? shownTheme, string newTheme)
+    {
+        if (string.IsNullOrWhiteSpace(shownTheme)) return true;
+        var a = ThemeWords(shownTheme);
+        var b = ThemeWords(newTheme);
+        if (b.Count == 0) return false;
+        int intersection = a.Count(b.Contains);
+        int union = a.Union(b).Count();
+        double jaccard = union == 0 ? 1.0 : (double)intersection / union;
+        return jaccard < 0.5;
+    }
+
+    /// <summary>Lowercased word set of a theme, ignoring short filler words, for the beat comparison.</summary>
+    private static HashSet<string> ThemeWords(string theme) =>
+        theme.ToLowerInvariant()
+             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+             .Select(w => new string(w.Where(char.IsLetter).ToArray()))
+             .Where(w => w.Length > 3)
+             .ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Builds the Vision service: the art-director concept tier, plus the render tier when an image deployment is configured.</summary>
     private VisionService BuildVisionService()
@@ -674,6 +824,8 @@ public partial class App : Application
     {
         _hotkey?.Dispose();
         _micHotkey?.Dispose();
+        _visionTimer?.Stop();
+        _visionCts?.Cancel();
         try { _session?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* best effort */ }
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }
         base.OnExit(e);

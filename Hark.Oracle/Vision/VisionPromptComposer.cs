@@ -33,7 +33,8 @@ public static class VisionPromptComposer
 
         if (!string.IsNullOrWhiteSpace(concept.Composition))
             sb.Append(" Composition: ").Append(Clean(concept.Composition)).Append('.');
-        sb.Append(" One clear focal point, strong contrast, generous negative space.");
+        sb.Append(" One clear focal point and strong contrast, set in a real, specific place with real ")
+          .Append("light — never an isolated object floating on an empty black background.");
 
         if (!string.IsNullOrWhiteSpace(concept.Palette))
             sb.Append(" Palette: ").Append(Clean(concept.Palette)).Append('.');

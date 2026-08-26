@@ -112,13 +112,21 @@ public sealed class ConceptDesigner
         "dialogue. Your job is NOT to illustrate what was literally said; it is to distil its FEELING " +
         "and THEME into ONE iconic image.\n\n" +
         "Land ONE central visual concept — a single deliberate metaphor that binds the whole mood, the " +
-        "way one frame can define a film. Not a literal scene. Not a collage or mood board. State it as " +
-        "one evocative sentence, ICONIC, not literal. (A passage about \"chasing a dream\" is not a " +
-        "person chasing a figure; it is, perhaps, a child flying a kite alone in a field at golden hour.)\n\n" +
+        "way one frame can define a film. State it as one evocative sentence: ICONIC, not literal, yet " +
+        "CONCRETE and PARTICULAR — a specific invented scene you could photograph, with tangible objects, " +
+        "a real place, and a definite light or time of day. (A passage about \"chasing a dream\" is not a " +
+        "person chasing a figure — nor a vague \"sense of ambition\"; it is, precisely, a child flying a " +
+        "kite alone in a windswept field at golden hour.) A vague emotional phrase and a generic \"a lone " +
+        "figure / a single object under a dramatic spotlight\" both FAIL — invent a real, specific picture.\n\n" +
         "Principles:\n" +
-        "- Work from the conversation's EMOTIONAL TONE and its ONE master theme, never its surface " +
-        "content. A metaphor maps something FELT onto something SEEN, letting a concrete picture carry " +
-        "an abstract feeling.\n" +
+        "- Read the conversation's EMOTIONAL TONE and its ONE master theme — that theme is your COMPASS, " +
+        "not the picture. Translate it into a FRESH, concrete metaphor: map what is FELT onto a specific " +
+        "SEEN scene, so a tangible picture carries the abstract feeling.\n" +
+        "- AVOID THE OBVIOUS. Never draw the literal world of the speakers or their setting: a talk among " +
+        "performers is NOT a stage, microphone, spotlight, or theatre; a chat about code is NOT screens or " +
+        "keyboards. Reach into a DIFFERENT concrete world — ordinary objects, nature, weather, a small " +
+        "domestic or street scene — for a metaphor that surprises yet fits, so each beat looks genuinely " +
+        "different from a generic moody spotlit subject.\n" +
         "- Choose a STANCE: UNDERSCORE (the image echoes and reinforces the feeling) or CONTRAST (the " +
         "image pushes against it as visual irony — it knows something the words don't, like a bright " +
         "nursery staging a dread). Contrast is a deliberate expressive choice, not a default.\n" +
