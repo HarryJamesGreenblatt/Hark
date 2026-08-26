@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-25 (end of Episode 18; Vision autonomous beats + concept refinement)._
+_Last updated: 2026-08-25 (end of Episode 19; Vision Oracle identity + anti-repetition + faster cadence)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -38,11 +38,13 @@ _Last updated: 2026-08-25 (end of Episode 18; Vision autonomous beats + concept 
   **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the HAL eye** dilates it
   into a full-window "crystal ball" **Vision page** (corner→centre match-cut zoom; the large eye stays
   audio-reactive) that **conjures a live image — rendered inside the orb — from the conversation** via
-  `Hark.Oracle.Vision` (`gpt-image-1`, keyless), captioned with the conversation's theme. While the page
-  stays open it **autonomously re-conjures on genuine topic shifts** (a cheap concept beat-check gates the
-  expensive render; debounced + rate-limited so it can't spam the image model), windowing each new beat to
-  the speech since the last image so the new picture reflects the new topic. Human-paced + superseding +
-  revision-cached.
+  `Hark.Oracle.Vision` (`gpt-image-1`, keyless), captioned with the conversation's theme. The concept tier
+  acts under a neutral **Oracle** identity (no crystal-ball / iconic-vs-literal dogma). While the page
+  stays open it **autonomously re-conjures on a cadence** (~12 s from render start, debounced), each beat
+  told the vision already on screen so it conjures a **distinct** one (prompt-agnostic anti-repetition) and
+  windowed to the speech since the last image so the new picture reflects the new topic. Human-paced +
+  superseding + revision-cached. **Known ceiling:** images lag ~30–60 s behind narration — `gpt-image-1`
+  render latency (~30 s) + ~2 RPM quota, not cadence; filling that dead-time is the next phase.
 - **Pipeline engines (`Hark.Core`):**
   - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
     `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
@@ -118,6 +120,7 @@ _Last updated: 2026-08-25 (end of Episode 18; Vision autonomous beats + concept 
 | 16 | 2026-08-23 | [The Eye Dilates: HAL-Eye Vision Mode (UX Shell) + the Zoom That Fought Back](./EP16-hal-eye-vision-mode-shell.md) | Built the **UX shell** of the Vision mode: clicking the bar's HAL eye dilates into a full-window "crystal ball" page via a cinematic **corner→centre match-cut zoom** (chrome fades, then the matched eye flies to centre and scales up; the large eye stays audio-reactive). Also fixed an **invalid `Hark.slnx`** (duplicate project entries). The zoom's every-other-time bug took three theories to crack — the real cause was measuring the eye's centre via `TransformToVisual` **before** resetting its render transform. Render tier still deferred (needs `gpt-image-1`). |
 | 17 | 2026-08-24 | [The Crystal Ball Sees: Vision Render Wired Into HARK](./EP17-vision-render-wired-into-app.md) | Wired `Hark.Oracle.Vision` into `Hark.App`: clicking the HAL eye now conjures a **real `gpt-image-1` image rendered inside the orb** from the last 40 lines, captioned with the conversation's theme — the **manual, human-paced** increment (one call per eye-open, superseding + revision-cached; autonomous topic-beat trigger deferred). Refined from live tests (Carson clip → an apt porcelain hand; a self-referential test → an eyeball, correctly): image moved **inside** the orb, caption switched to `Theme`, and `medium` quality cut render time to ~30–40 s. |
 | 18 | 2026-08-25 | [The Living Crystal Ball: Autonomous Beats, Concrete Concepts, Per-Beat Windows](./EP18-vision-autonomous-beats-and-concept-refinement.md) | **Stage 2**: while the Vision page is open it **autonomously re-conjures on genuine topic shifts** — a 5 s loop where a cheap concept beat-check (Jaccard vs the shown theme) gates the expensive `gpt-image-1` render, debounced (2.5 s) + rate-limited (12 s beat-check / 40 s render) so it can't spam the model. Then fixed two live-test gaps: concepts were too abstract/samey (grounded prompt now demands a **concrete, particular** scene + **avoids the speakers' obvious domain**; composer drops the object-on-black look) and new beats referenced the first topic (each beat now **windowed to the speech since the last image**, not a rolling 40 lines). |
+| 19 | 2026-08-25 | [The Oracle Finds Its Voice: Neutral Identity, Anti-Repetition, Faster Cadence](./EP19-vision-oracle-identity-anti-repetition-cadence.md) | Refined the beat engine on three axes live testing demanded: a neutral **Oracle identity** (dropped the crystal-ball / iconic-vs-literal dogma that was leaking literal crystals), **prompt-agnostic anti-repetition** (each beat is told the vision on screen and conjures a distinct one via a `previousVision` steer), and a **cadence overhaul** (removed the beat-check + Jaccard gate that starved renders; render every ~12 s from render *start*, previous image held until the new lands). Proven live: *"many more images, less duplication."* A narrative test (bunny→bear→rabbit stew) then pinned the real ceiling — a **~1-min lag** that's `gpt-image-1` latency + ~2 RPM quota, **not** cadence — teeing up the next phase: fill the render dead-time (scrying shimmer + surface the fast concept immediately). Commit `7fdf0c7`. |
 
 ---
 
