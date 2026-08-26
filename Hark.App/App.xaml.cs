@@ -107,16 +107,13 @@ public partial class App : Application
     /// <summary>Wall-clock of the last finalized caption, for the mid-utterance debounce.</summary>
     private DateTime _lastCaptionUtc = DateTime.MinValue;
 
-    /// <summary>Wall-clock of the last (cheap) beat-check, to cap the concept-call rate.</summary>
-    private DateTime _lastBeatCheckUtc = DateTime.MinValue;
-
-    /// <summary>Store revision at the last beat-check, so we only re-check on new content.</summary>
-    private int _lastBeatCheckRevision = -1;
-
-    /// <summary>Wall-clock of the last (expensive) image render, the hard rate limit on gpt-image-1.</summary>
+    /// <summary>Wall-clock of the last image render (set when it STARTS), the cadence floor between renders.</summary>
     private DateTime _lastVisionRenderUtc = DateTime.MinValue;
 
-    /// <summary>Theme of the currently-displayed Vision image, compared against to detect a new beat.</summary>
+    /// <summary>Concept of the currently-displayed Vision image, so the Oracle conjures a DISTINCT next one.</summary>
+    private string? _shownVisionConcept;
+
+    /// <summary>Theme (caption) of the currently-displayed Vision image, reused when the eye is re-opened.</summary>
     private string? _shownVisionTheme;
 
     /// <summary>Transcript line count at the last image render, so a new beat is conjured from the material
@@ -533,7 +530,7 @@ public partial class App : Application
         _cachedVisionImage = null;
         _cachedVisionRevision = -1;
         _lastVisionRenderIndex = 0;
-        _lastBeatCheckRevision = -1;
+        _shownVisionConcept = null;
         _shownVisionTheme = null;
     }
 
@@ -659,7 +656,7 @@ public partial class App : Application
             return;
         }
 
-        await ConjureVisionAsync(forceRender: true);
+        await ConjureVisionAsync(manual: true);
     }
 
     /// <summary>Stops the autonomous loop and cancels any in-flight conjure when the page collapses.</summary>
@@ -679,20 +676,20 @@ public partial class App : Application
         _visionTimer.Start();
     }
 
-    // ── Autonomous beat-trigger tuning (Stage 2) ──
-    /// <summary>Quiet gap after the last caption before a beat-check may fire (avoids mid-utterance).</summary>
+    // ── Autonomous cadence tuning (Stage 2) ──
+    /// <summary>Quiet gap after the last caption before a render may fire (avoids mid-utterance).</summary>
     private static readonly TimeSpan VisionDebounce = TimeSpan.FromSeconds(2.5);
-    /// <summary>Minimum spacing between the cheap concept beat-checks.</summary>
-    private static readonly TimeSpan VisionBeatCheckInterval = TimeSpan.FromSeconds(12);
-    /// <summary>Minimum spacing between expensive gpt-image renders — the hard cost/quota cap.</summary>
-    private static readonly TimeSpan VisionRenderInterval = TimeSpan.FromSeconds(40);
+    /// <summary>Minimum spacing between renders, measured from render START so it overlaps the model's own
+    /// latency (the real cadence floor) rather than stacking on top of it.</summary>
+    private static readonly TimeSpan VisionRenderInterval = TimeSpan.FromSeconds(12);
     /// <summary>Max transcript lines fed to a conjure — small so a shifted topic dominates the window fast.</summary>
     private const int VisionWindowLines = 16;
 
     /// <summary>
-    /// The autonomous loop: while the page is open, on new + settled speech and no more often than the
-    /// beat-check interval, run a cheap concept beat-check; it renders a new image only on a genuine
-    /// topic shift and no more often than the render interval. Never disturbs the shown image otherwise.
+    /// The autonomous loop: while the page is open, once the speech has settled and the render cadence
+    /// floor has elapsed since the last render STARTED, conjure a fresh vision of the newest material.
+    /// The Oracle is told the vision on screen so each new one is distinct. Leaves the shown image up
+    /// until the replacement lands.
     /// </summary>
     private async void OnVisionAutoTick(object? sender, EventArgs e)
     {
@@ -707,19 +704,20 @@ public partial class App : Application
         }
 
         var now = DateTime.UtcNow;
-        if (_store.Revision == _lastBeatCheckRevision) return;      // no new content since last check
+        if (_store.Revision == _cachedVisionRevision) return;       // no new speech since the last image
         if (now - _lastCaptionUtc < VisionDebounce) return;         // still mid-utterance
-        if (now - _lastBeatCheckUtc < VisionBeatCheckInterval) return;
+        if (now - _lastVisionRenderUtc < VisionRenderInterval) return;   // render cadence floor
 
-        await ConjureVisionAsync(forceRender: false);
+        await ConjureVisionAsync(manual: false);
     }
 
     /// <summary>
-    /// Runs one conjure. <paramref name="forceRender"/> (manual open) always renders; otherwise the
-    /// render is gated on a genuine new beat AND the render rate limit, so a stable topic costs only the
-    /// cheap concept call. Superseding and overlap-guarded; only the manual path shows a busy state.
+    /// Runs one conjure and renders it. On the manual open it shows a busy state and windows the recent
+    /// transcript; on an auto beat it stays silent (leaving the shown image up until the new one lands)
+    /// and windows only the speech since the last image. Always tells the Oracle its last vision so the
+    /// new one is visibly DISTINCT. Superseding and overlap-guarded.
     /// </summary>
-    private async Task ConjureVisionAsync(bool forceRender)
+    private async Task ConjureVisionAsync(bool manual)
     {
         if (_overlay is null || _vision is null) return;
 
@@ -728,47 +726,39 @@ public partial class App : Application
         var cts = _visionCts = new CancellationTokenSource();
 
         int revision = _store.Revision;
-        _lastBeatCheckUtc = DateTime.UtcNow;
-        _lastBeatCheckRevision = revision;
+        _lastVisionRenderUtc = DateTime.UtcNow;   // start-to-start cadence: overlaps the render latency
 
-        if (forceRender) _overlay.SetVisionStatus("Conjuring a vision…");
+        if (manual) _overlay.SetVisionStatus("Conjuring a vision…");
 
         // Window the transcript to the CURRENT beat: a small recent slice, and for an auto beat never
-        // reaching before the last rendered image — so a new image reflects the NEW topic instead of
-        // re-summarising the whole conversation (which keeps referencing the first topic).
+        // reaching before the last rendered image — so the new image reflects the NEW material.
         int count = _store.All.Count;
-        int floor = forceRender ? 0 : Math.Clamp(_lastVisionRenderIndex, 0, count);
+        int floor = manual ? 0 : Math.Clamp(_lastVisionRenderIndex, 0, count);
         int start = Math.Max(floor, count - VisionWindowLines);
         var window = string.Join(
             Environment.NewLine,
             _store.All.Skip(start).Select(entry => $"{entry.Speaker}: {entry.Text}"));
 
-        // Auto: render only on a genuinely new beat and no sooner than the render rate limit.
-        Func<VisualConcept, bool>? gate = forceRender
-            ? null
-            : concept => IsNewBeat(_shownVisionTheme, concept.Theme)
-                         && DateTime.UtcNow - _lastVisionRenderUtc >= VisionRenderInterval;
-
         try
         {
-            var result = await _vision.ConjureAsync(window, gate, cts.Token);
+            // Pass the last shown concept so the Oracle deliberately conjures a different scene.
+            var result = await _vision.ConjureAsync(window, _shownVisionConcept, cts.Token);
             if (cts.IsCancellationRequested || result is null) return;
 
             if (result.Image is not null)
             {
                 _cachedVisionImage = result.Image;
                 _cachedVisionRevision = revision;
-                _lastVisionRenderUtc = DateTime.UtcNow;
                 _lastVisionRenderIndex = count;             // next beat is windowed from here forward
-                _shownVisionTheme = result.Concept.Theme;   // compare future beats against what's shown
+                _shownVisionConcept = result.Concept.Concept;   // remember what we just showed, to differ next
+                _shownVisionTheme = result.Concept.Theme;
                 _overlay.SetVisionImage(result.Image, result.Concept.Theme);
             }
-            else if (forceRender)
+            else if (manual)
             {
                 // Concept-only (no render tier configured): show the art director's judgment as text.
                 _overlay.SetVisionConcept(result.Concept.Concept);
             }
-            // Auto + no image = same beat (or within the rate limit): leave the shown image untouched.
         }
         catch (OperationCanceledException)
         {
@@ -776,37 +766,13 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            if (forceRender) _overlay.SetVisionStatus($"Couldn't conjure a vision: {ex.Message}");
+            if (manual) _overlay.SetVisionStatus($"Couldn't conjure a vision: {ex.Message}");
         }
         finally
         {
             _visionConjuring = false;
         }
     }
-
-    /// <summary>
-    /// Cheap topic-shift test: treats the new theme as a new beat when it shares less than half its
-    /// words with the theme currently on screen (Jaccard &lt; 0.5). Empty/absent prior theme = new beat.
-    /// </summary>
-    private static bool IsNewBeat(string? shownTheme, string newTheme)
-    {
-        if (string.IsNullOrWhiteSpace(shownTheme)) return true;
-        var a = ThemeWords(shownTheme);
-        var b = ThemeWords(newTheme);
-        if (b.Count == 0) return false;
-        int intersection = a.Count(b.Contains);
-        int union = a.Union(b).Count();
-        double jaccard = union == 0 ? 1.0 : (double)intersection / union;
-        return jaccard < 0.5;
-    }
-
-    /// <summary>Lowercased word set of a theme, ignoring short filler words, for the beat comparison.</summary>
-    private static HashSet<string> ThemeWords(string theme) =>
-        theme.ToLowerInvariant()
-             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-             .Select(w => new string(w.Where(char.IsLetter).ToArray()))
-             .Where(w => w.Length > 3)
-             .ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Builds the Vision service: the art-director concept tier, plus the render tier when an image deployment is configured.</summary>
     private VisionService BuildVisionService()

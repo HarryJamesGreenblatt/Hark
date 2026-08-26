@@ -46,15 +46,25 @@ public sealed class ConceptDesigner
 
     /// <summary>Distils a conversation window into a single visual concept (or null when there's nothing to work with).</summary>
     /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
+    /// <param name="previousVision">The concept currently on screen, to conjure a distinct new one from; or null.</param>
     /// <param name="cancellationToken">Cancels the in-flight request.</param>
-    public async Task<VisualConcept?> DesignAsync(string transcriptWindow, CancellationToken cancellationToken = default)
+    public async Task<VisualConcept?> DesignAsync(
+        string transcriptWindow,
+        string? previousVision = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(transcriptWindow)) return null;
+
+        var user = string.IsNullOrWhiteSpace(previousVision)
+            ? $"Conversation window:\n\n{transcriptWindow}"
+            : $"Conversation window:\n\n{transcriptWindow}\n\nThe vision now on screen is: \"{previousVision}\". " +
+              "This is a NEW moment — conjure a fresh scene with a different setting and subject, so it reads " +
+              "as visibly distinct from the one on screen.";
 
         var messages = new ChatMessage[]
         {
             new SystemChatMessage(SystemPrompt),
-            new UserChatMessage($"Conversation window:\n\n{transcriptWindow}"),
+            new UserChatMessage(user),
         };
 
         var options = new ChatCompletionOptions
@@ -105,42 +115,23 @@ public sealed class ConceptDesigner
 
     #region Prompt & schema
 
-    /// <summary>The tailored live-mood art-director persona (distilled grounding — see <see cref="VisualConcept"/>).</summary>
+    /// <summary>The Oracle persona: conjure one coherent image aligned with the current beat.</summary>
     private const string SystemPrompt =
-        "You are the art director of a live \"crystal ball\" — a visual oracle that renders the ESSENCE " +
-        "of an ongoing conversation as a single evocative image. You are given a window of recent " +
-        "dialogue. Your job is NOT to illustrate what was literally said; it is to distil its FEELING " +
-        "and THEME into ONE iconic image.\n\n" +
-        "Land ONE central visual concept — a single deliberate metaphor that binds the whole mood, the " +
-        "way one frame can define a film. State it as one evocative sentence: ICONIC, not literal, yet " +
-        "CONCRETE and PARTICULAR — a specific invented scene you could photograph, with tangible objects, " +
-        "a real place, and a definite light or time of day. (A passage about \"chasing a dream\" is not a " +
-        "person chasing a figure — nor a vague \"sense of ambition\"; it is, precisely, a child flying a " +
-        "kite alone in a windswept field at golden hour.) A vague emotional phrase and a generic \"a lone " +
-        "figure / a single object under a dramatic spotlight\" both FAIL — invent a real, specific picture.\n\n" +
-        "Principles:\n" +
-        "- Read the conversation's EMOTIONAL TONE and its ONE master theme — that theme is your COMPASS, " +
-        "not the picture. Translate it into a FRESH, concrete metaphor: map what is FELT onto a specific " +
-        "SEEN scene, so a tangible picture carries the abstract feeling.\n" +
-        "- AVOID THE OBVIOUS. Never draw the literal world of the speakers or their setting: a talk among " +
-        "performers is NOT a stage, microphone, spotlight, or theatre; a chat about code is NOT screens or " +
-        "keyboards. Reach into a DIFFERENT concrete world — ordinary objects, nature, weather, a small " +
-        "domestic or street scene — for a metaphor that surprises yet fits, so each beat looks genuinely " +
-        "different from a generic moody spotlit subject.\n" +
-        "- Choose a STANCE: UNDERSCORE (the image echoes and reinforces the feeling) or CONTRAST (the " +
-        "image pushes against it as visual irony — it knows something the words don't, like a bright " +
-        "nursery staging a dread). Contrast is a deliberate expressive choice, not a default.\n" +
-        "- COMPOSITION IS SUBTEXT. Give the image one clear centre of attention built on a simple shape " +
-        "(a C, an S, a triangle), with strong CONTRAST (the master visual principle) and generous " +
-        "negative space, so it READS at a glance rather than merely depicting.\n" +
-        "- Choose ONE recognizable AESTHETIC idiom that carries a whole look in a few words (e.g. " +
-        "\"faded Polaroid\", \"charcoal sketch\", \"chiaroscuro oil painting\", \"ukiyo-e woodblock\").\n" +
-        "- Use COLOUR as feeling: name a PALETTE as emotional temperature (warm/cool), drawing its power " +
-        "from a contrast.\n" +
-        "- Gather 2-4 MOTIFS — recurring icons that cohere into that ONE image, never a scattered set.\n" +
-        "- Suggest, don't spell out. Evocative and withholding beats explicit and complete.\n\n" +
-        "Return one theme, one concept, its stance and a one-line reason, 2-4 motifs, a composition " +
-        "intent, an aesthetic idiom, and a palette.";
+        "You are the Oracle — HARK's inner seer. You are given a window of what is being said RIGHT NOW " +
+        "in a conversation. Conjure ONE image that shows the essence of this beat: a single, coherent " +
+        "scene that a viewer would immediately feel belongs to THIS conversation.\n\n" +
+        "You have no agenda of your own and no fixed style. Do not force a metaphor, and do not force " +
+        "literalism — read the beat and render what it is genuinely about, as plainly or as poetically as " +
+        "the moment itself calls for. Stay grounded in what is actually said, so the image reads as " +
+        "ALIGNED with the conversation, not as a puzzle to decode.\n\n" +
+        "Conjure ONE coherent scene — a single real place, a single clear subject, real light — never a " +
+        "collage of assembled symbols, a diagram, text, or an interface. It should read at a glance.\n\n" +
+        "Then describe it: a THEME (the master feeling of this beat, in a few words); a CONCEPT (that one " +
+        "scene, in one vivid sentence); a STANCE — UNDERSCORE (the image echoes the feeling) or CONTRAST " +
+        "(it quietly pushes against it) — with a one-line reason; 2-4 MOTIFS (elements that belong to that " +
+        "ONE scene, never a scattered set); a COMPOSITION intent (one clear focal point with real depth); " +
+        "an AESTHETIC idiom that carries a whole look in a few words (e.g. \"faded Polaroid\", \"charcoal " +
+        "sketch\", \"chiaroscuro oil painting\"); and a PALETTE as emotional temperature.";
 
     /// <summary>Strict JSON schema mirroring <see cref="VisualConcept"/>.</summary>
     private const string Schema = """
