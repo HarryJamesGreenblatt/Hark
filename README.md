@@ -157,13 +157,20 @@ A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 - **Speaker diarization:** captions are attributed to anonymous, session-scoped speakers
   (`Guest-1`, `Guest-2`, …) using Azure Speech's `ConversationTranscriber`. Each detected speaker
   gets a **pill**; clicking it opens a dedicated **page** showing just that speaker's lines.
+- **Naming speakers:** give a speaker a real name two ways — **right-click a pill → Rename** (applied
+  globally; renaming into an existing name **merges** them), or let the **Oracle name them
+  automatically** as the conversation reveals identities (introductions, direct address, self-ID). Both
+  bind the name to the voice, so it follows every later line; a manual name always wins. Auto-naming
+  reuses the optional Azure OpenAI config below.
 - **CAPTIONS / SUMMARY switch:** a segmented control cross-fades between the live captions and an
   **AI recap** (Teams-style by default; Narrative and per-speaker styles also available). SUMMARY is
   disabled until there are captions to summarize; the recap is cached and only regenerated when the
   captions change, so switching back and forth is free. Requires the optional Azure OpenAI config above.
 
-> Diarization labels are anonymous and can occasionally swap or merge — expected for single-channel
-> speaker separation. Spoken/narration audio works best; sung or heavily overlapping speech is harder.
+> Diarization labels start anonymous and can occasionally swap or merge — expected for single-channel
+> speaker separation. Names are best-effort and bounded by transcription accuracy; the right-click
+> Rename is always there to fix or set one. Spoken/narration audio works best; sung or heavily
+> overlapping speech is harder.
 
 ## Provisioning
 

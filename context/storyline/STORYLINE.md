@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-25 (end of Episode 19; Vision Oracle identity + anti-repetition + faster cadence)._
+_Last updated: 2026-08-27 (end of Episode 20; speaker naming — manual rename + live Oracle naming + alias-map identity)._
 
 - **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -34,7 +34,9 @@ _Last updated: 2026-08-25 (end of Episode 19; Vision Oracle identity + anti-repe
   `Hark.Core/HarkSession`. `Hark.App`: starts hidden; `Ctrl+Win+H` toggles the bar; header has a
   ✕ close button; **Ctrl+Shift+M** toggles microphone mixing globally and stays synchronized with
   the overlay mic control. In the desktop app, diarization is on — captions are attributed to
-  anonymous `Guest-N` speakers, each with a clickable pill that opens a dedicated page; a segmented
+  anonymous `Guest-N` speakers, each with a clickable pill that opens a dedicated page; **right-clicking
+  a pill renames** that speaker globally (and an **Oracle naming pass** fills real names in
+  automatically, live); a segmented
   **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the HAL eye** dilates it
   into a full-window "crystal ball" **Vision page** (corner→centre match-cut zoom; the large eye stays
   audio-reactive) that **conjures a live image — rendered inside the orb — from the conversation** via
@@ -61,7 +63,11 @@ _Last updated: 2026-08-25 (end of Episode 19; Vision Oracle identity + anti-repe
     (one expandable card per speaker); both via strict JSON-schema structured outputs.
 - **Source of truth (desktop):** `Hark.App/ConversationStore` — combined + per-speaker transcript,
   written UI-thread-only from `OverlaySink` (finalized segments), with a `Revision` counter used to
-  cache summaries (reuse when captions unchanged; regenerate on new speech/session).
+  cache summaries (reuse when captions unchanged; regenerate on new speech/session). It also holds a
+  **persistent acoustic-label → display-name alias map** so a speaker rename (manual or Oracle) follows
+  every future utterance of that voice, not just the past ones. It also holds a
+  **persistent acoustic-label → display-name alias map** so a speaker rename (manual or Oracle) follows
+  every future utterance of that voice, not just the past ones.
 - **Auth:** `AzureCliCredential` (explicit), keyless. Requires `az login` with the
   **Cognitive Services Speech User** role on the Speech resource, and — for recaps — the
   **Cognitive Services OpenAI User** role on the Azure OpenAI resource.
@@ -121,6 +127,7 @@ _Last updated: 2026-08-25 (end of Episode 19; Vision Oracle identity + anti-repe
 | 17 | 2026-08-24 | [The Crystal Ball Sees: Vision Render Wired Into HARK](./EP17-vision-render-wired-into-app.md) | Wired `Hark.Oracle.Vision` into `Hark.App`: clicking the HAL eye now conjures a **real `gpt-image-1` image rendered inside the orb** from the last 40 lines, captioned with the conversation's theme — the **manual, human-paced** increment (one call per eye-open, superseding + revision-cached; autonomous topic-beat trigger deferred). Refined from live tests (Carson clip → an apt porcelain hand; a self-referential test → an eyeball, correctly): image moved **inside** the orb, caption switched to `Theme`, and `medium` quality cut render time to ~30–40 s. |
 | 18 | 2026-08-25 | [The Living Crystal Ball: Autonomous Beats, Concrete Concepts, Per-Beat Windows](./EP18-vision-autonomous-beats-and-concept-refinement.md) | **Stage 2**: while the Vision page is open it **autonomously re-conjures on genuine topic shifts** — a 5 s loop where a cheap concept beat-check (Jaccard vs the shown theme) gates the expensive `gpt-image-1` render, debounced (2.5 s) + rate-limited (12 s beat-check / 40 s render) so it can't spam the model. Then fixed two live-test gaps: concepts were too abstract/samey (grounded prompt now demands a **concrete, particular** scene + **avoids the speakers' obvious domain**; composer drops the object-on-black look) and new beats referenced the first topic (each beat now **windowed to the speech since the last image**, not a rolling 40 lines). |
 | 19 | 2026-08-25 | [The Oracle Finds Its Voice: Neutral Identity, Anti-Repetition, Faster Cadence](./EP19-vision-oracle-identity-anti-repetition-cadence.md) | Refined the beat engine on three axes live testing demanded: a neutral **Oracle identity** (dropped the crystal-ball / iconic-vs-literal dogma that was leaking literal crystals), **prompt-agnostic anti-repetition** (each beat is told the vision on screen and conjures a distinct one via a `previousVision` steer), and a **cadence overhaul** (removed the beat-check + Jaccard gate that starved renders; render every ~12 s from render *start*, previous image held until the new lands). Proven live: *"many more images, less duplication."* A narrative test (bunny→bear→rabbit stew) then pinned the real ceiling — a **~1-min lag** that's `gpt-image-1` latency + ~2 RPM quota, **not** cadence — teeing up the next phase: fill the render dead-time (scrying shimmer + surface the fast concept immediately). Commit `7fdf0c7`. |
+| 20 | 2026-08-27 | [Putting Names to Voices: Manual Rename, Live Oracle Naming & the Alias-Map Fix](./EP20-speaker-naming-manual-rename-and-live-oracle.md) | Turned anonymous `Guest-N` into **real identities** two convergent ways: a **right-click Rename** on the pills (dark popup; global apply + in-order **merge**) and an autonomous **Oracle naming pass** (`SpeakerNamingRefiner`, strict-schema, never-invent) that infers names **live** from introductions/address/self-ID on a `DispatcherTimer` cadence **mirroring the Vision beat loop** — both flowing through one `ConversationStore.Rename`. Key fix: a rename is a **persistent acoustic-label → name alias** applied at `CommitFinal` (not a one-shot rewrite), so the streaming engine's repeating `Guest-N` stops re-spawning after a rename. Named labels stay **stable** (manual override wins); the "Jane vs Dean" miss was pinned as **upstream ASR**, not inference. Commit `daa5a77`. |
 
 ---
 
@@ -137,12 +144,15 @@ These are unresolved at the end of the latest episode — natural starting point
   first-run "Run anyway" and a self-signed cert-trust UAC remain); a nicer second-launch UX (surface
   the existing instance instead of exiting silently); optional installer rename ("Setup" → "Installer").
 
-- **Speaker distinction — baseline shipped (Episode 10):** an offline **Fast Transcription second pass**
+- **Speaker distinction — baseline shipped (Episode 10); naming shipped (Episode 20):** an offline
+  **Fast Transcription second pass**
   now re-diarizes the buffered session audio on Stop (`FastTranscriptionRefiner` + `maxSpeakers`),
-  rebuilding the conversation with globally-clustered speakers. Remaining: verify the **Cognitive
+  rebuilding the conversation with globally-clustered speakers. **Speakers can now be named** — manual
+  right-click Rename + a live Oracle naming pass, bound to the voice by a persistent alias (see EP20).
+  Remaining: verify the **Cognitive
   Services User** RBAC role in the wild; the live CAPTIONS history isn't retroactively re-labeled (needs
   the engine-boundary `RefinementEvent`); revisit the clamped `maxSpeakers` hint; optional phrase-list of
-  known names on the live path; LLM-Speech enhanced mode.
+  known names on the live path (would also improve naming); LLM-Speech enhanced mode.
 - **Oracle-assisted diarization — Stage 0 shipped & validated (Episode 14):** the grounding oracle's
   unused **recognition head** repairs diarization on an axis orthogonal to acoustics. **Stage 0** is a
   text-only LLM **semantic post-pass** — `Hark.Core/Transcription/SemanticDiarizationRefiner` re-labels
@@ -155,7 +165,8 @@ These are unresolved at the end of the latest episode — natural starting point
   worst-case (Space Ghost) still drifts because the residual errors are **sub-segment boundary** (Fork A)
   and **ASR fidelity** — both outside whole-segment remap. Runs once per Stop (one chat call), so no
   debounce needed until the live oracle (Stage 2). Remaining: **Fork A** split-capable refine (peel
-  mixed-speaker segments, byte-identical text); name/role binding (0.5); `RefinementEvent` producer +
+  mixed-speaker segments, byte-identical text); ~~name/role binding (0.5)~~ **\u2014 shipped in Episode 20**
+  (manual + live Oracle naming through `ConversationStore.Rename`); `RefinementEvent` producer +
   live-history relabel on the engine boundary (1); live debounced oracle that also feeds Cristóbal (2).
   Full record: [`EP14`](./EP14-oracle-assisted-diarization-recognition-head.md).
 - **Engine boundary (sketched, ready to build behavior-preserving):** promote the pipeline to a
