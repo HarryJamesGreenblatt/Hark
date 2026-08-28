@@ -95,10 +95,12 @@ bigger." Follow-up tests then dictated three tuning rounds (below).
 - Committed + pushed to `origin/main` (`804cb96..19f8825`).
 
 ## 🔓 Open threads
-- **Render dead-time buffer — shipped (this session):** the fast concept now surfaces immediately as an
-  on-topic caption + a scrying sheen fills the ~1 min wait (see What changed). Remaining polish: consider
-  keeping the concept visible *under* the landed image, and a `low`-quality / faster render tier.
-- **Image quality / relevance (deferred next phase):** live renders were "absurd and off topic" (a chair
+- **Render dead-time buffer — partial (this session); objective later found UNMET (see EP22):** the fast
+  concept surfaces as an on-topic caption + a scrying sheen fills the wait, but **only on a blank first
+  open** (autonomous beats hold the previous image, no interim). A follow-on attempt to run the sheen on
+  *every* conjure **regressed and was reverted** — the "convey meaning during every render" goal is still
+  open. Full record: [`EP22`](./EP22-release-1.0.0-and-interim-visual-dead-end.md).
+- **Image quality / relevance (addressed in EP22):** live renders were "absurd and off topic" (a chair
   reading a book, someone holding pottery) — a **concept + prompt-composition** issue in the Oracle Vision
   tier (`ConceptDesigner` → `VisionPromptComposer`), independent of the eye animation.
 - **Dead API:** `OverlayWindow.SetAudioLevel` (and the `HarkSession.AudioLevel` event) are now unused by

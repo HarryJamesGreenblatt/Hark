@@ -14,9 +14,9 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-27 (end of Episode 20; speaker naming — manual rename + live Oracle naming + alias-map identity)._
+_Last updated: 2026-08-28 (end of Episode 22; HARK **1.0.0** released — plus the concept literal-bias fix and the interim-visual revert)._
 
-- **Status:** CLI MVP + desktop overlay working **and now installable** — published to the public
+- **Status:** CLI MVP + desktop overlay working **and now at 1.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
   single **`Hark-Setup.exe`** (self-contained, embeds a signed MSIX). The overlay is a
   **multi-speaker** experience:
@@ -129,6 +129,7 @@ _Last updated: 2026-08-27 (end of Episode 20; speaker naming — manual rename +
 | 19 | 2026-08-25 | [The Oracle Finds Its Voice: Neutral Identity, Anti-Repetition, Faster Cadence](./EP19-vision-oracle-identity-anti-repetition-cadence.md) | Refined the beat engine on three axes live testing demanded: a neutral **Oracle identity** (dropped the crystal-ball / iconic-vs-literal dogma that was leaking literal crystals), **prompt-agnostic anti-repetition** (each beat is told the vision on screen and conjures a distinct one via a `previousVision` steer), and a **cadence overhaul** (removed the beat-check + Jaccard gate that starved renders; render every ~12 s from render *start*, previous image held until the new lands). Proven live: *"many more images, less duplication."* A narrative test (bunny→bear→rabbit stew) then pinned the real ceiling — a **~1-min lag** that's `gpt-image-1` latency + ~2 RPM quota, **not** cadence — teeing up the next phase: fill the render dead-time (scrying shimmer + surface the fast concept immediately). Commit `7fdf0c7`. |
 | 20 | 2026-08-27 | [Putting Names to Voices: Manual Rename, Live Oracle Naming & the Alias-Map Fix](./EP20-speaker-naming-manual-rename-and-live-oracle.md) | Turned anonymous `Guest-N` into **real identities** two convergent ways: a **right-click Rename** on the pills (dark popup; global apply + in-order **merge**) and an autonomous **Oracle naming pass** (`SpeakerNamingRefiner`, strict-schema, never-invent) that infers names **live** from introductions/address/self-ID on a `DispatcherTimer` cadence **mirroring the Vision beat loop** — both flowing through one `ConversationStore.Rename`. Key fix: a rename is a **persistent acoustic-label → name alias** applied at `CommitFinal` (not a one-shot rewrite), so the streaming engine's repeating `Guest-N` stops re-spawning after a rename. Named labels stay **stable** (manual override wins); the "Jane vs Dean" miss was pinned as **upstream ASR**, not inference. Commit `daa5a77`. |
 | 21 | 2026-08-28 | [The Eye Comes Alive: Banded Audio, an Organic Pupil & a Drifting Highlight](./EP21-vision-sound-reactive-eye-pupil-highlight.md) | Made the Vision eye **sound-reactive across dimensions**: split the capture RMS into **bass/treble** bands (a one-pole low-pass, no FFT) via a new `AudioFeatures` event, then drove the image **"pupil"** dilation from a slow **bass capacitor + under-damped spring** (organic, inertial swell — **WavBall's peak-fed autonomous-goal** idea applied to a UI param, *not* a peak-locked map) and the glass **highlight** from a treble-widened **Lissajous drift**. Also: eye **300→360** with a **thinner silver ring**, and dropped the off-topic abstract `Theme` caption. Tuned across **three live self-tests** (dilation too fast → capacitor+spring; highlight jerky → slow amp follower; pupil too small → higher gains + full-iris rail) into "the animations are looking good." Commit `19f8825`. |
+| 22 | 2026-08-28 | [HARK 1.0.0: The Milestone, and the Interim-Visual Dead-End](./EP22-release-1.0.0-and-interim-visual-dead-end.md) | Cut **HARK 1.0.0** (first non-`0.1.x` release; `Release` run success → single `Hark-Setup.zip`, changelog v0.1.4→v1.0.0) after biasing the Oracle **concept tier toward literal, on-topic scenes** (`CONTRAST` only on real irony, anti-repetition softened to "don't change subject just to differ", temp 0.9→0.7) to kill the "chair reading a book" absurdity (`8297cd6`). Key **dead-end**: running the scrying sheen on **every** conjure regressed (autonomous conjuring is near-continuous → sheen always on, masked the pupil swell, "never renders") and was **reverted before commit** — so `main` kept only `03092db`'s first-open buffer. The **interim-visual objective (convey meaning during every render) stays OPEN**; also corrected a self-inflicted false "missing portable zip" discrepancy (WavBall≠HARK). Commits `03092db..8297cd6`, tag `v1.0.0`. |
 
 ---
 
@@ -136,11 +137,13 @@ _Last updated: 2026-08-27 (end of Episode 20; speaker naming — manual rename +
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
-- **Installable release — shipped (Episode 13):** a HAL-eye icon set, a signed MSIX
+- **Installable release — shipped (Episode 13); 1.0.0 cut (Episode 22):** a HAL-eye icon set, a signed MSIX
   (`Package.appxmanifest` with a launch-at-startup task), and a single self-contained
   **`Hark.Installer` → `Hark-Setup.exe`** that embeds the signed package + public cert (trust cert
   → `Add-AppxPackage` → optional Azure-config step). Built by `.github/workflows/release.yml` on a
-  `v*` tag. Remaining: **Azure Trusted Signing (~$10/mo)** to sign the msix + exe for warning-free
+  `v*` tag. **HARK `v1.0.0`** shipped 2026-08-28 (→ `8297cd6`; `Release` run success; single
+  `Hark-Setup.zip`, changelog v0.1.4→v1.0.0). Remaining: **Azure Trusted Signing (~$10/mo)** to sign the
+  msix + exe for warning-free
   browser downloads (today the exe is unsigned — zipped to dodge SmartScreen's download block, but a
   first-run "Run anyway" and a self-signed cert-trust UAC remain); a nicer second-launch UX (surface
   the existing instance instead of exiting silently); optional installer rename ("Setup" → "Installer").
@@ -207,14 +210,20 @@ These are unresolved at the end of the latest episode — natural starting point
   constants against a long real conversation; in-Vision affordances (Esc-to-return / minimal in-page
   controls, since the chrome sits behind the opaque canvas while open); optional orb size / `low` quality
   for more speed. **Episode 21** polished the eye itself (banded audio → organic pupil + drifting
-  highlight; see the HAL-eye thread) and surfaced the **active next target: the render dead-time**. The
-  ~1 min `gpt-image-1` latency means the image lands "two or three topics" late; fill it by surfacing the
-  **fast concept** immediately (the concrete `Concept.Concept` as an on-topic buffer caption) + a
-  **"scrying" shimmer** on the orb, and separately by improving **image quality/relevance** (the "absurd,
-  off-topic" renders are a concept/prompt-composition issue, not the eye). Full records:
+  highlight; see the HAL-eye thread). **Episode 22** biased the concept tier to **literal/on-topic**
+  (CONTRAST only on real irony; anti-repetition softened to "don't change subject just to differ"; temp
+  0.9→0.7, `8297cd6`) — the first lever against the "absurd/off-topic" renders, **needs live proof**.
+  **Interim visual is still OPEN:** a first-open-only concept caption + scrying sheen ship in 1.0.0, but
+  running the sheen on *every* conjure **regressed** (near-continuous conjuring → sheen always on, masked
+  the pupil swell) and was **reverted**; the real goal — convey the current topic's meaning during
+  **every** ~1 min render — is unsolved (candidates: a fast `low`-quality first pass then refine; a cheap
+  text→icon/CSS motif; keep the concept caption visible under the held image). Full records:
   [`EP15`](./EP15-oracle-spike-vision-concept.md),
   [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
-  [`EP18`](./EP18-vision-autonomous-beats-and-concept-refinement.md).
+  [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
+  [`EP18`](./EP18-vision-autonomous-beats-and-concept-refinement.md),
+  [`EP21`](./EP21-vision-sound-reactive-eye-pupil-highlight.md),
+  [`EP22`](./EP22-release-1.0.0-and-interim-visual-dead-end.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
   that dispatches a generative image model to render live *didactic* visualizations. The hard-won
   insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed
