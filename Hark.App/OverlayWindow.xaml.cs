@@ -108,6 +108,27 @@ public partial class OverlayWindow : Window
     /// <summary>Displayed audio level (0..1), eased toward <see cref="_audioTarget"/> each frame.</summary>
     private double _eyeLevel;
 
+    /// <summary>Latest bass/treble targets (0..1) — drive the pupil's dilation and the highlight's shimmer.</summary>
+    private double _bassTarget, _trebleTarget;
+
+    /// <summary>Displayed bass/treble levels (0..1), eased toward their targets each frame.</summary>
+    private double _bassLevel, _trebleLevel;
+
+    /// <summary>Slow low-end capacitor (0..1): charges on sustained bass, bleeds off in quiet — the pupil's "sated" state.</summary>
+    private double _pupilCharge;
+
+    /// <summary>Spring position/velocity of the pupil dilation, so it carries momentum instead of snapping to peaks.</summary>
+    private double _pupilPos = 0.80, _pupilVel;
+
+    /// <summary>Most recent frame dt (s), shared with the pupil's spring integration.</summary>
+    private double _frameDt;
+
+    /// <summary>Slowly-followed highlight drift amplitude (px), so treble widens the shimmer gently instead of darting.</summary>
+    private double _glossAmp = 3.0;
+
+    /// <summary>Accumulated time (s) that advances the highlight's slow drift, independent of audio.</summary>
+    private double _glossPhase;
+
     /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
     private TimeSpan _lastRenderTime;
 
@@ -610,9 +631,24 @@ public partial class OverlayWindow : Window
     public void SetRunning(bool running)
     {
         _running = running;
-        _audioTarget = 0.0;
+        _audioTarget = _bassTarget = _trebleTarget = 0.0;
         HintText.Text = running ? "Listening · Ctrl+Win+H to stop" : "Idle · Ctrl+Win+H to start";
         // The render loop eases the eye to its new resting state.
+    }
+
+    /// <summary>
+    /// Gates a raw RMS band level against its noise floor and shapes it into a 0..1 drive signal:
+    /// silence reads as a true 0 (no constant glow), and a hard gain + square-root curve lift
+    /// ordinary conversational levels — not just sustained peaks — toward full.
+    /// </summary>
+    /// <param name="level">The raw RMS level (0..1).</param>
+    /// <param name="gain">Pre-curve gain; higher for quieter bands (e.g. treble) so they still register.</param>
+    /// <param name="floor">RMS below this is treated as silence for this band.</param>
+    private static double Shape(double level, double gain, double floor)
+    {
+        level = level < 0 ? 0 : level > 1 ? 1 : level;
+        double gated = level <= floor ? 0.0 : (level - floor) / (1.0 - floor);
+        return Math.Sqrt(Math.Min(1.0, gated * gain));
     }
 
     /// <summary>
@@ -620,14 +656,21 @@ public partial class OverlayWindow : Window
     /// this target and eases the eye toward it, so the audio callback rate never gates the animation.
     /// </summary>
     /// <param name="level">The raw RMS audio level (0..1).</param>
-    public void SetAudioLevel(double level)
+    public void SetAudioLevel(double level) => _audioTarget = Shape(level, 11.0, 0.02);
+
+    /// <summary>
+    /// Publishes the latest banded audio levels (overall / bass / treble, raw RMS 0..1). The render
+    /// loop eases each with its own time constant so the eye's core, its dilating pupil, and its
+    /// shimmering highlight react to different facets of the sound independently.
+    /// </summary>
+    /// <param name="level">Overall broadband RMS (drives the core brightness/pulse).</param>
+    /// <param name="bass">Low-band RMS (drives the pupil's dilation).</param>
+    /// <param name="treble">High-band RMS (drives the highlight's shimmer).</param>
+    public void SetAudioFeatures(double level, double bass, double treble)
     {
-        level = level < 0 ? 0 : level > 1 ? 1 : level;
-        // Gate the RMS noise floor first so true silence reads as 0 (no "constant baseline" glow),
-        // then boost hard so normal conversational speech — not just sustained shouts — reaches full.
-        const double noiseFloor = 0.02;   // RMS below this is treated as silence
-        double gated = level <= noiseFloor ? 0.0 : (level - noiseFloor) / (1.0 - noiseFloor);
-        _audioTarget = Math.Sqrt(Math.Min(1.0, gated * 11.0));
+        _audioTarget = Shape(level, 11.0, 0.02);
+        _bassTarget = Shape(bass, 22.0, 0.010);
+        _trebleTarget = Shape(treble, 26.0, 0.006);
     }
 
     /// <summary>
@@ -654,6 +697,15 @@ public partial class OverlayWindow : Window
         double tau = target > _eyeLevel ? attackTau : releaseTau;
         double alpha = 1.0 - Math.Exp(-dt / tau);
         _eyeLevel += (target - _eyeLevel) * alpha;
+
+        // Band envelopes with their own time constants: bass swells and settles slowly (a breathing
+        // pupil), treble snaps and falls quickly (a live, shivering highlight).
+        double bassTgt = _running ? _bassTarget : 0.0;
+        double trebleTgt = _running ? _trebleTarget : 0.0;
+        _bassLevel += (bassTgt - _bassLevel) * (1.0 - Math.Exp(-dt / (bassTgt > _bassLevel ? 0.05 : 0.35)));
+        _trebleLevel += (trebleTgt - _trebleLevel) * (1.0 - Math.Exp(-dt / (trebleTgt > _trebleLevel ? 0.02 : 0.12)));
+        _frameDt = dt;
+        _glossPhase += dt;
 
         ApplyEye(_eyeLevel);
     }
@@ -697,7 +749,55 @@ public partial class OverlayWindow : Window
                 HalGlowBig.BlurRadius = 0;
                 HalScaleBig.ScaleX = HalScaleBig.ScaleY = 1.0;
             }
+
+            ApplyPupilAndHighlight();
         }
+    }
+
+    /// <summary>
+    /// Drives the Vision orb's "pupil" dilation and the glass highlight's drift from the banded
+    /// audio. The pupil is deliberately NOT a direct map of the bass: low-end slowly charges a
+    /// capacitor (a "sated" reservoir) and an under-damped spring chases it, so the pupil carries
+    /// momentum — it grows and shrinks gradually and drifts/overshoots rather than snapping to every
+    /// peak. Modeled on WavBall's peak-fed goal that charges up, sates, and eases away. The highlight
+    /// keeps its slow Lissajous drift, widened by treble transients.
+    /// </summary>
+    private void ApplyPupilAndHighlight()
+    {
+        double dt = _frameDt;
+
+        // Capacitor: sustained low-end fills it fairly quickly, quiet bleeds it off slowly, so the
+        // pupil stays "sated" a while after a loud passage instead of collapsing the instant it dips.
+        double chargeTau = _bassLevel > _pupilCharge ? 0.6 : 1.8;
+        _pupilCharge += (_bassLevel - _pupilCharge) * (1.0 - Math.Exp(-dt / chargeTau));
+
+        // The spring's target: a rest pupil inside the iris that opens fuller as it charges. A higher
+        // gain lets ordinary speech reach most of the way out (up to the full cornea), plus a slow
+        // idle wander so it is never perfectly still.
+        double breath = 0.02 * Math.Sin(_glossPhase * 0.35);
+        double target = 0.82 + 0.22 * _pupilCharge + breath;
+
+        // Under-damped spring (ω≈3.5 rad/s, ζ≈0.46): momentum makes the dilation gradual and lets it
+        // gently overshoot and change direction — an audio-steered drift, not a peak-locked jump.
+        const double stiffness = 12.0;
+        const double damping = 3.2;
+        double accel = stiffness * (target - _pupilPos) - damping * _pupilVel;
+        _pupilVel += accel * dt;
+        _pupilPos += _pupilVel * dt;
+
+        // Rails: clamp travel and kill inward/outward velocity at the bound so it can't wind up or stick.
+        if (_pupilPos < 0.70) { _pupilPos = 0.70; if (_pupilVel < 0) _pupilVel = 0; }
+        else if (_pupilPos > 1.0) { _pupilPos = 1.0; if (_pupilVel > 0) _pupilVel = 0; }
+
+        VisionOrbScale.ScaleX = VisionOrbScale.ScaleY = _pupilPos;
+
+        // Highlight: a slow Lissajous drift (light playing over the glass at slightly changing
+        // angles). Treble widens the drift, but through its own slow follower so the shimmer swells
+        // and eases rather than darting on every transient (it was reading as jerky). Deterministic.
+        double glossTarget = 3.0 + 6.0 * _trebleLevel;
+        _glossAmp += (glossTarget - _glossAmp) * (1.0 - Math.Exp(-dt / 0.5));
+        VisionGlossTranslate.X = Math.Sin(_glossPhase * 0.61) * _glossAmp;
+        VisionGlossTranslate.Y = Math.Cos(_glossPhase * 0.43) * _glossAmp * 0.6;
     }
 
     /// <summary>Opens the Vision page when the bar's HAL eye is released (ignored mid-transition).</summary>

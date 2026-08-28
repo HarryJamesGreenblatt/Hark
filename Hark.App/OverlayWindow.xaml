@@ -673,7 +673,7 @@
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                 <!-- Large HAL-eye replica, driven by the same audio envelope as the bar's eye. The
                      rendered vision appears INSIDE the orb (the cornea becomes the crystal ball). -->
-                <Grid x:Name="HalEyeBig" Width="300" Height="300"
+                <Grid x:Name="HalEyeBig" Width="360" Height="360"
                       Cursor="Hand" Background="Transparent"
                       RenderTransformOrigin="0.5,0.5" HorizontalAlignment="Center"
                       ToolTip="Return to captions">
@@ -692,8 +692,8 @@
                             </LinearGradientBrush>
                         </Ellipse.Fill>
                     </Ellipse>
-                    <Ellipse Margin="33" Fill="#0A0A0B" />
-                    <Ellipse x:Name="HalCorneaBig" Margin="65" RenderTransformOrigin="0.5,0.5">
+                    <Ellipse Margin="26" Fill="#0A0A0B" />
+                    <Ellipse x:Name="HalCorneaBig" Margin="78" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <RadialGradientBrush>
                                 <GradientStop Color="#FFD2C2" Offset="0" />
@@ -710,20 +710,32 @@
                         </Ellipse.RenderTransform>
                     </Ellipse>
                     <!-- The vision itself, peered into the orb: circular by the ellipse fill, over the
-                         red cornea and under the glass gloss. Hidden until a render arrives. -->
-                    <Ellipse x:Name="VisionOrb" Margin="65" Visibility="Collapsed" Opacity="0">
+                         red cornea and under the glass gloss. It is the "pupil" — it dilates with the
+                         low-end of the captured audio, ranging out to nearly the full iris. Hidden
+                         until a render arrives. -->
+                    <Ellipse x:Name="VisionOrb" Margin="78" Visibility="Collapsed" Opacity="0"
+                             RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <ImageBrush x:Name="VisionOrbBrush" Stretch="UniformToFill" />
                         </Ellipse.Fill>
+                        <Ellipse.RenderTransform>
+                            <ScaleTransform x:Name="VisionOrbScale" ScaleX="0.8" ScaleY="0.8" />
+                        </Ellipse.RenderTransform>
                     </Ellipse>
-                    <!-- Glass dome reflection: a small top-only highlight (mirrors the bar eye). -->
-                    <Ellipse Margin="82,49,134,164" IsHitTestVisible="False">
+                    <!-- Glass dome reflection: a small top-only highlight. It drifts a few pixels
+                         (a slow Lissajous, shivered by the treble band) to read as light playing off
+                         the glass at slightly changing angles rather than a painted-on gleam. -->
+                    <Ellipse x:Name="VisionGloss" Margin="98,59,161,197" IsHitTestVisible="False"
+                             RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#59FFFFFF" Offset="0" />
                                 <GradientStop Color="#00FFFFFF" Offset="0.7" />
                             </LinearGradientBrush>
                         </Ellipse.Fill>
+                        <Ellipse.RenderTransform>
+                            <TranslateTransform x:Name="VisionGlossTranslate" X="0" Y="0" />
+                        </Ellipse.RenderTransform>
                     </Ellipse>
                 </Grid>
 

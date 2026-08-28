@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using System.Windows.Threading;
 using Azure.Identity;
 using Hark.Core;
+using Hark.Core.Audio;
 using Hark.Core.Summarization;
 using Hark.Core.Transcription;
 using Hark.Oracle.Vision;
@@ -113,8 +114,6 @@ public partial class App : Application
     /// <summary>Concept of the currently-displayed Vision image, so the Oracle conjures a DISTINCT next one.</summary>
     private string? _shownVisionConcept;
 
-    /// <summary>Theme (caption) of the currently-displayed Vision image, reused when the eye is re-opened.</summary>
-    private string? _shownVisionTheme;
 
     /// <summary>Transcript line count at the last image render, so a new beat is conjured from the material
     /// spoken SINCE the last image — not a long rolling window that keeps dragging in the earlier topic.</summary>
@@ -335,7 +334,7 @@ public partial class App : Application
                     captureAudio: true,
                     mixMicrophone: _mixMic);
                 _session.Error += OnSessionError;
-                _session.AudioLevel += OnAudioLevel;
+                _session.AudioFeatures += OnAudioFeatures;
 
                 await _session.StartAsync(cancellationToken);
                 _overlay?.SetRunning(true);
@@ -362,10 +361,10 @@ public partial class App : Application
             _overlay?.ShowStatus($"Recognizer: {message}");
         });
 
-    /// <summary>Marshals the capture audio level onto the UI to drive the sound-reactive HAL eye.</summary>
-    /// <param name="level">The current normalized audio level.</param>
-    private void OnAudioLevel(double level) =>
-        Dispatcher.BeginInvoke(() => _overlay?.SetAudioLevel(level));
+    /// <summary>Marshals the banded capture levels onto the UI to drive the sound-reactive HAL eye.</summary>
+    /// <param name="features">The current overall/bass/treble audio levels.</param>
+    private void OnAudioFeatures(AudioFeatures features) =>
+        Dispatcher.BeginInvoke(() => _overlay?.SetAudioFeatures(features.Level, features.Bass, features.Treble));
 
     /// <summary>
     /// Handles the overlay's mic toggle: remembers the choice (so the next session honors it) and,
@@ -667,7 +666,6 @@ public partial class App : Application
         _cachedVisionRevision = -1;
         _lastVisionRenderIndex = 0;
         _shownVisionConcept = null;
-        _shownVisionTheme = null;
     }
 
     /// <summary>
@@ -788,7 +786,7 @@ public partial class App : Application
         // Re-opening the eye with unchanged captions: reuse the last image, no service call.
         if (_store.Revision == _cachedVisionRevision && _cachedVisionImage is not null)
         {
-            _overlay.SetVisionImage(_cachedVisionImage, _shownVisionTheme ?? string.Empty);
+            _overlay.SetVisionImage(_cachedVisionImage);
             return;
         }
 
@@ -887,8 +885,7 @@ public partial class App : Application
                 _cachedVisionRevision = revision;
                 _lastVisionRenderIndex = count;             // next beat is windowed from here forward
                 _shownVisionConcept = result.Concept.Concept;   // remember what we just showed, to differ next
-                _shownVisionTheme = result.Concept.Theme;
-                _overlay.SetVisionImage(result.Image, result.Concept.Theme);
+                _overlay.SetVisionImage(result.Image);
             }
             else if (manual)
             {

@@ -93,6 +93,15 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Running sum of squared samples since the last level report, for a windowed RMS.</summary>
     private double _levelSumSquares;
 
+    /// <summary>Sum of squared low-pass (bass) samples since the last report — paired with <see cref="_levelSampleCount"/>.</summary>
+    private double _bassSumSquares;
+
+    /// <summary>Sum of squared high-pass (treble) samples since the last report — paired with <see cref="_levelSampleCount"/>.</summary>
+    private double _trebleSumSquares;
+
+    /// <summary>One-pole low-pass filter state, carried across chunks to split bass from treble.</summary>
+    private double _lowpass;
+
     /// <summary>Sample count accumulated since the last level report, paired with <see cref="_levelSumSquares"/>.</summary>
     private long _levelSampleCount;
 
@@ -124,6 +133,14 @@ public sealed class HarkSession : IAsyncDisposable
     /// stream — suitable for driving a level meter or a sound-reactive indicator.
     /// </summary>
     public event Action<double>? AudioLevel;
+
+    /// <summary>
+    /// Raised (~20 Hz while running) with the captured audio split into a few perceptual bands
+    /// (overall / bass / treble) so independent visual parameters can react to different facets of
+    /// the sound at once — e.g. the HAL eye's pupil dilating on bass while its highlight shimmers on
+    /// treble. Complements <see cref="AudioLevel"/> (both fire from the same window).
+    /// </summary>
+    public event Action<AudioFeatures>? AudioFeatures;
 
     #endregion
 
@@ -391,21 +408,33 @@ public sealed class HarkSession : IAsyncDisposable
     public byte[]? GetBufferedAudioPcm() => _audioBuffer is { Length: > 0 } ? _audioBuffer.ToArray() : null;
 
     /// <summary>
-    /// Raises <see cref="AudioLevel"/> with the normalized RMS (0..1) of the converted PCM,
-    /// throttled to ~20 Hz. Every sample since the last report is accumulated so the value is a
-    /// representative window average, not a snapshot of one arbitrary chunk (which flickers). RMS
+    /// Raises <see cref="AudioLevel"/> and <see cref="AudioFeatures"/> with the normalized RMS
+    /// (0..1) of the converted PCM, throttled to ~20 Hz. Every sample since the last report is
+    /// accumulated so the value is a representative window average, not a snapshot of one arbitrary
+    /// chunk (which flickers). A cheap one-pole low-pass splits the energy into a bass component and
+    /// a treble residual so a consumer can drive independent, band-specific reactions. RMS
     /// (loudness) is far more dynamic than peak for system audio, which tends to sit near full-scale.
     /// </summary>
     /// <param name="pcm">The converted 16-bit PCM buffer to measure.</param>
     private void ReportAudioLevel(byte[] pcm)
     {
-        var handler = AudioLevel;
-        if (handler is null) return;
+        var levelHandler = AudioLevel;
+        var featuresHandler = AudioFeatures;
+        if (levelHandler is null && featuresHandler is null) return;
+
+        // One-pole low-pass coefficient for a ~330 Hz cut at 16 kHz (alpha = 1 - e^(-2π·fc/fs)).
+        // Bass = the low-passed body (vowels, kick/sub); treble = the high-pass residual (sibilance).
+        const double lpAlpha = 0.12;
 
         for (int i = 0; i + 1 < pcm.Length; i += 2)
         {
             double sample = (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768.0;
+            _lowpass += lpAlpha * (sample - _lowpass);
+            double highpass = sample - _lowpass;
+
             _levelSumSquares += sample * sample;
+            _bassSumSquares += _lowpass * _lowpass;
+            _trebleSumSquares += highpass * highpass;
             _levelSampleCount++;
         }
 
@@ -413,10 +442,15 @@ public sealed class HarkSession : IAsyncDisposable
         if (now - _lastLevelTick < 50) return;
         _lastLevelTick = now;
 
-        double rms = _levelSampleCount > 0 ? Math.Sqrt(_levelSumSquares / _levelSampleCount) : 0.0;
-        _levelSumSquares = 0;
+        double count = _levelSampleCount;
+        double rms = count > 0 ? Math.Sqrt(_levelSumSquares / count) : 0.0;
+        double bass = count > 0 ? Math.Sqrt(_bassSumSquares / count) : 0.0;
+        double treble = count > 0 ? Math.Sqrt(_trebleSumSquares / count) : 0.0;
+        _levelSumSquares = _bassSumSquares = _trebleSumSquares = 0;
         _levelSampleCount = 0;
-        handler(rms);
+
+        levelHandler?.Invoke(rms);
+        featuresHandler?.Invoke(new AudioFeatures(rms, bass, treble));
     }
 
     /// <summary>Forwards an interim hypothesis to the sink and re-raises it via <see cref="Interim"/>.</summary>
