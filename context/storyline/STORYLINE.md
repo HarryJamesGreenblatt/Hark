@@ -128,6 +128,7 @@ _Last updated: 2026-08-27 (end of Episode 20; speaker naming — manual rename +
 | 18 | 2026-08-25 | [The Living Crystal Ball: Autonomous Beats, Concrete Concepts, Per-Beat Windows](./EP18-vision-autonomous-beats-and-concept-refinement.md) | **Stage 2**: while the Vision page is open it **autonomously re-conjures on genuine topic shifts** — a 5 s loop where a cheap concept beat-check (Jaccard vs the shown theme) gates the expensive `gpt-image-1` render, debounced (2.5 s) + rate-limited (12 s beat-check / 40 s render) so it can't spam the model. Then fixed two live-test gaps: concepts were too abstract/samey (grounded prompt now demands a **concrete, particular** scene + **avoids the speakers' obvious domain**; composer drops the object-on-black look) and new beats referenced the first topic (each beat now **windowed to the speech since the last image**, not a rolling 40 lines). |
 | 19 | 2026-08-25 | [The Oracle Finds Its Voice: Neutral Identity, Anti-Repetition, Faster Cadence](./EP19-vision-oracle-identity-anti-repetition-cadence.md) | Refined the beat engine on three axes live testing demanded: a neutral **Oracle identity** (dropped the crystal-ball / iconic-vs-literal dogma that was leaking literal crystals), **prompt-agnostic anti-repetition** (each beat is told the vision on screen and conjures a distinct one via a `previousVision` steer), and a **cadence overhaul** (removed the beat-check + Jaccard gate that starved renders; render every ~12 s from render *start*, previous image held until the new lands). Proven live: *"many more images, less duplication."* A narrative test (bunny→bear→rabbit stew) then pinned the real ceiling — a **~1-min lag** that's `gpt-image-1` latency + ~2 RPM quota, **not** cadence — teeing up the next phase: fill the render dead-time (scrying shimmer + surface the fast concept immediately). Commit `7fdf0c7`. |
 | 20 | 2026-08-27 | [Putting Names to Voices: Manual Rename, Live Oracle Naming & the Alias-Map Fix](./EP20-speaker-naming-manual-rename-and-live-oracle.md) | Turned anonymous `Guest-N` into **real identities** two convergent ways: a **right-click Rename** on the pills (dark popup; global apply + in-order **merge**) and an autonomous **Oracle naming pass** (`SpeakerNamingRefiner`, strict-schema, never-invent) that infers names **live** from introductions/address/self-ID on a `DispatcherTimer` cadence **mirroring the Vision beat loop** — both flowing through one `ConversationStore.Rename`. Key fix: a rename is a **persistent acoustic-label → name alias** applied at `CommitFinal` (not a one-shot rewrite), so the streaming engine's repeating `Guest-N` stops re-spawning after a rename. Named labels stay **stable** (manual override wins); the "Jane vs Dean" miss was pinned as **upstream ASR**, not inference. Commit `daa5a77`. |
+| 21 | 2026-08-28 | [The Eye Comes Alive: Banded Audio, an Organic Pupil & a Drifting Highlight](./EP21-vision-sound-reactive-eye-pupil-highlight.md) | Made the Vision eye **sound-reactive across dimensions**: split the capture RMS into **bass/treble** bands (a one-pole low-pass, no FFT) via a new `AudioFeatures` event, then drove the image **"pupil"** dilation from a slow **bass capacitor + under-damped spring** (organic, inertial swell — **WavBall's peak-fed autonomous-goal** idea applied to a UI param, *not* a peak-locked map) and the glass **highlight** from a treble-widened **Lissajous drift**. Also: eye **300→360** with a **thinner silver ring**, and dropped the off-topic abstract `Theme` caption. Tuned across **three live self-tests** (dilation too fast → capacitor+spring; highlight jerky → slow amp follower; pupil too small → higher gains + full-iris rail) into "the animations are looking good." Commit `19f8825`. |
 
 ---
 
@@ -205,7 +206,13 @@ These are unresolved at the end of the latest episode — natural starting point
   conditioning-**morph** (edits endpoint, slow dissolve instead of a hard swap); tune the beat/window
   constants against a long real conversation; in-Vision affordances (Esc-to-return / minimal in-page
   controls, since the chrome sits behind the opaque canvas while open); optional orb size / `low` quality
-  for more speed. Full records: [`EP15`](./EP15-oracle-spike-vision-concept.md),
+  for more speed. **Episode 21** polished the eye itself (banded audio → organic pupil + drifting
+  highlight; see the HAL-eye thread) and surfaced the **active next target: the render dead-time**. The
+  ~1 min `gpt-image-1` latency means the image lands "two or three topics" late; fill it by surfacing the
+  **fast concept** immediately (the concrete `Concept.Concept` as an on-topic buffer caption) + a
+  **"scrying" shimmer** on the orb, and separately by improving **image quality/relevance** (the "absurd,
+  off-topic" renders are a concept/prompt-composition issue, not the eye). Full records:
+  [`EP15`](./EP15-oracle-spike-vision-concept.md),
   [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
   [`EP18`](./EP18-vision-autonomous-beats-and-concept-refinement.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
@@ -222,12 +229,19 @@ These are unresolved at the end of the latest episode — natural starting point
   `Revision`) → a slow-dissolve mood image. It is the **augmentation** half of the oracle: a
   `GroundingEvent` producer, with Cristóbal's image agent as consumer.
   **Enabling spine = the engine boundary (Phases 1–2 below).** Full design: [`context/cristobal-vision.md`](../cristobal-vision.md).
-- **HAL eye — refined (Episode 12):** de-washed (saturated cornea + confined top-only gloss) and made
-  genuinely reactive (RMS **noise gate** so silence reads dark, full 0.28–1.0 range, an **ADSR envelope
-  follower**). A follow-up caught the last "slow/inconsistent" complaint as **structural, not tuning:**
-  the level meter dropped every PCM chunk inside its 50 ms throttle and reported one arbitrary chunk's
-  RMS (flicker) — fixed to a true **windowed RMS** over every sample, release tightened `0.38→0.22 s`.
-  Optional: an idle "breathing" shimmer; per-device gate-floor tuning.
+- **HAL eye — refined (Episode 12); sound-reactive across bands (Episode 21):** de-washed (saturated
+  cornea + confined top-only gloss) and made genuinely reactive (RMS **noise gate** so silence reads dark,
+  full 0.28–1.0 range, an **ADSR envelope follower**). A follow-up caught the last "slow/inconsistent"
+  complaint as **structural, not tuning:** the level meter dropped every PCM chunk inside its 50 ms
+  throttle and reported one arbitrary chunk's RMS (flicker) — fixed to a true **windowed RMS** over every
+  sample, release tightened `0.38→0.22 s`. **Episode 21** took the Vision eye multi-dimensional: the same
+  windowed RMS is split into **bass/treble** (a one-pole low-pass, no FFT — a new `AudioFeatures` event)
+  and mapped to **orthogonal axes** — broadband → cornea pulse, **bass → an organic pupil dilation**
+  (slow capacitor + under-damped spring, *not* a direct map, so it swells/settles with momentum), **treble
+  → a drifting glass highlight** (a slow amp-followed Lissajous). The eye also grew 300→360 with a thinner
+  silver ring. The "idle breathing shimmer" note below is now partly delivered (an idle-breath sine on the
+  pupil + always-on highlight drift). Optional: per-device gate-floor tuning; prune the now-unused
+  `SetAudioLevel`/`AudioLevel` path.
 - **Copy what's shown — shipped (Episode 12):** a header **copy button** copies whatever the window
   displays per the toggles — captions (LATEST line / full TRANSCRIPT) or the active recap serialized to
   markdown with its nested bullets. Surfaced as a recap follow-up task (to stop screenshotting recaps).
