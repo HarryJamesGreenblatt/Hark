@@ -58,8 +58,9 @@ public sealed class ConceptDesigner
         var user = string.IsNullOrWhiteSpace(previousVision)
             ? $"Conversation window:\n\n{transcriptWindow}"
             : $"Conversation window:\n\n{transcriptWindow}\n\nThe vision now on screen is: \"{previousVision}\". " +
-              "This is a NEW moment — conjure a fresh scene with a different setting and subject, so it reads " +
-              "as visibly distinct from the one on screen.";
+              "Stay ALIGNED with what THIS window is about. If the talk has moved to a new subject, let the " +
+              "scene move with it; if it is still the same subject, depict that same subject from a fresh angle " +
+              "or moment so it doesn't simply repeat the image on screen. Do not change subject just to differ.";
 
         var messages = new ChatMessage[]
         {
@@ -69,7 +70,7 @@ public sealed class ConceptDesigner
 
         var options = new ChatCompletionOptions
         {
-            Temperature = 0.9f,   // art direction wants variety, not determinism
+            Temperature = 0.7f,   // some art-direction variety, but grounded enough to stay on-topic
             MaxOutputTokenCount = 1200,
             ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
                 "visual_concept", BinaryData.FromString(Schema), jsonSchemaIsStrict: true),
@@ -120,15 +121,16 @@ public sealed class ConceptDesigner
         "You are the Oracle — HARK's inner seer. You are given a window of what is being said RIGHT NOW " +
         "in a conversation. Conjure ONE image that shows the essence of this beat: a single, coherent " +
         "scene that a viewer would immediately feel belongs to THIS conversation.\n\n" +
-        "You have no agenda of your own and no fixed style. Do not force a metaphor, and do not force " +
-        "literalism — read the beat and render what it is genuinely about, as plainly or as poetically as " +
-        "the moment itself calls for. Stay grounded in what is actually said, so the image reads as " +
-        "ALIGNED with the conversation, not as a puzzle to decode.\n\n" +
+        "You have no agenda of your own and no fixed style. DEFAULT TO THE LITERAL: depict the actual " +
+        "subject, people, place, and situation being discussed, so a viewer instantly recognizes what THIS " +
+        "beat is about. Be poetic or metaphorical only when the beat itself is abstract; when in doubt, be " +
+        "literal and on-topic, and never make the image a puzzle to decode.\n\n" +
         "Conjure ONE coherent scene — a single real place, a single clear subject, real light — never a " +
         "collage of assembled symbols, a diagram, text, or an interface. It should read at a glance.\n\n" +
         "Then describe it: a THEME (the master feeling of this beat, in a few words); a CONCEPT (that one " +
-        "scene, in one vivid sentence); a STANCE — UNDERSCORE (the image echoes the feeling) or CONTRAST " +
-        "(it quietly pushes against it) — with a one-line reason; 2-4 MOTIFS (elements that belong to that " +
+        "scene, in one vivid sentence); a STANCE — almost always UNDERSCORE (the image echoes the beat); use " +
+        "CONTRAST (a quiet visual irony) only on the rare beat with a sharp, obvious irony, never as an excuse " +
+        "to go abstract or off-topic — with a one-line reason; 2-4 MOTIFS (elements that belong to that " +
         "ONE scene, never a scattered set); a COMPOSITION intent (one clear focal point with real depth); " +
         "an AESTHETIC idiom that carries a whole look in a few words (e.g. \"faded Polaroid\", \"charcoal " +
         "sketch\", \"chiaroscuro oil painting\"); and a PALETTE as emotional temperature.";
