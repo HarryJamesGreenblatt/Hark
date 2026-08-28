@@ -295,21 +295,18 @@ internal sealed class InstallerForm : Form
             try { File.Delete(msixPath); } catch { /* temp cleanup is best-effort */ }
         }
 
-        // Step 4: configure — skip if HARK is already configured by any source the app reads
-        // (env vars, config.json, or user-secrets), so configured machines aren't prompted again.
+        // Step 4: configure — always show the panel, prefilled with whatever the app would read
+        // (env → config.json → user-secrets), so the user confirms or updates the resources on every
+        // install instead of stale config silently hiding the fields. Saving writes config.json,
+        // which takes precedence over user-secrets and so overrides anything stale there.
         _actionButton.Enabled = true;
-        if (IsAlreadyConfigured())
-        {
-            _phase = Phase.Done;
-            _actionButton.Text = "Close";
-            UpdateStatus("HARK installed and already configured. Find it in Start / Search.", 100);
-            return;
-        }
-
+        bool prefilled = PrefillConfigFields();
         _phase = Phase.Configure;
         _configPanel.Visible = true;
         _actionButton.Text = "Save & Finish";
-        UpdateStatus("HARK installed. Enter your Azure resource locations (or leave blank to set up later).", 90);
+        UpdateStatus(prefilled
+            ? "HARK installed. Confirm or update your Azure resources below, then Save & Finish."
+            : "HARK installed. Enter your Azure resource locations (or leave blank to set up later).", 90);
     }
 
     /// <summary>Writes config.json when a Speech region + resource id are supplied; a blank pair skips it.</summary>
@@ -340,36 +337,46 @@ internal sealed class InstallerForm : Form
     }
 
     /// <summary>
-    /// True when a Speech region + resource id are available from any source the app reads:
-    /// environment variables, <c>config.json</c>, or user-secrets — mirroring the app's precedence.
+    /// Prefills the config fields from whatever the app would read — env var → <c>config.json</c> →
+    /// user-secrets — so the user confirms or edits current values instead of re-typing them (and so
+    /// stale user-secrets no longer hide the panel). Returns true if any Speech value was detected.
     /// </summary>
-    static bool IsAlreadyConfigured()
+    bool PrefillConfigFields()
     {
-        if (HasSpeechConfig(
-                Environment.GetEnvironmentVariable("HARK_SPEECH_REGION"),
-                Environment.GetEnvironmentVariable("HARK_SPEECH_RESOURCE_ID")))
-            return true;
-
-        return JsonHasSpeechConfig(ConfigPath) || JsonHasSpeechConfig(UserSecretsPath);
+        _regionBox.Text              = DetectConfigValue("HARK_SPEECH_REGION") ?? string.Empty;
+        _resourceBox.Text            = DetectConfigValue("HARK_SPEECH_RESOURCE_ID") ?? string.Empty;
+        _aoaiEndpointBox.Text        = DetectConfigValue("HARK_AOAI_ENDPOINT") ?? string.Empty;
+        _aoaiDeploymentBox.Text      = DetectConfigValue("HARK_AOAI_DEPLOYMENT") ?? string.Empty;
+        _aoaiImageDeploymentBox.Text = DetectConfigValue("HARK_AOAI_IMAGE_DEPLOYMENT") ?? string.Empty;
+        return _regionBox.Text.Length > 0 || _resourceBox.Text.Length > 0;
     }
 
-    static bool HasSpeechConfig(string? region, string? resourceId)
-        => !string.IsNullOrWhiteSpace(region) && !string.IsNullOrWhiteSpace(resourceId);
+    /// <summary>
+    /// Reads a config value the way the app resolves it — environment variable →
+    /// <c>%APPDATA%\Hark\config.json</c> → user-secrets — returning the first non-empty value, or null.
+    /// </summary>
+    static string? DetectConfigValue(string key)
+    {
+        var env = Environment.GetEnvironmentVariable(key);
+        if (!string.IsNullOrWhiteSpace(env)) return env;
 
-    /// <summary>True if the JSON file at <paramref name="path"/> has non-empty Speech region + resource id.</summary>
-    static bool JsonHasSpeechConfig(string path)
+        return JsonValue(ConfigPath, key) ?? JsonValue(UserSecretsPath, key);
+    }
+
+    /// <summary>Reads a string property from a flat JSON config file, or null if absent/unreadable.</summary>
+    static string? JsonValue(string path, string key)
     {
         try
         {
-            if (!File.Exists(path)) return false;
+            if (!File.Exists(path)) return null;
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return false;
-            string? Value(string name) =>
-                root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-            return HasSpeechConfig(Value("HARK_SPEECH_REGION"), Value("HARK_SPEECH_RESOURCE_ID"));
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            return root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
+                : null;
         }
-        catch { return false; }
+        catch { return null; }
     }
 
     /// <summary>Writes the embedded MSIX to a temp file and returns its path.</summary>
