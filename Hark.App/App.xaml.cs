@@ -863,6 +863,7 @@ public partial class App : Application
         _lastVisionRenderUtc = DateTime.UtcNow;   // start-to-start cadence: overlaps the render latency
 
         if (manual) _overlay.SetVisionStatus("Conjuring a vision…");
+        _overlay.BeginVisionConjuring();   // scrying sheen + buffer, unless a previous image is held
 
         // Window the transcript to the CURRENT beat: a small recent slice, and for an auto beat never
         // reaching before the last rendered image — so the new image reflects the NEW material.
@@ -875,8 +876,15 @@ public partial class App : Application
 
         try
         {
+            // Surface the fast concept immediately as an on-topic buffer, ahead of the slow render, so
+            // the caption keeps pace with the conversation while the image catches up.
+            void OnConcept(VisualConcept concept) => Dispatcher.BeginInvoke(() =>
+            {
+                if (!cts.IsCancellationRequested) _overlay.SetVisionConjuringConcept(concept.Concept);
+            });
+
             // Pass the last shown concept so the Oracle deliberately conjures a different scene.
-            var result = await _vision.ConjureAsync(window, _shownVisionConcept, cts.Token);
+            var result = await _vision.ConjureAsync(window, _shownVisionConcept, OnConcept, cts.Token);
             if (cts.IsCancellationRequested || result is null) return;
 
             if (result.Image is not null)
@@ -904,6 +912,9 @@ public partial class App : Application
         finally
         {
             _visionConjuring = false;
+            // A conjure that ended without an image (null concept / error) but wasn't superseded must
+            // clear its own scrying sheen; a superseded one (cancelled) leaves it for the new conjure.
+            if (!cts.IsCancellationRequested) _overlay.StopVisionConjuring();
         }
     }
 

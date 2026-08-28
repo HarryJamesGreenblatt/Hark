@@ -129,6 +129,9 @@ public partial class OverlayWindow : Window
     /// <summary>Accumulated time (s) that advances the highlight's slow drift, independent of audio.</summary>
     private double _glossPhase;
 
+    /// <summary>Whether the orb is currently in its "conjuring" (scrying-sheen) state, awaiting a render.</summary>
+    private bool _scrying;
+
     /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
     private TimeSpan _lastRenderTime;
 
@@ -894,6 +897,7 @@ public partial class OverlayWindow : Window
     {
         if (!_visionOpen) return;
         _visionAnimating = true;
+        StopScrying();
         VisionClosed?.Invoke();   // cancel any in-flight conjure
 
         var zoom = new Duration(TimeSpan.FromMilliseconds(320));
@@ -929,15 +933,69 @@ public partial class OverlayWindow : Window
     /// <param name="message">The status text to display.</param>
     public void SetVisionStatus(string message)
     {
+        StopScrying();
         HideVisionOrb();
         VisionStatusText.Text = message;
         VisionStatusText.Visibility = Visibility.Visible;
     }
 
+    /// <summary>
+    /// Begins the orb's "conjuring" state — a slow scrying sheen sweeping the cornea plus a status
+    /// line — but only when no image is currently shown (a first open). During autonomous beats the
+    /// previous image is held on screen, so there's nothing to buffer and we leave it untouched.
+    /// </summary>
+    public void BeginVisionConjuring()
+    {
+        if (VisionOrb.Visibility == Visibility.Visible && VisionOrb.Opacity > 0.01) return;
+        StartScrying();
+        VisionStatusText.Text = "Conjuring a vision…";
+        VisionStatusText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// While still scrying (image not yet rendered), surfaces the fast concept as an on-topic buffer
+    /// caption so the conversation's current thread is reflected immediately, ahead of the slow image.
+    /// </summary>
+    /// <param name="concept">The art director's one-line concept.</param>
+    public void SetVisionConjuringConcept(string concept)
+    {
+        if (!_scrying || string.IsNullOrWhiteSpace(concept)) return;
+        VisionStatusText.Text = concept;
+        VisionStatusText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Starts the rotating, softly-pulsing scrying sheen over the cornea.</summary>
+    private void StartScrying()
+    {
+        _scrying = true;
+        ScryingSheen.Visibility = Visibility.Visible;
+        ScryingSheen.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0.14, 0.5, new Duration(TimeSpan.FromSeconds(1.1)))
+            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+        ScryingRotate.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(2.8)))
+            { RepeatBehavior = RepeatBehavior.Forever });
+    }
+
+    /// <summary>Fades out and stops the scrying sheen (when a render lands, or the page closes).</summary>
+    private void StopScrying()
+    {
+        if (!_scrying) return;
+        _scrying = false;
+        ScryingRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        var fade = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(350)));
+        fade.Completed += (_, _) => ScryingSheen.Visibility = Visibility.Collapsed;
+        ScryingSheen.BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>Stops the conjuring/scrying state (e.g. a conjure that yielded no image). Idempotent.</summary>
+    public void StopVisionConjuring() => StopScrying();
+
     /// <summary>Shows the art-director concept as text when there's no render tier (or it failed).</summary>
     /// <param name="concept">The one-line visual concept.</param>
     public void SetVisionConcept(string concept)
     {
+        StopScrying();
         HideVisionOrb();
         VisionStatusText.Text = concept;
         VisionStatusText.Visibility = Visibility.Visible;
@@ -951,6 +1009,7 @@ public partial class OverlayWindow : Window
     /// <param name="caption">Optional caption about the conversation (the concept theme).</param>
     public void SetVisionImage(byte[] png, string? caption = null)
     {
+        StopScrying();
         var bmp = new BitmapImage();
         using (var ms = new MemoryStream(png))
         {

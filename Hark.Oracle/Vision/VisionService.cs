@@ -43,23 +43,29 @@ public sealed class VisionService
     /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
     /// <param name="cancellationToken">Cancels the in-flight request.</param>
     public Task<VisionResult?> ConjureAsync(string transcriptWindow, CancellationToken cancellationToken = default)
-        => ConjureAsync(transcriptWindow, previousVision: null, cancellationToken);
+        => ConjureAsync(transcriptWindow, previousVision: null, onConcept: null, cancellationToken);
 
     /// <summary>
     /// Conjures a concept and, when a renderer is configured, the image. <paramref name="previousVision"/>
     /// (the concept currently on screen) lets the Oracle deliberately conjure a visibly different scene
-    /// for the new beat instead of repeating itself.
+    /// for the new beat instead of repeating itself. <paramref name="onConcept"/> fires the moment the
+    /// (fast) concept lands — before the (slow) render — so a caller can surface it immediately as a
+    /// buffer while the image catches up.
     /// </summary>
     /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
     /// <param name="previousVision">The concept currently displayed, to differ from; or <see langword="null"/>.</param>
+    /// <param name="onConcept">Invoked with the concept as soon as it is designed, before rendering; or <see langword="null"/>.</param>
     /// <param name="cancellationToken">Cancels the in-flight request.</param>
     public async Task<VisionResult?> ConjureAsync(
         string transcriptWindow,
         string? previousVision,
+        Action<VisualConcept>? onConcept = null,
         CancellationToken cancellationToken = default)
     {
         var concept = await _designer.DesignAsync(transcriptWindow, previousVision, cancellationToken).ConfigureAwait(false);
         if (concept is null) return null;
+
+        onConcept?.Invoke(concept);   // surface the fast concept before the slow render
 
         var prompt = VisionPromptComposer.Compose(concept);
         byte[]? image = _renderer is null

@@ -36,6 +36,13 @@ bigger." Follow-up tests then dictated three tuning rounds (below).
   charges/bleeds on low-end, an **under-damped spring** chases it (momentum → gradual, overshooting
   dilation), and the highlight is a slow **Lissajous** whose amplitude follows treble through its own
   slow follower.
+- **Render dead-time buffer (follow-up, same session) (`Hark.Oracle/Vision/VisionService.cs` ·
+  `Hark.App/OverlayWindow.xaml(.cs)` · `App.xaml.cs`)** — `ConjureAsync` gained an `onConcept` callback
+  that fires the moment the **fast** concept lands, **before** the ~1 min render. `App` surfaces it
+  immediately as an on-topic buffer caption (`Concept.Concept` — the concrete cousin of the dropped
+  `Theme`), and a **scrying sheen** (a rotating, softly-pulsing glint over the cornea) marks the wait so
+  the eye reads as *actively conjuring* rather than a frozen red disc. Shown only on a first open (no
+  image up); autonomous beats still **hold the previous image** until the new one lands (no scry churn).
 
 ## 🧠 Decisions
 - **A few bands → orthogonal visual axes (the WavBall pattern), not one RMS driving everything** —
@@ -88,11 +95,9 @@ bigger." Follow-up tests then dictated three tuning rounds (below).
 - Committed + pushed to `origin/main` (`804cb96..19f8825`).
 
 ## 🔓 Open threads
-- **Render dead-time buffer (the next "rough edge"):** the ~1 min `gpt-image-1` latency means "by the
-  time I get the image I'm ahead two or three topics." Fill it — surface the **fast concept** immediately
-  as an on-topic caption (the concrete `Concept.Concept`, which doubles as the "what you're talking about"
-  text the abstract `Theme` failed to be) and add a **"scrying" shimmer** on the orb while it renders. The
-  user re-raised the old "GIF / CSS animation / icon as a lazy-loader / buffer" idea for exactly this.
+- **Render dead-time buffer — shipped (this session):** the fast concept now surfaces immediately as an
+  on-topic caption + a scrying sheen fills the ~1 min wait (see What changed). Remaining polish: consider
+  keeping the concept visible *under* the landed image, and a `low`-quality / faster render tier.
 - **Image quality / relevance (deferred next phase):** live renders were "absurd and off topic" (a chair
   reading a book, someone holding pottery) — a **concept + prompt-composition** issue in the Oracle Vision
   tier (`ConceptDesigner` → `VisionPromptComposer`), independent of the eye animation.
