@@ -46,25 +46,30 @@ public sealed class OverlaySink : ITranscriptSink
     /// <inheritdoc />
     public void Write(TranscriptSegment segment)
     {
-        // Prefix with the anonymous speaker label when diarization attributed one.
-        var text = string.IsNullOrEmpty(segment.SpeakerId)
-            ? segment.Text
-            : $"{segment.SpeakerId}: {segment.Text}";
-
         if (segment.IsFinal)
         {
             _dispatcher.BeginInvoke(() =>
             {
-                _overlay.CommitFinal(text);
+                // Resolve the acoustic label to its current display name so live captions follow renames
+                // (a Guest-N already aliased to a real name prefixes with that name, not Guest-N).
+                _overlay.CommitFinal(Prefix(segment));
                 // Feeds the per-speaker pages and the speaker index in the CAPTIONS overlay.
                 _store.CommitFinal(segment.SpeakerId, segment.Text);
             });
         }
         else
         {
-            _dispatcher.BeginInvoke(() => _overlay.ShowInterim(text));
+            _dispatcher.BeginInvoke(() => _overlay.ShowInterim(Prefix(segment)));
         }
     }
+
+    /// <summary>Prefixes the segment text with its current display name (or none when unattributed).</summary>
+    /// <param name="segment">The transcript segment to render.</param>
+    /// <returns>The speaker-prefixed line for the overlay.</returns>
+    private string Prefix(TranscriptSegment segment) =>
+        string.IsNullOrEmpty(segment.SpeakerId)
+            ? segment.Text
+            : $"{_store.ResolveDisplay(segment.SpeakerId)}: {segment.Text}";
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -27,6 +27,16 @@ public sealed class ConversationStore
     /// <summary>The full conversation in order, each line tagged with its speaker.</summary>
     private readonly List<Entry> _all = new();
 
+    /// <summary>
+    /// Persistent acoustic-label → display-name map. Because the streaming engine keeps emitting the same
+    /// <c>Guest-N</c> for a given voice, a rename must follow FUTURE utterances of that label — not just
+    /// rewrite past ones — so new lines are attributed to the chosen name instead of re-spawning Guest-N.
+    /// </summary>
+    private readonly Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every raw (acoustic) label seen, so a rename can re-point all labels currently showing a name.</summary>
+    private readonly HashSet<string> _seenRaw = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Finalized lines grouped by normalized speaker name.</summary>
     private readonly Dictionary<string, List<string>> _bySpeaker = new(StringComparer.OrdinalIgnoreCase);
 
@@ -67,7 +77,9 @@ public sealed class ConversationStore
     public void CommitFinal(string? speaker, string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        var name = Normalize(speaker);
+        var raw = Normalize(speaker);
+        _seenRaw.Add(raw);
+        var name = ResolveAlias(raw);   // a renamed acoustic label follows FUTURE utterances, not just past ones
         var line = text.Trim();
 
         _all.Add(new Entry(name, line));
@@ -84,6 +96,15 @@ public sealed class ConversationStore
         Changed?.Invoke();
     }
 
+    /// <summary>Resolves a raw (acoustic) label to the display name it currently maps to (itself if unaliased).</summary>
+    /// <param name="rawLabel">The raw engine label (e.g. <c>Guest-2</c>), or <see langword="null"/> if unattributed.</param>
+    /// <returns>The current display name for that label.</returns>
+    public string ResolveDisplay(string? rawLabel) => ResolveAlias(Normalize(rawLabel));
+
+    /// <summary>Maps a normalized raw label through the alias table (identity when no alias exists).</summary>
+    private string ResolveAlias(string rawNormalized) =>
+        _aliases.TryGetValue(rawNormalized, out var display) ? display : rawNormalized;
+
     /// <summary>The finalized lines attributed to a speaker (empty if unknown).</summary>
     /// <param name="speaker">The speaker to look up.</param>
     /// <returns>The finalized lines for the speaker, or an empty list if the speaker is unknown.</returns>
@@ -97,6 +118,8 @@ public sealed class ConversationStore
     {
         _all.Clear();
         _bySpeaker.Clear();
+        _aliases.Clear();
+        _seenRaw.Clear();
         Revision++;
         Changed?.Invoke();
     }
@@ -113,6 +136,8 @@ public sealed class ConversationStore
 
         _all.Clear();
         _bySpeaker.Clear();
+        _aliases.Clear();
+        _seenRaw.Clear();
 
         foreach (var entry in entries)
         {
@@ -132,6 +157,50 @@ public sealed class ConversationStore
 
         Revision++;
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Renames a speaker globally: every line attributed to <paramref name="oldName"/> is re-tagged to
+    /// <paramref name="newName"/>, merging into it (in conversation order) if that speaker already
+    /// exists. Returns <see langword="false"/> — a no-op — when the new name is blank, the speaker is
+    /// unknown, or the names are equal. On success bumps <see cref="Revision"/> and raises <see cref="Changed"/>.
+    /// </summary>
+    /// <param name="oldName">The current speaker label to rename.</param>
+    /// <param name="newName">The new label (trimmed; blank is rejected).</param>
+    /// <returns><see langword="true"/> if a rename was applied; otherwise <see langword="false"/>.</returns>
+    public bool Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return false;
+        var from = Normalize(oldName);
+        var to = newName.Trim();
+        if (from.Equals(to, StringComparison.OrdinalIgnoreCase)) return false;
+
+        // Re-point every acoustic label currently displaying as `from` so FUTURE utterances follow the
+        // rename (the streaming engine keeps emitting the same Guest-N for that voice).
+        bool anyAlias = false;
+        foreach (var raw in _seenRaw)
+            if (ResolveAlias(raw).Equals(from, StringComparison.OrdinalIgnoreCase))
+            {
+                _aliases[raw] = to;
+                anyAlias = true;
+            }
+
+        if (!anyAlias && !_bySpeaker.ContainsKey(from)) return false;
+
+        for (int i = 0; i < _all.Count; i++)
+            if (_all[i].Speaker.Equals(from, StringComparison.OrdinalIgnoreCase))
+                _all[i] = _all[i] with { Speaker = to };
+
+        // Rebuild the target bucket from the rewritten conversation so a merge keeps chronological order.
+        _bySpeaker.Remove(from);
+        _bySpeaker.Remove(to);
+        var merged = _all.Where(e => e.Speaker.Equals(to, StringComparison.OrdinalIgnoreCase))
+                         .Select(e => e.Text).ToList();
+        if (merged.Count > 0) _bySpeaker[to] = merged;
+
+        Revision++;
+        Changed?.Invoke();
+        return true;
     }
 
     /// <summary>Normalizes a raw speaker label, mapping blank or "Unknown" labels to <see cref="DefaultSpeaker"/>.</summary>

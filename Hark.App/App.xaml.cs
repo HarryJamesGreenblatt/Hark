@@ -126,6 +126,24 @@ public partial class App : Application
     /// <summary>The <see cref="SummaryStyle"/> that the cached recaps were generated with.</summary>
     private SummaryStyle _cachedStyle;
 
+    /// <summary>Lazily created live speaker-naming refiner (Oracle naming), or null when unconfigured.</summary>
+    private SpeakerNamingRefiner? _namer;
+
+    /// <summary>Drives the autonomous live naming loop while capture is running.</summary>
+    private DispatcherTimer? _nameTimer;
+
+    /// <summary>Cancellation for the in-flight naming pass, cancelled when superseded or capture stops.</summary>
+    private CancellationTokenSource? _nameCts;
+
+    /// <summary>Guards against overlapping live naming passes.</summary>
+    private bool _naming;
+
+    /// <summary>Store revision of the last naming attempt, so a pass runs only when new speech has arrived.</summary>
+    private int _lastNamedRevision = -1;
+
+    /// <summary>Wall-clock the last naming pass STARTED, the cadence floor between passes.</summary>
+    private DateTime _lastNameRunUtc = DateTime.MinValue;
+
     #endregion
 
     #region Methods
@@ -175,6 +193,7 @@ public partial class App : Application
         _overlay.SetRunning(false);
         _overlay.CloseRequested += () => Shutdown();
         _overlay.SpeakerSelected += OpenSpeakerWindow;
+        _overlay.SpeakerRenameRequested += OnSpeakerRenameRequested;
         _overlay.SummaryRequested += OnSummaryRequested;
         _overlay.MicToggleRequested += OnMicToggleRequested;
         _overlay.VisionRequested += OnVisionRequested;
@@ -287,6 +306,8 @@ public partial class App : Application
                 _overlay?.SetRunning(false);
                 _overlay?.Hide();      // toggle "off" — the bar disappears like native Live Captions
 
+                StopNamingLoop();
+
                 // Second pass: re-diarize the buffered audio offline for better speaker attribution.
                 _ = RefineDiarizationAsync();
             }
@@ -318,6 +339,7 @@ public partial class App : Application
 
                 await _session.StartAsync(cancellationToken);
                 _overlay?.SetRunning(true);
+                StartNamingLoop();
             }
         }
         catch (Exception ex)
@@ -388,42 +410,32 @@ public partial class App : Application
             var segments = await refiner.RefineAsync(pcm, maxSpeakers);
             if (segments.Count == 0) return;
 
-            int acousticSpeakers = DistinctSpeakers(segments);
-            string note;
-
-            // Recognition-mode oracle (Stage 0): a text-only semantic pass re-labels the acoustic
-            // segments (merging over-splits, fixing cross-ups) with the text left immutable. Optional —
-            // reuses the recap AOAI config and is skipped (leaving the acoustic result) when unconfigured.
-            // A semantic failure degrades to the acoustic result but is reported, not swallowed.
+            // Recognition-mode oracle (Stage 0): an optional text-only semantic pass re-labels the
+            // acoustic segments (merging over-splits, fixing cross-ups), text left immutable. Reuses the
+            // recap AOAI config; skipped when unconfigured, and degrades to the acoustic result on failure.
             if (!string.IsNullOrWhiteSpace(_aoaiEndpoint) && !string.IsNullOrWhiteSpace(_aoaiDeployment))
             {
                 try
                 {
-                    var acoustic = segments;
                     var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
-                    segments = await semantic.RefineAsync(acoustic);
-
-                    // Compare the canonicalized groupings so cosmetic label renumbering isn't counted —
-                    // only genuine regrouping (a line moved to a different speaker cluster) is reported.
-                    var before = CanonicalLabels(acoustic);
-                    var after = CanonicalLabels(segments);
-                    int regrouped = 0;
-                    for (int i = 0; i < after.Length; i++)
-                        if (!string.Equals(before[i], after[i], StringComparison.Ordinal))
-                            regrouped++;
-
-                    note = regrouped == 0
-                        ? $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, grouping unchanged"
-                        : $"{acousticSpeakers}→{DistinctSpeakers(segments)} speakers, {regrouped} lines regrouped";
+                    segments = await semantic.RefineAsync(segments);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    note = $"semantic pass failed ({ex.Message}); using acoustic";
+                    // Optional enhancement — keep the acoustic result if the semantic pass fails.
                 }
-            }
-            else
-            {
-                note = $"acoustic only, {acousticSpeakers} speakers (set HARK_AOAI_* to enable semantic refine)";
+
+                // Oracle naming: auto-apply real names where the transcript identifies a speaker;
+                // labels it can't confidently name stay Guest-N (correctable by hand afterward).
+                try
+                {
+                    var namer = new SpeakerNamingRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+                    segments = await namer.NameAsync(segments);
+                }
+                catch
+                {
+                    // Optional enhancement — keep the Guest-N labels if naming fails.
+                }
             }
 
             var rebuilt = segments;
@@ -443,8 +455,6 @@ public partial class App : Application
                 _cachedRecap = null;
                 _cachedSpeakerRecap = null;
                 _cachedRevision = -1;
-
-                _tray?.ShowBalloonTip(4000, "HARK — refined", $"Speaker attribution: {note}.", ToolTipIcon.Info);
             });
         }
         catch (Exception ex)
@@ -452,39 +462,6 @@ public partial class App : Application
             Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(
                 4000, "HARK — refine", $"Couldn't refine speakers: {ex.Message}", ToolTipIcon.Warning));
         }
-    }
-
-    /// <summary>Counts the distinct (non-blank) speaker labels across the segments.</summary>
-    /// <param name="segments">The segments to inspect.</param>
-    /// <returns>The number of distinct speaker labels.</returns>
-    private static int DistinctSpeakers(IReadOnlyList<TranscriptSegment> segments)
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var s in segments)
-            if (!string.IsNullOrWhiteSpace(s.SpeakerId))
-                set.Add(s.SpeakerId!);
-        return set.Count;
-    }
-
-    /// <summary>
-    /// Renumbers a segment sequence's speaker labels to contiguous <c>Guest-N</c> by first appearance,
-    /// so two sequences can be compared for genuine regrouping without being fooled by label renumbering.
-    /// </summary>
-    /// <param name="segments">The segments whose labels to canonicalize.</param>
-    /// <returns>The per-index canonical label (empty string for unattributed lines).</returns>
-    private static string[] CanonicalLabels(IReadOnlyList<TranscriptSegment> segments)
-    {
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var result = new string[segments.Count];
-        int next = 1;
-        for (int i = 0; i < segments.Count; i++)
-        {
-            var id = segments[i].SpeakerId;
-            if (string.IsNullOrWhiteSpace(id)) { result[i] = string.Empty; continue; }
-            if (!map.TryGetValue(id, out var label)) { label = $"Guest-{next++}"; map[id] = label; }
-            result[i] = label;
-        }
-        return result;
     }
 
     /// <summary>Opens (or focuses) the dedicated page for a speaker selected in the index.</summary>
@@ -509,6 +486,165 @@ public partial class App : Application
             window.Top = Math.Max(0, _overlay.Top - window.Height - 20 - 30 * index);
         }
         window.Show();
+    }
+
+    /// <summary>
+    /// Applies a speaker rename requested from a pill: renames globally in the store, relabels the pill,
+    /// re-renders the caption transcript, and rebinds (or merges) any open page for that speaker.
+    /// </summary>
+    /// <param name="oldName">The speaker's current label.</param>
+    /// <param name="newName">The requested new label.</param>
+    private void OnSpeakerRenameRequested(string oldName, string newName)
+    {
+        if (!_store.Rename(oldName, newName)) return;
+        var applied = newName.Trim();
+
+        _overlay?.RenameSpeaker(oldName, applied);
+        _overlay?.SetCaptionLines(BuildCaptionLines());
+
+        // Follow any open page for the renamed speaker: merge into an existing one, or rebind in place.
+        if (_speakerWindows.Remove(oldName, out var window))
+        {
+            if (_speakerWindows.TryGetValue(applied, out var existing))
+            {
+                window.Close();
+                existing.Activate();
+            }
+            else
+            {
+                window.Rebind(applied);
+                _speakerWindows[applied] = window;
+            }
+        }
+    }
+
+    /// <summary>Renders the store as speaker-prefixed caption lines (unprefixed for the default speaker).</summary>
+    /// <returns>The caption lines, in conversation order.</returns>
+    private IEnumerable<string> BuildCaptionLines() =>
+        _store.All.Select(e =>
+            e.Speaker.Equals(ConversationStore.DefaultSpeaker, StringComparison.OrdinalIgnoreCase)
+                ? e.Text
+                : $"{e.Speaker}: {e.Text}");
+
+    // ── Live naming cadence (Oracle) ──
+    /// <summary>How often the naming loop checks whether a pass is due.</summary>
+    private static readonly TimeSpan NameCheckInterval = TimeSpan.FromSeconds(8);
+    /// <summary>Minimum spacing between naming passes, measured from pass START.</summary>
+    private static readonly TimeSpan NameRunInterval = TimeSpan.FromSeconds(15);
+    /// <summary>Earliest lines fed to a naming pass — introductions ("here he is, Mr. …") live here.</summary>
+    private const int NameHeadLines = 24;
+    /// <summary>Most-recent lines fed to a naming pass, bounding cost on long sessions.</summary>
+    private const int NameTailLines = 120;
+
+    /// <summary>
+    /// Starts the autonomous live naming loop (skipped when AOAI is unconfigured). Mirrors the Vision
+    /// beat loop: a timer periodically fires the Oracle to name still-anonymous speakers as evidence
+    /// accrues, applying results through the same rename/merge path used by manual renames.
+    /// </summary>
+    private void StartNamingLoop()
+    {
+        if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment)) return;
+
+        _namer ??= new SpeakerNamingRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+        _nameTimer ??= new DispatcherTimer { Interval = NameCheckInterval };
+        _nameTimer.Tick -= OnNameTick;
+        _nameTimer.Tick += OnNameTick;
+        _lastNamedRevision = -1;
+        _nameTimer.Start();
+    }
+
+    /// <summary>Stops the live naming loop and cancels any in-flight pass (on capture stop).</summary>
+    private void StopNamingLoop()
+    {
+        _nameTimer?.Stop();
+        _nameCts?.Cancel();
+    }
+
+    /// <summary>
+    /// The autonomous loop: once speech has settled and the cadence floor has elapsed, run a naming pass
+    /// over the current transcript — but only while there is still an anonymous <c>Guest-N</c> to identify.
+    /// </summary>
+    private async void OnNameTick(object? sender, EventArgs e)
+    {
+        if (_naming || _namer is null || _session?.IsRunning != true) return;
+        if (_store.All.Count == 0 || !HasAnonymousSpeaker()) return;
+
+        var now = DateTime.UtcNow;
+        if (_store.Revision == _lastNamedRevision) return;      // no new speech since the last attempt
+        if (now - _lastNameRunUtc < NameRunInterval) return;    // naming cadence floor
+
+        await RunNamingPassAsync();
+    }
+
+    /// <summary>
+    /// Runs one naming pass: infers real names from the conversation and applies them to still-anonymous
+    /// labels via <see cref="OnSpeakerRenameRequested"/> (so live splits merge into a single name). Manual
+    /// and already-resolved names are left untouched; a failure leaves the labels as they were.
+    /// </summary>
+    private async Task RunNamingPassAsync()
+    {
+        if (_namer is null) return;
+
+        _naming = true;
+        _nameCts?.Cancel();
+        var cts = _nameCts = new CancellationTokenSource();
+        int revision = _store.Revision;
+        _lastNameRunUtc = DateTime.UtcNow;
+
+        try
+        {
+            var names = await _namer.InferNamesAsync(BuildNamingSegments(), cts.Token);
+            if (cts.IsCancellationRequested || _session?.IsRunning != true) return;
+
+            _lastNamedRevision = revision;
+
+            // Apply only to still-anonymous labels; manual/earlier names win and never flip.
+            foreach (var (label, name) in names)
+                if (IsAnonymousLabel(label) && !string.IsNullOrWhiteSpace(name))
+                    OnSpeakerRenameRequested(label, name);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded or capture stopped; ignore.
+        }
+        catch
+        {
+            // Optional enhancement — leave labels as-is if a live naming pass fails.
+        }
+        finally
+        {
+            _naming = false;
+        }
+    }
+
+    /// <summary>Builds the transcript fed to a naming pass: the earliest lines (intros) plus the recent tail.</summary>
+    /// <returns>Lightweight segments carrying each line's current label and text.</returns>
+    private IReadOnlyList<TranscriptSegment> BuildNamingSegments()
+    {
+        var all = _store.All;
+        IEnumerable<ConversationStore.Entry> chosen = all.Count <= NameHeadLines + NameTailLines
+            ? all
+            : all.Take(NameHeadLines).Concat(all.Skip(all.Count - NameTailLines));
+
+        return chosen
+            .Select(e => new TranscriptSegment(e.Text, IsFinal: true, TimeSpan.Zero, TimeSpan.Zero, e.Speaker))
+            .ToList();
+    }
+
+    /// <summary>Whether any speaker is still an anonymous label the Oracle could try to name.</summary>
+    private bool HasAnonymousSpeaker() => _store.Speakers.Any(IsAnonymousLabel);
+
+    /// <summary>Whether a label is still anonymous (<c>Guest-N</c> or the default speaker), i.e. un-named.</summary>
+    /// <param name="label">The speaker label to test.</param>
+    /// <returns><see langword="true"/> when the label carries no real name.</returns>
+    private static bool IsAnonymousLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return true;
+        if (label.Equals(ConversationStore.DefaultSpeaker, StringComparison.OrdinalIgnoreCase)) return true;
+        const string prefix = "Guest-";
+        return label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && label.Length > prefix.Length
+            && int.TryParse(label.AsSpan(prefix.Length), out _);
     }
 
     /// <summary>Clears the conversation model, the speaker index, and any open speaker pages.</summary>

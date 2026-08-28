@@ -60,6 +60,58 @@
                     </Setter>
                 </Style>
 
+                <!-- Dark context menu for the speaker pills (right-click → Rename). -->
+                <Style x:Key="DarkContextMenuStyle" TargetType="ContextMenu">
+                    <Setter Property="Background" Value="#1E2024" />
+                    <Setter Property="Foreground" Value="#E6E8EA" />
+                    <Setter Property="BorderBrush" Value="#3B7DDD" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="Padding" Value="4" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ContextMenu">
+                                <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.5" Color="#000000" />
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True" />
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+
+                <!-- Dark, flat menu item to match the pill/popup styling. -->
+                <Style x:Key="DarkMenuItemStyle" TargetType="MenuItem">
+                    <Setter Property="Foreground" Value="#E6E8EA" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI" />
+                    <Setter Property="FontSize" Value="12" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="Padding" Value="10,5" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                    TextElement.Foreground="{TemplateBinding Foreground}">
+                                    <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="bg" Property="Background" Value="#3B7DDD" />
+                                        <Setter Property="Foreground" Value="#FFFFFF" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+
                 <!-- Segmented mode-switch button (CAPTIONS / SUMMARY). Selected look is set in code-behind. -->
                 <Style x:Key="ModeButtonStyle" TargetType="Button">
                     <Setter Property="Foreground" Value="#9AA0A6" />
@@ -476,13 +528,13 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Caption scope switch (LATEST line / full TRANSCRIPT); only shown in CAPTIONS mode. -->
+                    <!-- Caption scope switch (LATEST line / ALL captions); only shown in CAPTIONS mode. -->
                     <Border Grid.Column="2" x:Name="ScopeSwitch" CornerRadius="9" Padding="2"
                         Background="#1C1E20" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="LatestScopeButton" Content="LATEST"
                                 Style="{StaticResource ModeButtonStyle}" />
-                            <Button x:Name="TranscriptScopeButton" Content="TRANSCRIPT"
+                            <Button x:Name="TranscriptScopeButton" Content="ALL"
                                 Style="{StaticResource ModeButtonStyle}" />
                         </StackPanel>
                     </Border>
@@ -501,6 +553,29 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>
+
+                    <!-- Inline speaker-rename editor: anchored under the pill; Enter saves, Esc cancels. -->
+                    <Popup x:Name="SpeakerRenamePopup" AllowsTransparency="True" StaysOpen="False"
+                           Placement="Bottom" VerticalOffset="4" PopupAnimation="Fade">
+                        <Border Background="#1E2024" BorderBrush="#3B7DDD" BorderThickness="1"
+                                CornerRadius="8" Padding="10">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.5" Color="#000000" />
+                            </Border.Effect>
+                            <StackPanel>
+                                <TextBlock Text="Rename speaker" Foreground="#9AA0A6"
+                                           FontFamily="Segoe UI Variable, Segoe UI" FontSize="10"
+                                           FontWeight="SemiBold" Margin="2,0,0,5" />
+                                <TextBox x:Name="RenameBox" Width="200"
+                                         Background="#2A2D31" Foreground="#FFFFFF" CaretBrush="#FFFFFF"
+                                         BorderBrush="#3B7DDD" BorderThickness="1" Padding="6,4"
+                                         FontFamily="Segoe UI Variable, Segoe UI" FontSize="13" />
+                                <TextBlock Text="Enter to save · Esc to cancel" Foreground="#5F6368"
+                                           FontFamily="Segoe UI Variable, Segoe UI" FontSize="10"
+                                           Margin="2,5,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </StackPanel>
 
                 <!-- Content area: captions and summary overlap here and cross-fade on mode switch. -->

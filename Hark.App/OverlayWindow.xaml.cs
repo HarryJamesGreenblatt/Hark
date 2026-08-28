@@ -84,6 +84,9 @@ public partial class OverlayWindow : Window
     /// <summary>Whether at least one speaker pill has been added to the index.</summary>
     private bool _hasSpeakers;
 
+    /// <summary>The speaker pill currently being renamed via the inline editor, if any.</summary>
+    private System.Windows.Controls.Button? _renamePill;
+
     /// <summary>Whether capture is currently running, driving the HAL eye and hint text.</summary>
     private bool _running;
 
@@ -124,6 +127,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Raised when the user clicks a speaker pill in the CONVERSATION index.</summary>
     public event Action<string>? SpeakerSelected;
+
+    /// <summary>Raised when the user renames a speaker pill: (oldName, newName). The host applies it globally.</summary>
+    public event Action<string, string>? SpeakerRenameRequested;
 
     /// <summary>
     /// Raised when a summary is needed: on switching to SUMMARY mode, or when the recap style
@@ -172,6 +178,10 @@ public partial class OverlayWindow : Window
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
         CloseButton.Click += (_, _) => CloseRequested?.Invoke();
+
+        // Inline speaker-rename editor: Enter saves, Esc cancels; clicking away closes it (StaysOpen=False).
+        RenameBox.KeyDown += OnRenameBoxKeyDown;
+        SpeakerRenamePopup.Closed += (_, _) => _renamePill = null;
 
         // Mic toggle: flip state, update the glyph, and notify the host to start/stop mixing.
         MicButton.Click += (_, _) =>
@@ -462,13 +472,107 @@ public partial class OverlayWindow : Window
         {
             Content = speaker,
             Style = (Style)Bar.FindResource("SpeakerButtonStyle"),
-            ToolTip = $"Open {speaker}'s page",
+            ToolTip = "Open this speaker's page  ·  right-click to rename",
         };
-        button.Click += (_, _) => SpeakerSelected?.Invoke(speaker);
+
+        // Handlers read the pill's current Content so a rename needs only relabel it (no rewiring).
+        button.Click += (s, _) =>
+        {
+            if (s is System.Windows.Controls.Button b) SpeakerSelected?.Invoke((string)b.Content);
+        };
+
+        // Left-click already opens the page, so the menu carries only Rename.
+        var renameItem = new System.Windows.Controls.MenuItem
+        {
+            Header = "Rename…",
+            Style = (Style)Bar.FindResource("DarkMenuItemStyle"),
+        };
+        renameItem.Click += (_, _) => BeginRename(button);
+
+        var menu = new System.Windows.Controls.ContextMenu
+        {
+            Style = (Style)Bar.FindResource("DarkContextMenuStyle"),
+        };
+        menu.Items.Add(renameItem);
+        button.ContextMenu = menu;
 
         SpeakerBar.Items.Add(button);
         _hasSpeakers = true;
         UpdateSpeakerBarVisibility();
+    }
+
+    /// <summary>
+    /// Reflects a committed rename in the pill bar: relabels the pill, or removes it when the rename
+    /// merged the speaker into an existing pill. The host refreshes the caption history and pages.
+    /// </summary>
+    /// <param name="oldName">The pill's current label.</param>
+    /// <param name="newName">The label to show (or merge into).</param>
+    public void RenameSpeaker(string oldName, string newName)
+    {
+        var pill = FindPill(oldName);
+        if (pill is null) return;
+
+        bool merged = _speakers.Contains(newName)
+                   && !newName.Equals(oldName, StringComparison.OrdinalIgnoreCase);
+        _speakers.Remove(oldName);
+
+        if (merged)
+        {
+            SpeakerBar.Items.Remove(pill);
+        }
+        else
+        {
+            _speakers.Add(newName);
+            pill.Content = newName;
+        }
+
+        _hasSpeakers = _speakers.Count > 0;
+        UpdateSpeakerBarVisibility();
+    }
+
+    /// <summary>Finds the speaker pill whose label matches <paramref name="speaker"/> (case-insensitive).</summary>
+    /// <param name="speaker">The speaker label to look for.</param>
+    /// <returns>The matching pill, or <see langword="null"/> if none.</returns>
+    private System.Windows.Controls.Button? FindPill(string speaker)
+    {
+        foreach (var item in SpeakerBar.Items)
+            if (item is System.Windows.Controls.Button b &&
+                b.Content is string s && s.Equals(speaker, StringComparison.OrdinalIgnoreCase))
+                return b;
+        return null;
+    }
+
+    /// <summary>Opens the inline rename editor anchored under a speaker pill, pre-filled with its label.</summary>
+    /// <param name="pill">The pill being renamed.</param>
+    private void BeginRename(System.Windows.Controls.Button pill)
+    {
+        _renamePill = pill;
+        RenameBox.Text = (string)pill.Content;
+        SpeakerRenamePopup.PlacementTarget = pill;
+        SpeakerRenamePopup.IsOpen = true;
+        RenameBox.Focus();
+        RenameBox.SelectAll();
+    }
+
+    /// <summary>Commits the inline rename, asking the host to apply it globally.</summary>
+    private void CommitRename()
+    {
+        if (_renamePill is null) return;
+        var oldName = (string)_renamePill.Content;
+        var proposed = RenameBox.Text?.Trim() ?? string.Empty;
+        SpeakerRenamePopup.IsOpen = false;
+
+        if (proposed.Length > 0 && !proposed.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+            SpeakerRenameRequested?.Invoke(oldName, proposed);
+    }
+
+    /// <summary>Handles Enter (save) / Esc (cancel) while typing a new speaker name.</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The key event arguments.</param>
+    private void OnRenameBoxKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { CommitRename(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { SpeakerRenamePopup.IsOpen = false; e.Handled = true; }
     }
 
     /// <summary>Removes all speaker pills (used when a new session starts).</summary>

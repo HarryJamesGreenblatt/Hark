@@ -22,7 +22,7 @@ public partial class SpeakerWindow : Window
     private readonly ConversationStore _store;
 
     /// <summary>The speaker this page is bound to.</summary>
-    private readonly string _speaker;
+    private string _speaker;
 
     #endregion
 
@@ -63,6 +63,16 @@ public partial class SpeakerWindow : Window
     #endregion
 
     #region Methods
+
+    /// <summary>Rebinds this page to a renamed speaker: updates the title/label and re-renders.</summary>
+    /// <param name="newName">The speaker's new label.</param>
+    public void Rebind(string newName)
+    {
+        _speaker = newName;
+        Title = $"HARK — {newName}";
+        SpeakerLabel.Text = newName;
+        Render();
+    }
 
     /// <summary>Re-renders the page whenever the conversation store changes.</summary>
     private void OnStoreChanged() => Dispatcher.BeginInvoke(Render);
