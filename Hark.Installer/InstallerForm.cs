@@ -44,6 +44,11 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
+        // Layout is authored in 96-dpi units; scale it to the actual monitor (paired with the
+        // PerMonitorV2 awareness in the csproj) so the dialog isn't cramped on high-DPI displays.
+        AutoScaleDimensions = new SizeF(96f, 96f);
+        AutoScaleMode = AutoScaleMode.Dpi;
+
         Text = "HARK Setup";
         ClientSize = new Size(580, 558);
         StartPosition = FormStartPosition.CenterScreen;

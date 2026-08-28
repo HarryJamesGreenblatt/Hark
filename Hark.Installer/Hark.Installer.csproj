@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Declare real per-monitor DPI awareness so the fixed-layout dialog scales to the monitor
+         instead of rendering compressed/unreadable on high-DPI machines. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>Hark-Setup</AssemblyName>
     <Product>HARK Setup</Product>
     <AssemblyTitle>HARK Setup</AssemblyTitle>
