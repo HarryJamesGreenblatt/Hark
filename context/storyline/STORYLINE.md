@@ -130,12 +130,34 @@ _Last updated: 2026-08-28 (end of Episode 22; HARK **1.0.0** released — plus t
 | 20 | 2026-08-27 | [Putting Names to Voices: Manual Rename, Live Oracle Naming & the Alias-Map Fix](./EP20-speaker-naming-manual-rename-and-live-oracle.md) | Turned anonymous `Guest-N` into **real identities** two convergent ways: a **right-click Rename** on the pills (dark popup; global apply + in-order **merge**) and an autonomous **Oracle naming pass** (`SpeakerNamingRefiner`, strict-schema, never-invent) that infers names **live** from introductions/address/self-ID on a `DispatcherTimer` cadence **mirroring the Vision beat loop** — both flowing through one `ConversationStore.Rename`. Key fix: a rename is a **persistent acoustic-label → name alias** applied at `CommitFinal` (not a one-shot rewrite), so the streaming engine's repeating `Guest-N` stops re-spawning after a rename. Named labels stay **stable** (manual override wins); the "Jane vs Dean" miss was pinned as **upstream ASR**, not inference. Commit `daa5a77`. |
 | 21 | 2026-08-28 | [The Eye Comes Alive: Banded Audio, an Organic Pupil & a Drifting Highlight](./EP21-vision-sound-reactive-eye-pupil-highlight.md) | Made the Vision eye **sound-reactive across dimensions**: split the capture RMS into **bass/treble** bands (a one-pole low-pass, no FFT) via a new `AudioFeatures` event, then drove the image **"pupil"** dilation from a slow **bass capacitor + under-damped spring** (organic, inertial swell — **WavBall's peak-fed autonomous-goal** idea applied to a UI param, *not* a peak-locked map) and the glass **highlight** from a treble-widened **Lissajous drift**. Also: eye **300→360** with a **thinner silver ring**, and dropped the off-topic abstract `Theme` caption. Tuned across **three live self-tests** (dilation too fast → capacitor+spring; highlight jerky → slow amp follower; pupil too small → higher gains + full-iris rail) into "the animations are looking good." Commit `19f8825`. |
 | 22 | 2026-08-28 | [HARK 1.0.0: The Milestone, and the Interim-Visual Dead-End](./EP22-release-1.0.0-and-interim-visual-dead-end.md) | Cut **HARK 1.0.0** (first non-`0.1.x` release; `Release` run success → single `Hark-Setup.zip`, changelog v0.1.4→v1.0.0) after biasing the Oracle **concept tier toward literal, on-topic scenes** (`CONTRAST` only on real irony, anti-repetition softened to "don't change subject just to differ", temp 0.9→0.7) to kill the "chair reading a book" absurdity (`8297cd6`). Key **dead-end**: running the scrying sheen on **every** conjure regressed (autonomous conjuring is near-continuous → sheen always on, masked the pupil swell, "never renders") and was **reverted before commit** — so `main` kept only `03092db`'s first-open buffer. The **interim-visual objective (convey meaning during every render) stays OPEN**; also corrected a self-inflicted false "missing portable zip" discrepancy (WavBall≠HARK). Commits `03092db..8297cd6`, tag `v1.0.0`. |
+| 23 | 2026-08-28 | [The Second Machine: Auth, the Installer, One Endpoint & gpt-image-2's Catch](./EP23-second-machine-auth-installer-endpoint-gpt-image-2.md) | Took 1.0.0 to a **second machine** and ran a gauntlet. `AzureCliCredential` needs **elevation** there (`WinError 5`; worked only running HARK **as admin**) — RBAC was fine (sub-scope Speech/OpenAI User inherit); the real fix is **key-auth** (deferred, HIGH). **Stale pre-Vision user-secrets** hid the installer's config fields → made the panel **always show, prefilled** from env→config.json→user-secrets (`6b6a84b`); the **scrunched** high-DPI window got **PerMonitorV2 + AutoScaleMode.Dpi** (`c524ed9`) but is **still cramped** → WPF rewrite proposed. Vision's "deployment not found" was a **two-foundry split** (chat + image must share one `HARK_AOAI_ENDPOINT`) → **consolidated** to one foundry rather than decouple (decoupling written, then reverted). Released **v1.0.1**. Live finding: **gpt-image-2 is slower + more abstract** than gpt-image-1 — the pipeline is tuned for image-1. |
 
 ---
 
 ## 🔓 Open threads (carried forward)
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
+
+- **Distribution / running on a non-dev machine (Episode 23) — the live front:** 1.0.0/1.0.1 install
+  and run, but three things bite on a second machine. (1) **Auth — key-auth needed (HIGH).**
+  `AzureCliCredential` shells out to `az`; on a machine where `az` needs elevation it throws `WinError 5`
+  and HARK only works **run as admin** (unacceptable). RBAC is a non-issue (sub-scope **Speech User** +
+  **OpenAI User** inherit). Fix: add a **key** field (Speech subscription key / `AzureKeyCredential`),
+  use it when present, fall back to CLI — removes `az`, elevation, and MSIX-sandbox fragility. (2)
+  **Installer DPI — WPF rewrite.** `PerMonitorV2 + AutoScaleMode.Dpi` (`c524ed9`) did **not** fix the
+  **scrunched** high-DPI window; rebuild the setup UI in **WPF** (DPI-independent). The config panel now
+  **always shows, prefilled** from env→config.json→user-secrets (`6b6a84b`), overriding stale
+  user-secrets. Also relabel the "Azure OpenAI endpoint" field (it enables **Vision**, not just SUMMARY).
+  (3) **One endpoint for chat + image.** HARK uses a single `HARK_AOAI_ENDPOINT` for concept **and**
+  render, so both models must live on **one foundry** (different RGs fine, different **resources** not).
+  Chose to **consolidate** (deploy gpt-image-2 onto the gpt-4.1 foundry) over decoupling — a
+  `HARK_AOAI_IMAGE_ENDPOINT` was written then reverted; revisit only if a real two-resource need returns.
+- **Vision image model — gpt-image-2 is not a free upgrade (Episode 23):** live, **gpt-image-2 renders
+  slower and more abstract** than gpt-image-1; HARK's prompt composer + hard-coded `"medium"` quality are
+  tuned for gpt-image-1. Before adopting: make quality configurable (`HARK_AOAI_IMAGE_QUALITY`), revisit
+  the prompt/literal steer for image-2, weigh the latency, and **A/B** gpt-image-2 vs `gpt-image-1.5` vs
+  **FLUX.2** (BFL) vs **MAI-Image-2.5** (all on Foundry; the latter two target concept-visualization /
+  prompt-adherence). Only then bump the Bicep default off `gpt-image-1`.
 
 - **Installable release — shipped (Episode 13); 1.0.0 cut (Episode 22):** a HAL-eye icon set, a signed MSIX
   (`Package.appxmanifest` with a launch-at-startup task), and a single self-contained
