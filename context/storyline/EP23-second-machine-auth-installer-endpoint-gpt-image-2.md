@@ -48,10 +48,13 @@ implementation works better for gpt-1 than for 2."*
 - **Always-show prefilled installer config, not hide-when-detected** — **because** hiding on detection
   masks **stale** config; the app reads env/config.json/user-secrets in precedence, so prefill mirrors
   that and a saved `config.json` transparently overrides stale user-secrets.
-- **Keep `AzureCliCredential` for now; key-auth is the real fix (deferred, HIGH priority)** — **because**
-  requiring the user to run HARK **as admin** (the only thing that worked) is unacceptable for a shipped
-  app; a key path (`AzureKeyCredential` / Speech subscription key, falling back to CLI) removes `az`,
-  elevation, and MSIX-sandbox fragility entirely.
+- **Auth: accept run-as-admin; don't build key-auth or interactive Entra** — **because** the target
+  sub enforces a **disable-local-auth** policy (resource keys are dead sub-wide), and the only key-free
+  alternative — an **interactive Entra sign-in** (WAM broker + a **multi-tenant** app registration +
+  per-tenant consent, tenant/client id via config) — is far too heavy for a personal tool used on
+  machines the owner controls. `AzureCliCredential` works when HARK runs **elevated** (that machine's
+  `az` needs admin), so **running as admin is the accepted answer**; revisit interactive Entra only if
+  HARK is ever distributed to machines/people the owner doesn't control.
 - **gpt-image-2 is NOT a free upgrade with the current implementation** — **because** live testing showed
   it renders **noticeably slower** and **more abstract** than gpt-image-1; HARK's prompt composer +
   `"medium"` quality tier are effectively tuned for gpt-image-1. Treat model choice as a **tuning + A/B**
@@ -64,8 +67,9 @@ implementation works better for gpt-1 than for 2."*
   5`, access is denied through the Azure CLI."* → **Root cause:** `AzureCliCredential` shells out to
   `az`, and on that machine **`az` itself needs elevation** (`az account show` was denied unelevated).
   RBAC was **fine** — sub-scope **Cognitive Services Speech User** + **OpenAI User** inherit to the
-  resources. → **Fix (workaround):** running **HARK as admin** let it launch `az` → captions went green.
-  The durable fix is **key-auth** (deferred).
+  resources. → **Fix (accepted):** run **HARK as admin** → it can launch `az` → captions go green. Keys
+  can't help (the sub enforces **disable-local-auth**) and interactive Entra was judged overkill, so
+  run-as-admin is the decision.
 - **Symptom:** installer didn't prompt for Azure creds; *"it's reading a stale user secret"* /  *"we
   never passed the [OpenAI] endpoint."* → **Root cause:** stale pre-Vision **user-secrets** satisfied
   `IsAlreadyConfigured()` so the panel was **hidden**; and the AOAI endpoint field **existed** but was
@@ -96,10 +100,11 @@ implementation works better for gpt-1 than for 2."*
   which inherit to the resources — confirming the failure was **auth delivery**, not authorization.
 
 ## 🔓 Open threads
-- **Key-auth (HIGH):** add a key field (Speech subscription key / `AzureKeyCredential`) to the config
-  surface, using it when present and falling back to `AzureCliCredential`. Kills the run-as-admin
-  requirement, the `az`-elevation dependency, and any MSIX-sandbox fragility. This is the real fix for
-  the whole auth saga.
+- **Auth — RESOLVED as "run as admin" (no code):** the target sub's **disable-local-auth** policy kills
+  resource keys sub-wide, and the key-free alternative (interactive Entra: WAM broker + **multi-tenant**
+  app reg + per-tenant consent, tenant/client id via config) is overkill for a personal tool. Decision:
+  **run HARK elevated** (that machine's `az` needs admin). Only revisit interactive Entra if HARK is
+  distributed to machines the owner doesn't control.
 - **Installer → WPF:** PerMonitorV2 + `AutoScaleMode.Dpi` did **not** resolve the scrunched window;
   rebuild the setup UI in WPF (DPI-independent by default).
 - **gpt-image-2 tuning / model bake-off:** the pipeline is tuned for gpt-image-1. If adopting gpt-image-2,
