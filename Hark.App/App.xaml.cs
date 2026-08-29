@@ -61,6 +61,12 @@ public partial class App : Application
     /// <summary>Azure OpenAI image deployment used for the Vision render tier, sourced from config (optional).</summary>
     private string? _aoaiImageDeployment;
 
+    /// <summary>Optional image quality tier (e.g. gpt-image "low"/"medium"/"high"); unset = send none (FLUX etc.).</summary>
+    private string? _aoaiImageQuality;
+
+    /// <summary>Optional non-OpenAI image provider route (e.g. "flux-2-pro") served via the Black Forest Labs API; unset = gpt-image OpenAI route.</summary>
+    private string? _aoaiImageProvider;
+
     /// <summary>
     /// Whether to capture and mix the local microphone into the transcribed stream. Defaults off
     /// (loopback-only, like native Live Captions); set <c>HARK_MIX_MIC=1</c> to enable, or toggle the
@@ -181,6 +187,8 @@ public partial class App : Application
         _aoaiEndpoint = config["HARK_AOAI_ENDPOINT"];
         _aoaiDeployment = config["HARK_AOAI_DEPLOYMENT"];
         _aoaiImageDeployment = config["HARK_AOAI_IMAGE_DEPLOYMENT"];
+        _aoaiImageQuality = config["HARK_AOAI_IMAGE_QUALITY"];
+        _aoaiImageProvider = config["HARK_AOAI_IMAGE_PROVIDER"];
 
         // Mic mixing is off by default; only an explicit 1/true opts in.
         var mixMic = config["HARK_MIX_MIC"];
@@ -924,7 +932,7 @@ public partial class App : Application
         var designer = new ConceptDesigner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
         var renderer = string.IsNullOrWhiteSpace(_aoaiImageDeployment)
             ? null
-            : new VisionRenderer(_aoaiEndpoint!, _aoaiImageDeployment!, new AzureCliCredential());
+            : new VisionRenderer(_aoaiEndpoint!, _aoaiImageDeployment!, new AzureCliCredential(), _aoaiImageQuality, _aoaiImageProvider);
         return new VisionService(designer, renderer);
     }
 

@@ -71,4 +71,24 @@ Console.WriteLine($"  aesthetic   {c.Aesthetic}");
 Console.WriteLine($"  palette     {c.Palette}");
 Console.WriteLine("\n=== composed image prompt ===\n");
 Console.WriteLine(result.Prompt);
+
+// Optional: exercise the render tier (gpt-image OpenAI route or FLUX provider route) with the exact
+// config Hark.App uses, to prove the renderer end-to-end.
+string? imageDeployment = config["HARK_AOAI_IMAGE_DEPLOYMENT"];
+if (!string.IsNullOrWhiteSpace(imageDeployment))
+{
+    Console.WriteLine("\n=== rendering image ===");
+    try
+    {
+        var renderer = new VisionRenderer(endpoint, imageDeployment, new AzureCliCredential(),
+            config["HARK_AOAI_IMAGE_QUALITY"], config["HARK_AOAI_IMAGE_PROVIDER"]);
+        var png = await renderer.RenderAsync(result.Prompt);
+        Console.WriteLine($"  OK — {png.Length} bytes (deployment={imageDeployment}, provider={config["HARK_AOAI_IMAGE_PROVIDER"] ?? "<openai>"})");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  Render FAILED: {ex}");
+        return 4;
+    }
+}
 return 0;
