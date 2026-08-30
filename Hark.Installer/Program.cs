@@ -14,8 +14,8 @@ static class Program
             return;
         }
 
-        ApplicationConfiguration.Initialize();
-        Application.Run(new InstallerForm());
+        var app = new System.Windows.Application();
+        app.Run(new InstallerWindow());
     }
 
     /// <summary>Imports the embedded signing cert into LocalMachine\TrustedPeople (and Root). Runs elevated.</summary>

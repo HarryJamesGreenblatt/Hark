@@ -1,0 +1,77 @@
+<Window x:Class="Hark.Installer.InstallerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HARK Setup"
+        Width="600" Height="580"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#0C0C0C"
+        FontFamily="Segoe UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <Window.Resources>
+        <Style x:Key="HalButton" TargetType="Button">
+            <Setter Property="Background" Value="#960A04"/>
+            <Setter Property="Foreground" Value="#F0F4F8"/>
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="#FF281A" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#B4120A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A0A08"/>
+                                <Setter Property="Foreground" Value="#8A8F96"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top bar: logo + wordmark -->
+        <Border Grid.Row="0" Background="#141416" Padding="24,16">
+            <StackPanel Orientation="Horizontal">
+                <Image x:Name="LogoImage" Width="56" Height="56" VerticalAlignment="Center" Stretch="Uniform"/>
+                <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="HARK" Foreground="#F0F4F8" FontSize="30" FontWeight="Bold"/>
+                    <TextBlock Text="Hear. Adapt. Recognize. Keep.  -  Setup"
+                               Foreground="#C8CDD4" FontSize="13" Margin="2,2,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Body: status, progress, and the (initially hidden) config panel -->
+        <StackPanel Grid.Row="1" Margin="24,20,24,0">
+            <TextBlock x:Name="StatusText" Foreground="#C8CDD4" FontSize="13" TextWrapping="Wrap" MinHeight="40"
+                       Text="Click Install to set up HARK. It lives in the system tray; press Ctrl+Win+H to caption."/>
+            <ProgressBar x:Name="Progress" Height="18" Margin="0,10,0,0" Minimum="0" Maximum="100" Value="0"
+                         Background="#1E1E22" Foreground="#960A04" BorderBrush="#FF281A" BorderThickness="1"/>
+            <StackPanel x:Name="ConfigPanel" Margin="0,18,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+
+        <!-- Bottom bar: the single action button -->
+        <Border Grid.Row="2" Background="#141416" BorderBrush="#FF281A" BorderThickness="0,2,0,0" Height="70">
+            <Button x:Name="ActionBtn" Style="{StaticResource HalButton}" Content="Install"
+                    Width="200" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Click="OnActionClick"/>
+        </Border>
+    </Grid>
+</Window>

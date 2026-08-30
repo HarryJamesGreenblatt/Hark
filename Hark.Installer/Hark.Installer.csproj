@@ -5,10 +5,12 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UseWindowsForms>true</UseWindowsForms>
-    <!-- Declare real per-monitor DPI awareness so the fixed-layout dialog scales to the monitor
-         instead of rendering compressed/unreadable on high-DPI machines. -->
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <UseWPF>true</UseWPF>
+    <!-- Custom entry point (Program.Main) so the elevated cert-only relaunch is handled before any
+         window shows; no App.xaml, so this stays the single Main. -->
+    <StartupObject>Hark.Installer.Program</StartupObject>
+    <!-- Per-monitor v2 DPI awareness so the WPF dialog scales correctly on high-DPI laptops. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Hark-Setup</AssemblyName>
     <Product>HARK Setup</Product>
     <AssemblyTitle>HARK Setup</AssemblyTitle>
