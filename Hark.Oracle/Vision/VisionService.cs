@@ -73,9 +73,21 @@ public sealed class VisionService
         onConcept?.Invoke(concept);   // surface the fast concept before the slow render
 
         var prompt = VisionPromptComposer.Compose(concept);
-        byte[]? image = _renderer is null
-            ? null
-            : await _renderer.RenderAsync(prompt, cancellationToken).ConfigureAwait(false);
+        byte[]? image = null;
+        if (_renderer is not null)
+        {
+            try
+            {
+                image = await _renderer.RenderAsync(prompt, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested && IsContentSafetyRefusal(ex))
+            {
+                // A scattered, topic-dependent RAI block — retry ONCE with a gentler, abstract prompt
+                // rather than losing the beat. A second refusal propagates.
+                prompt = VisionPromptComposer.ComposeSoftened(concept);
+                image = await _renderer.RenderAsync(prompt, cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         return new VisionResult(concept, prompt, image);
     }
@@ -92,6 +104,19 @@ public sealed class VisionService
         => _infographic is null
             ? Task.FromResult<InfographicConcept?>(null)
             : _infographic.DesignAsync(transcriptWindow, cancellationToken);
+
+    /// <summary>
+    /// Recognises a content-safety refusal from the renderer — either an explicit
+    /// <c>content_safety_violation</c> / block-list message, or FLUX's soft-moderated 200 with no image.
+    /// </summary>
+    private static bool IsContentSafetyRefusal(Exception ex)
+    {
+        var m = ex.Message;
+        return m.Contains("content_safety", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("BlockList", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("moderat", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("returned 200 with no image", StringComparison.OrdinalIgnoreCase);
+    }
 
     #endregion
 }

@@ -1014,6 +1014,8 @@ public partial class OverlayWindow : Window
 
     /// <summary>Recent successful pupil images, cycled to fill the gap when fresh renders stall (e.g. an RAI block).</summary>
     private readonly List<BitmapImage> _pupilBuffer = new();
+    /// <summary>Perceptual average-hashes paralleling <see cref="_pupilBuffer"/>, to skip near-identical scenes.</summary>
+    private readonly List<ulong> _pupilHashes = new();
     /// <summary>Wall-clock of the last FRESH pupil render, to detect a stall.</summary>
     private DateTime _lastPupilUpdateUtc = DateTime.MinValue;
     /// <summary>Index into <see cref="_pupilBuffer"/> for the filler cycle.</summary>
@@ -1022,6 +1024,8 @@ public partial class OverlayWindow : Window
     private DispatcherTimer? _fillerTimer;
 
     private const int PupilBufferMax = 5;
+    /// <summary>Average-hash Hamming distance at or below which two scenes count as near-identical (skip buffering).</summary>
+    private const int PupilDupDistance = 6;
     private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(5);
     /// <summary>Only cycle once the pupil has been static past the normal render cadence (i.e. renders are stalling).</summary>
     private static readonly TimeSpan FillerIdle = TimeSpan.FromSeconds(16);
@@ -1046,9 +1050,7 @@ public partial class OverlayWindow : Window
         }
         bmp.Freeze();
 
-        _pupilBuffer.Add(bmp);
-        if (_pupilBuffer.Count > PupilBufferMax) _pupilBuffer.RemoveAt(0);
-        _fillerIndex = _pupilBuffer.Count - 1;
+        AddToPupilBuffer(bmp);
         _lastPupilUpdateUtc = DateTime.UtcNow;
 
         TransitionPupil(bmp);
@@ -1107,6 +1109,7 @@ public partial class OverlayWindow : Window
     {
         _fillerTimer?.Stop();
         _pupilBuffer.Clear();
+        _pupilHashes.Clear();
         _fillerIndex = 0;
         _lastPupilUpdateUtc = DateTime.MinValue;
     }
@@ -1123,6 +1126,49 @@ public partial class OverlayWindow : Window
         _fillerIndex = (_fillerIndex + 1) % _pupilBuffer.Count;
         TransitionPupil(_pupilBuffer[_fillerIndex]);   // don't reset the stall clock — keep cycling until a real render lands
     }
+
+    /// <summary>
+    /// Adds a fresh scene to the filler buffer, skipping images near-identical (by average-hash) to one
+    /// already buffered — so the filler cycle never re-shows the same picture, which would only reinforce
+    /// the oatmeal. The fresh render is still displayed regardless.
+    /// </summary>
+    private void AddToPupilBuffer(BitmapImage bmp)
+    {
+        var hash = AverageHash(bmp);
+        bool duplicate = _pupilHashes.Any(h => HammingDistance(h, hash) <= PupilDupDistance);
+        if (!duplicate)
+        {
+            _pupilBuffer.Add(bmp);
+            _pupilHashes.Add(hash);
+            if (_pupilBuffer.Count > PupilBufferMax)
+            {
+                _pupilBuffer.RemoveAt(0);
+                _pupilHashes.RemoveAt(0);
+            }
+        }
+        _fillerIndex = _pupilBuffer.Count - 1;
+    }
+
+    /// <summary>Computes a 64-bit average-hash (8×8 grayscale) perceptual fingerprint of an image.</summary>
+    private static ulong AverageHash(BitmapSource source)
+    {
+        var scaled = new TransformedBitmap(source, new ScaleTransform(8.0 / source.PixelWidth, 8.0 / source.PixelHeight));
+        var gray = new FormatConvertedBitmap(scaled, PixelFormats.Gray8, null, 0);
+        var pixels = new byte[64];
+        gray.CopyPixels(pixels, 8, 0);
+
+        int sum = 0;
+        for (int i = 0; i < 64; i++) sum += pixels[i];
+        int average = sum / 64;
+
+        ulong hash = 0;
+        for (int i = 0; i < 64; i++)
+            if (pixels[i] >= average) hash |= 1UL << i;
+        return hash;
+    }
+
+    /// <summary>The number of differing bits between two hashes (Hamming distance).</summary>
+    private static int HammingDistance(ulong a, ulong b) => System.Numerics.BitOperations.PopCount(a ^ b);
 
     /// <summary>Clears the orb image so the eye shows its plain red cornea (idle / conjuring state).</summary>
     private void HideVisionOrb()

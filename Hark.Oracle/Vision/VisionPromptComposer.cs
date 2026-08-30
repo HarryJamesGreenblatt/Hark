@@ -51,4 +51,32 @@ public static class VisionPromptComposer
 
     /// <summary>Trims a trailing period/space so composed clauses join cleanly.</summary>
     private static string Clean(string s) => s.TrimEnd('.', ' ');
+
+    /// <summary>
+    /// A gentler, more abstract variant of the prompt — dropping literal motifs for pure mood, palette,
+    /// and aesthetic — used to retry ONCE when a render is refused by content safety, so a scattered,
+    /// topic-dependent RAI block doesn't lose the beat entirely.
+    /// </summary>
+    /// <param name="concept">The art director's contribution.</param>
+    /// <returns>A softened image-generation prompt.</returns>
+    public static string ComposeSoftened(VisualConcept concept)
+    {
+        ArgumentNullException.ThrowIfNull(concept);
+
+        var sb = new StringBuilder();
+        sb.Append("An abstract, atmospheric image evoking ")
+          .Append(Clean(string.IsNullOrWhiteSpace(concept.Theme) ? concept.Concept : concept.Theme))
+          .Append('.');
+
+        if (!string.IsNullOrWhiteSpace(concept.Aesthetic))
+            sb.Append(" Rendered as ").Append(Clean(concept.Aesthetic)).Append('.');
+        if (!string.IsNullOrWhiteSpace(concept.Palette))
+            sb.Append(" Palette: ").Append(Clean(concept.Palette)).Append('.');
+
+        sb.Append(" A calm, symbolic, non-literal mood piece — soft light and natural forms, nothing ")
+          .Append("graphic, violent, or otherwise sensitive. One coherent scene, not a collage of symbols, ")
+          .Append("a diagram, text, or an interface.");
+
+        return sb.ToString();
+    }
 }

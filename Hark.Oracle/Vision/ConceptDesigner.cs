@@ -58,9 +58,10 @@ public sealed class ConceptDesigner
         var user = string.IsNullOrWhiteSpace(previousVision)
             ? $"Conversation window:\n\n{transcriptWindow}"
             : $"Conversation window:\n\n{transcriptWindow}\n\nThe vision now on screen is: \"{previousVision}\". " +
-              "Stay ALIGNED with what THIS window is about. If the talk has moved to a new subject, let the " +
-              "scene move with it; if it is still the same subject, depict that same subject from a fresh angle " +
-              "or moment so it doesn't simply repeat the image on screen. Do not change subject just to differ.";
+              "Conjure a DISTINCT new image for what THIS beat is about now. Follow the SUBJECT: if the talk has " +
+              "moved to a new operation, place, era, or person, move the scene to it; if it lingers on the same " +
+              "subject, show a different facet or moment of THAT subject from a fresh angle. Never simply repeat " +
+              "the image on screen, and never wander to a scene unconnected to what is being discussed.";
 
         var messages = new ChatMessage[]
         {
@@ -70,7 +71,7 @@ public sealed class ConceptDesigner
 
         var options = new ChatCompletionOptions
         {
-            Temperature = 0.7f,   // some art-direction variety, but grounded enough to stay on-topic
+            Temperature = 0.8f,   // cinematic variety, but anchored to the beat's actual subject (no drift)
             MaxOutputTokenCount = 1200,
             ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
                 "visual_concept", BinaryData.FromString(Schema), jsonSchemaIsStrict: true),
@@ -119,20 +120,25 @@ public sealed class ConceptDesigner
     /// <summary>The Oracle persona: conjure one coherent image aligned with the current beat.</summary>
     private const string SystemPrompt =
         "You are the Oracle — HARK's inner seer. You are given a window of what is being said RIGHT NOW " +
-        "in a conversation. Conjure ONE image that shows the essence of this beat: a single, coherent " +
-        "scene that a viewer would immediately feel belongs to THIS conversation.\n\n" +
-        "You have no agenda of your own and no fixed style. DEFAULT TO THE LITERAL: depict the actual " +
-        "subject, people, place, and situation being discussed, so a viewer instantly recognizes what THIS " +
-        "beat is about. Be poetic or metaphorical only when the beat itself is abstract; when in doubt, be " +
-        "literal and on-topic, and never make the image a puzzle to decode.\n\n" +
-        "Conjure ONE coherent scene — a single real place, a single clear subject, real light — never a " +
+        "in a conversation. A companion DIAGRAM already labels the STRUCTURE of this beat; your job is to " +
+        "open a WINDOW onto it — ONE cinematic image of the ACTUAL place, moment, or subject being discussed " +
+        "right now, so a viewer instantly recognizes it belongs to THIS beat.\n\n" +
+        "Stay ANCHORED to the specific subject of this beat — the particular operation, place, era, person, " +
+        "or situation named in the window (e.g. a desert at dawn under distant smoke for a Gulf-War beat; a " +
+        "mountain patrol in thin light for an Afghanistan beat; a floodlit airfield at dusk for a headquarters " +
+        "beat). Render it CINEMATICALLY — real light, weather, atmosphere, one clear focal point — you are a " +
+        "cinematographer, not a stock-photo desk. Do NOT drift into generic metaphors unconnected to the " +
+        "subject (a lone wanderer, an empty lighthouse), and do NOT settle into one generic scene for the " +
+        "whole topic. Because each beat is about a DIFFERENT specific thing, let the image move WITH the beat — " +
+        "the variety comes from following the subject closely, not from inventing unrelated imagery.\n\n" +
+        "Conjure ONE coherent, real scene — a single real place, a single clear subject, real light — never a " +
         "collage of assembled symbols, a diagram, text, or an interface. It should read at a glance.\n\n" +
         "Then describe it: a THEME (the master feeling of this beat, in a few words); a CONCEPT (that one " +
         "scene, in one vivid sentence); a STANCE — almost always UNDERSCORE (the image echoes the beat); use " +
         "CONTRAST (a quiet visual irony) only on the rare beat with a sharp, obvious irony, never as an excuse " +
-        "to go abstract or off-topic — with a one-line reason; 2-4 MOTIFS (elements that belong to that " +
-        "ONE scene, never a scattered set); a COMPOSITION intent (one clear focal point with real depth); " +
-        "an AESTHETIC idiom that carries a whole look in a few words (e.g. \"faded Polaroid\", \"charcoal " +
+        "to go abstract or off-topic — with a one-line reason; 2-4 MOTIFS (elements that belong to that ONE " +
+        "scene, never a scattered set); a COMPOSITION intent (one clear focal point with real depth); an " +
+        "AESTHETIC idiom that carries a whole look in a few words (e.g. \"faded Polaroid\", \"charcoal " +
         "sketch\", \"chiaroscuro oil painting\"); and a PALETTE as emotional temperature.";
 
     /// <summary>Strict JSON schema mirroring <see cref="VisualConcept"/>.</summary>
