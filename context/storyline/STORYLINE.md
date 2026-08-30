@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-30 (end of Episode 25; Vision is now a **dual-layer crystal ball** — a **native WPF radial mind-map** drawn behind the eye + a **FLUX** cinematographic scene in the pupil, conjured **in parallel** every beat. The key turn: **a diagram is structured data, drawn natively, not generated** by an image model — see [`EP25`](./EP25-vision-native-diagrams-and-dual-layer-crystal-ball.md))._
+_Last updated: 2026-08-30 (end of Episode 26; the dual-layer crystal ball was **hardened** — gpt-image→FLUX artifact debt reconciled incl. the Foundry/FLUX **Bicep**, a **toggle-persistence** race fixed, **FLUX confirmed enterprise-safe** on Foundry (sold-by-Azure/DPA), and the pupil made **resilient to content-safety refusals** (recent-image **ring buffer** + a masked-in-pupil **blink/crossfade**). Headline open thread: the photographic **scene** layer is still the EP18/EP22 oatmeal — free it to be **evocative** now the diagram carries the literal payload. See [`EP26`](./EP26-crystal-ball-hardening-and-scene-oatmeal.md))._
 
 - **Status:** CLI MVP + desktop overlay working **and now at 1.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -135,6 +135,7 @@ _Last updated: 2026-08-30 (end of Episode 25; Vision is now a **dual-layer cryst
 | 23 | 2026-08-28 | [The Second Machine: Auth, the Installer, One Endpoint & gpt-image-2's Catch](./EP23-second-machine-auth-installer-endpoint-gpt-image-2.md) | Took 1.0.0 to a **second machine** and ran a gauntlet. `AzureCliCredential` needs **elevation** there (`WinError 5`; works running HARK **as admin**) — RBAC was fine (sub-scope Speech/OpenAI User inherit). Keys are **policy-blocked** on that sub (disable-local-auth) and interactive Entra (WAM + multi-tenant app reg + consent) was judged **overkill** for a personal tool, so **run-as-admin is the accepted call**. **Stale pre-Vision user-secrets** hid the installer's config fields → made the panel **always show, prefilled** from env→config.json→user-secrets (`6b6a84b`); the **scrunched** high-DPI window got **PerMonitorV2 + AutoScaleMode.Dpi** (`c524ed9`) but is **still cramped** → WPF rewrite proposed. Vision's "deployment not found" was a **two-foundry split** (chat + image must share one `HARK_AOAI_ENDPOINT`) → **consolidated** to one foundry rather than decouple (decoupling written, then reverted). Released **v1.0.1**. Live finding: **gpt-image-2 is slower + more abstract** than gpt-image-1 — the pipeline is tuned for image-1. |
 | 24 | 2026-08-29 | [FLUX on Foundry, the Latency Red Herring & the Ambient Reframe](./EP24-foundry-flux-provider-latency-and-ambient-reframe.md) | Migrated Vision onto a **Foundry (`AIServices`)** account (`fdry-hark-fb360`: gpt-4.1-mini + gpt-image-2 + **flux2-pro** on one endpoint) and built a **dual-path `VisionRenderer`** — OpenAI `ImageClient` **or** a raw-HTTP **Black Forest Labs** provider route (`/providers/blackforestlabs/v1/...`, `cognitiveservices` scope) — behind new `HARK_AOAI_IMAGE_QUALITY`/`HARK_AOAI_IMAGE_PROVIDER` knobs (`cf89cf5`). Chased the "multi-minute lag" and pinned it to **capacity = 1** (~1 RPM → 429 backoff), **not** the model (Spike benchmarks: **FLUX ~10 s vs gpt-image-2 ~35 s**; FLUX quota 15 vs 2) → bumped `flux2-pro` to **capacity 10**; the silent "no image" was `JsonContent.Create` sending **chunked** → BFL `400 no_content_length_header`, fixed with `StringContent`. Hit an **impasse** on the repeating "laptop-loop" + speech lag and **reframed the whole feature**: a research-grounded **design brief** (`crystal-ball-design-brief.md`) recasts Vision as an **AI-directed ambient display** (Valve **AI Director**; **client-side prediction**/cross-dissolve; **calm tech**; **"procedural oatmeal"** = the loop's real name). Commits `0879711..cf89cf5`; brief + Spike `raw` mode uncommitted. |
 | 25 | 2026-08-30 | [The Diagram Is Data: Native Rendering & the Dual-Layer Crystal Ball](./EP25-vision-native-diagrams-and-dual-layer-crystal-ball.md) | A long research-driven refactor of Vision. Ruled out dead-ends with evidence (a spike proved **multimodal anti-repetition** varies only *treatment*, not subject — the EP18 ceiling; L4D "director" and embedding-memory rejected). Browser research (no web-search MCP → drive a real browser) surfaced **who owns "continuous non-repetitive visuals for a live stream"** (VJs go abstract-reactive; Deforum interpolates) and the **FLUX.2 API misalignment** (we called FLUX with gpt-image grammar; BFL guide: **no negatives, colour words not hex, front-loaded, typography+JSON**). A spike proved FLUX **can** make a clean infographic when asked right — but the live diagram had a **wandering hub / structural sameness / opaque square** that survived tuning. **The pivot:** *a diagram is structured data — draw it **natively in WPF**, don't generate it.* Built a native **radial mind-map** (exact eye-hub, crisp text, instant, crossfade) from a structured `InfographicConcept`, and made Vision **dual-layer** — native diagram backdrop **+** FLUX scene in the pupil, conjured **in parallel** every beat, `HARK_AOAI_IMAGE_MODE` removed. Commit `99ccbf9`. |
+| 26 | 2026-08-30 | [Hardening the Crystal Ball: Reconciled Infra, Toggle Persistence, a Resilient Blinking Pupil & the Scene-Oatmeal Reckoning](./EP26-crystal-ball-hardening-and-scene-oatmeal.md) | Hardened the dual-layer feature end to end. **Reconciled the gpt-image→FLUX artifact debt** incl. the **Foundry/FLUX Bicep** (`AIServices` account + `flux2-pro` `Black Forest Labs` + Cognitive Services User RBAC; gpt-image opt-in, FLUX default). Fixed a **toggle-persistence race** (the async offline refine resurrected the previous session → cancel-on-toggle + supersession guard + silenced balloon). Confirmed **FLUX is enterprise-safe** on Foundry — **"Models sold by Azure"** (Microsoft-hosted, DPA, not shared with BFL, not used to train), *unlike* Partner models (Claude→Anthropic processes). Made the pupil **resilient to RAI refusals** (`content_safety_violation`/BingBlockList, **not** a rate-limit): a recent-image **ring buffer** + filler cycle, and a **blink/crossfade** transition restructured to blink **inside** a circular-clipped pupil. Hardened the **FLUX parser** (200-with-empty-`data` → no more IndexOutOfRange, descriptive body). **Headline open thread:** the photographic **scene** still hits the EP18/EP22 oatmeal on single-topic content — free it to be **evocative** now the diagram carries the literal payload. Commits `258a839..fa2199c`. |
 
 ---
 
@@ -169,7 +170,16 @@ These are unresolved at the end of the latest episode — natural starting point
   the model → `flux2-pro` bumped to **capacity 10**. **Still open:** the new config knobs aren't in the
   README / installer / `config.json` guidance; a wider A/B (`gpt-image-1.5`, **MAI-Image-2.5**) is
   optional now that FLUX satisfies. Full record: [`EP24`](./EP24-foundry-flux-provider-latency-and-ambient-reframe.md).
-- **gpt-image → FLUX artifact reconciliation (Episode 25):** the render tier is now **provider-agnostic**
+- **Vision scene-oatmeal — the headline next task (Episode 26):** the native **diagram** layer tracks
+  conversational beats well, but the photographic **pupil scene** still hits the **EP18/EP22 single-topic
+  ceiling** (a military topic → "commander at a map" every beat; the ring-buffer cycling reinforces it). The
+  beats/windowing are **intact** — the cause is the `ConceptDesigner` **literal-bias**, now redundant and
+  counterproductive: since the diagram carries the literal/didactic payload, **free the scene to be
+  evocative/metaphorical** (undo EP22's literal steer *for the scene tier only*) → varied ambient mood. Likely
+  also: **dedupe the ring buffer** (don't cycle near-identical scenes) and a **softened-prompt retry** on
+  `content_safety_violation` to recover blocked beats. Also **remove the temporary diagnostic toast**
+  (`ShowSceneAsync`). Full record: [`EP26`](./EP26-crystal-ball-hardening-and-scene-oatmeal.md).
+- **gpt-image → FLUX artifact reconciliation (Episode 25) — largely done (Episode 26):** the render tier is now **provider-agnostic**
   with **FLUX.2-pro the effective default**, and the didactic diagram is **rendered natively** (no image
   model) — but ~100 references across the repo still frame Vision around **gpt-image-1/2**, which now
   misleads. **Reconciled in EP25:** this `STORYLINE.md` snapshot + threads, `README.md`, and the
@@ -177,11 +187,13 @@ These are unresolved at the end of the latest episode — natural starting point
   (`cristobal-vision.md`, `crystal-ball-design-brief.md`) predate the native-diagram pivot; and
   **`InfographicPromptComposer` is now dead code in the app** (Spike-only, superseded by native rendering)
   — keep as a FLUX-prompt reference or prune.
-- **Infra as Code is out of date (Episodes 24–25) — the largest artifact debt:** `infra/main.bicep` +
-  `modules/openai.bicep` + `main.parameters.json` still describe `kind: 'OpenAI'`, `gpt-image-1`, capacity
-  **1** — not the **Foundry (`AIServices`)** account, `gpt-4.1-mini` + `gpt-image-2` + `flux2-pro`,
-  capacity **10**, or the FLUX **Cognitive Services User** RBAC. The stack is **not reproducible from
-  code** until reconciled.
+- **Infra as Code — reconciled (Episode 26):** `infra/main.bicep` + `modules/openai.bicep` +
+  `main.parameters.json` now describe the **Foundry (`AIServices`)** account with `gpt-4.1-mini` +
+  `gpt-image-2` + **`flux2-pro`** (`Black Forest Labs`, cap 10) and the FLUX **Cognitive Services User**
+  RBAC; **FLUX is the default**, **gpt-image is opt-in** (`deployOpenAiImage=false`), verified against the
+  live account and `az bicep build`. Remaining caveat: a manual `deployOpenAi=true` run auto-names
+  `fdry-hark-<suffix>` — pass `openAiAccountName=fdry-hark-fb360` to reconcile the existing account rather
+  than create a parallel one.
 
 - **Installable release — shipped (Episode 13); 1.0.0 cut (Episode 22):** a HAL-eye icon set, a signed MSIX
   (`Package.appxmanifest` with a launch-at-startup task), and a single self-contained
