@@ -923,11 +923,24 @@ public partial class App : Application
 
             async Task ShowSceneAsync()
             {
-                var result = await sceneTask;
-                if (cts.IsCancellationRequested || result?.Image is null) return;
-                _cachedVisionImage = result.Image;
-                _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
-                _overlay.SetVisionImage(result.Image);
+                try
+                {
+                    var result = await sceneTask;
+                    if (cts.IsCancellationRequested || result?.Image is null) return;
+                    _cachedVisionImage = result.Image;
+                    _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
+                    _overlay.SetVisionImage(result.Image);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Superseded/closed — expected.
+                }
+                catch (Exception ex)
+                {
+                    // TEMPORARY DIAGNOSTIC: surface WHY the pupil scene stopped (e.g. a FLUX 429) on
+                    // autonomous beats, which are otherwise swallowed. Remove once the cause is confirmed.
+                    _tray?.ShowBalloonTip(6000, "HARK — Vision render failed", ex.Message, ToolTipIcon.Warning);
+                }
             }
 
             await Task.WhenAll(ShowDiagramAsync(), ShowSceneAsync());

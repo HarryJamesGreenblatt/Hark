@@ -713,19 +713,39 @@
                             <ScaleTransform x:Name="HalScaleBig" ScaleX="1" ScaleY="1" />
                         </Ellipse.RenderTransform>
                     </Ellipse>
-                    <!-- The vision itself, peered into the orb: circular by the ellipse fill, over the
-                         red cornea and under the glass gloss. It is the "pupil" — it dilates with the
-                         low-end of the captured audio, ranging out to nearly the full iris. Hidden
+                    <!-- The pupil: a circular-clipped container carrying the audio-reactive dilation. It
+                         holds the FLUX image and, inside the SAME circular mask, the blink eyelid — so the
+                         lid sweeps WITHIN the pupil (masked by it), not superimposed above it. Hidden
                          until a render arrives. -->
-                    <Ellipse x:Name="VisionOrb" Margin="78" Visibility="Collapsed" Opacity="0"
-                             RenderTransformOrigin="0.5,0.5">
-                        <Ellipse.Fill>
-                            <ImageBrush x:Name="VisionOrbBrush" Stretch="UniformToFill" />
-                        </Ellipse.Fill>
-                        <Ellipse.RenderTransform>
+                    <Grid x:Name="VisionOrb" Margin="78" Visibility="Collapsed" Opacity="0"
+                          RenderTransformOrigin="0.5,0.5">
+                        <Grid.Clip>
+                            <EllipseGeometry Center="102,102" RadiusX="102" RadiusY="102" />
+                        </Grid.Clip>
+                        <Grid.RenderTransform>
                             <ScaleTransform x:Name="VisionOrbScale" ScaleX="0.8" ScaleY="0.8" />
-                        </Ellipse.RenderTransform>
-                    </Ellipse>
+                        </Grid.RenderTransform>
+                        <Rectangle x:Name="VisionOrbImage">
+                            <Rectangle.Fill>
+                                <ImageBrush x:Name="VisionOrbBrush" Stretch="UniformToFill" />
+                            </Rectangle.Fill>
+                        </Rectangle>
+                        <!-- Blink eyelid: the cornea-red lid sweeps DOWN over the image then UP, clipped by
+                             the pupil circle so it blinks INSIDE the pupil. Driven from code. -->
+                        <Rectangle x:Name="VisionLid" Visibility="Collapsed" IsHitTestVisible="False"
+                                   RenderTransformOrigin="0.5,0">
+                            <Rectangle.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#FFD2C2" Offset="0" />
+                                    <GradientStop Color="#FF1E10" Offset="0.42" />
+                                    <GradientStop Color="#4A0000" Offset="1" />
+                                </RadialGradientBrush>
+                            </Rectangle.Fill>
+                            <Rectangle.RenderTransform>
+                                <ScaleTransform x:Name="VisionLidScale" ScaleX="1" ScaleY="0" />
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
+                    </Grid>
                     <!-- Scrying sheen: a soft glint that sweeps over the cornea only while an image is
                          being conjured, so the ~1 min render dead-time reads as the eye actively working
                          rather than a frozen red disc. Driven from code (Start/StopScrying). -->

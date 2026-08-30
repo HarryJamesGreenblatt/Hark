@@ -830,6 +830,7 @@ public partial class OverlayWindow : Window
         if (_visionOpen) return;
         _visionOpen = true;
         _visionAnimating = true;
+        StartPupilFiller();
 
         Height = SystemParameters.WorkArea.Height;
 
@@ -933,6 +934,7 @@ public partial class OverlayWindow : Window
             _visionOpen = false;
             _visionAnimating = false;
             ClearVisionDiagram();      // drop any diagram so a reopen starts clean
+            StopPupilFiller();         // drop the pupil buffer / filler cycle too
             AdjustHeightToContent();   // shrink the window back down to the bar
         };
         VisionCanvas.BeginAnimation(OpacityProperty, fade);
@@ -1010,9 +1012,24 @@ public partial class OverlayWindow : Window
         VisionStatusText.Visibility = Visibility.Visible;
     }
 
+    /// <summary>Recent successful pupil images, cycled to fill the gap when fresh renders stall (e.g. an RAI block).</summary>
+    private readonly List<BitmapImage> _pupilBuffer = new();
+    /// <summary>Wall-clock of the last FRESH pupil render, to detect a stall.</summary>
+    private DateTime _lastPupilUpdateUtc = DateTime.MinValue;
+    /// <summary>Index into <see cref="_pupilBuffer"/> for the filler cycle.</summary>
+    private int _fillerIndex;
+    /// <summary>Drives the pupil filler cycle while the Vision page is open.</summary>
+    private DispatcherTimer? _fillerTimer;
+
+    private const int PupilBufferMax = 5;
+    private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(5);
+    /// <summary>Only cycle once the pupil has been static past the normal render cadence (i.e. renders are stalling).</summary>
+    private static readonly TimeSpan FillerIdle = TimeSpan.FromSeconds(16);
+
     /// <summary>
     /// Renders a Vision image (PNG bytes) inside the HAL eye's orb — the cornea becomes the crystal
-    /// ball — with a conversation-relative caption (the concept's theme) beneath it.
+    /// ball — with a conversation-relative caption (the concept's theme) beneath it. The image is also
+    /// buffered so the filler cycle can hold the pupil alive if subsequent renders stall.
     /// </summary>
     /// <param name="png">The rendered image as PNG bytes.</param>
     /// <param name="caption">Optional caption about the conversation (the concept theme).</param>
@@ -1029,13 +1046,82 @@ public partial class OverlayWindow : Window
         }
         bmp.Freeze();
 
-        VisionOrbBrush.ImageSource = bmp;
-        VisionOrb.Visibility = Visibility.Visible;
-        VisionOrb.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(500))));
+        _pupilBuffer.Add(bmp);
+        if (_pupilBuffer.Count > PupilBufferMax) _pupilBuffer.RemoveAt(0);
+        _fillerIndex = _pupilBuffer.Count - 1;
+        _lastPupilUpdateUtc = DateTime.UtcNow;
+
+        TransitionPupil(bmp);
 
         VisionStatusText.Text = caption ?? string.Empty;
         VisionStatusText.Visibility = string.IsNullOrWhiteSpace(caption) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Transitions the pupil to a new image with a combined blink + cross-fade, used for BOTH fresh
+    /// renders and filler scene-changes so the effect is consistent: the cornea-red eyelid sweeps DOWN
+    /// inside the pupil, the image swaps while hidden, then the lid sweeps UP as the new image fades in.
+    /// </summary>
+    private void TransitionPupil(BitmapImage bmp)
+    {
+        VisionOrb.BeginAnimation(OpacityProperty, null);
+        VisionOrb.Opacity = 1;
+        VisionOrb.Visibility = Visibility.Visible;
+        VisionLid.Visibility = Visibility.Visible;
+
+        var down = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(130)))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn },
+        };
+        down.Completed += (_, _) =>
+        {
+            VisionOrbBrush.ImageSource = bmp;   // swap while hidden behind the closed lid
+
+            // Cross-fade the new image in as the lid opens (the "crossfade while blinking").
+            VisionOrbImage.BeginAnimation(OpacityProperty, null);
+            VisionOrbImage.Opacity = 0;
+            VisionOrbImage.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300))));
+
+            var up = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(170)))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            };
+            up.Completed += (_, _) => VisionLid.Visibility = Visibility.Collapsed;
+            VisionLidScale.BeginAnimation(ScaleTransform.ScaleYProperty, up);
+        };
+        VisionLidScale.BeginAnimation(ScaleTransform.ScaleYProperty, down);
+    }
+
+    /// <summary>Starts the pupil filler cycle (idempotent) — cycles recent scenes when renders stall.</summary>
+    private void StartPupilFiller()
+    {
+        _fillerTimer ??= new DispatcherTimer { Interval = FillerTick };
+        _fillerTimer.Tick -= OnPupilFillerTick;
+        _fillerTimer.Tick += OnPupilFillerTick;
+        _fillerTimer.Start();
+    }
+
+    /// <summary>Stops the filler cycle and drops the buffer (on page close).</summary>
+    private void StopPupilFiller()
+    {
+        _fillerTimer?.Stop();
+        _pupilBuffer.Clear();
+        _fillerIndex = 0;
+        _lastPupilUpdateUtc = DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// When fresh renders have stalled past the normal cadence (e.g. a run of RAI-blocked beats), cycle
+    /// the pupil through recent scenes so it stays alive instead of freezing on one image. A genuinely
+    /// fresh render resets the stall clock and pauses the cycle.
+    /// </summary>
+    private void OnPupilFillerTick(object? sender, EventArgs e)
+    {
+        if (!_visionOpen || _pupilBuffer.Count < 2) return;
+        if (DateTime.UtcNow - _lastPupilUpdateUtc < FillerIdle) return;   // fresh enough — hold the current scene
+        _fillerIndex = (_fillerIndex + 1) % _pupilBuffer.Count;
+        TransitionPupil(_pupilBuffer[_fillerIndex]);   // don't reset the stall clock — keep cycling until a real render lands
     }
 
     /// <summary>Clears the orb image so the eye shows its plain red cornea (idle / conjuring state).</summary>
