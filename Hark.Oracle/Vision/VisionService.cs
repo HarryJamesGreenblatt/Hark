@@ -18,6 +18,7 @@ public sealed class VisionService
 
     private readonly ConceptDesigner _designer;
     private readonly VisionRenderer? _renderer;
+    private readonly InfographicDesigner? _infographic;
 
     #endregion
 
@@ -26,10 +27,12 @@ public sealed class VisionService
     /// <summary>Creates a vision service from its two tiers.</summary>
     /// <param name="designer">The concept tier (required).</param>
     /// <param name="renderer">The render tier, or <see langword="null"/> for concept-only (the judgment spike).</param>
-    public VisionService(ConceptDesigner designer, VisionRenderer? renderer = null)
+    /// <param name="infographic">Optional diagram tier; when set, conjuring routes through the infographic class instead of the scene class.</param>
+    public VisionService(ConceptDesigner designer, VisionRenderer? renderer = null, InfographicDesigner? infographic = null)
     {
         _designer = designer ?? throw new ArgumentNullException(nameof(designer));
         _renderer = renderer;
+        _infographic = infographic;
     }
 
     #endregion
@@ -74,6 +77,19 @@ public sealed class VisionService
 
         return new VisionResult(concept, prompt, image);
     }
+
+    /// <summary>
+    /// Conjures the diagram class: designs an <see cref="InfographicConcept"/> (structured title + nodes)
+    /// from the window, for the host to render NATIVELY. No image model is called — a diagram is structured
+    /// data, drawn deterministically by the UI, not generated as a picture. Returns null when the diagram
+    /// tier isn't configured or the window yields nothing.
+    /// </summary>
+    /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
+    /// <param name="cancellationToken">Cancels the in-flight request.</param>
+    public Task<InfographicConcept?> ConjureDiagramAsync(string transcriptWindow, CancellationToken cancellationToken = default)
+        => _infographic is null
+            ? Task.FromResult<InfographicConcept?>(null)
+            : _infographic.DesignAsync(transcriptWindow, cancellationToken);
 
     #endregion
 }

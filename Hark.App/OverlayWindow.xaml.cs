@@ -1,13 +1,21 @@
 using System.Text;
 using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Hark.Core.Summarization;
+using Hark.Oracle.Vision;
+using Size = System.Windows.Size;
+using FontFamily = System.Windows.Media.FontFamily;
 
 namespace Hark.App;
 
@@ -924,6 +932,7 @@ public partial class OverlayWindow : Window
             VisionCanvas.Visibility = Visibility.Collapsed;
             _visionOpen = false;
             _visionAnimating = false;
+            ClearVisionDiagram();      // drop any diagram so a reopen starts clean
             AdjustHeightToContent();   // shrink the window back down to the bar
         };
         VisionCanvas.BeginAnimation(OpacityProperty, fade);
@@ -1035,6 +1044,150 @@ public partial class OverlayWindow : Window
         VisionOrb.BeginAnimation(OpacityProperty, null);
         VisionOrb.Opacity = 0;
         VisionOrb.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Maps a node colour word to a saturated fill colour (also used for its glow and connector).</summary>
+    private static Color DiagramColor(string? word) => (word?.Trim().ToLowerInvariant()) switch
+    {
+        "green" => Color.FromRgb(0x22, 0xC5, 0x5E),
+        "orange" => Color.FromRgb(0xF5, 0x9E, 0x0B),
+        "purple" => Color.FromRgb(0xA8, 0x55, 0xF7),
+        "red" => Color.FromRgb(0xEF, 0x44, 0x44),
+        _ => Color.FromRgb(0x3B, 0x82, 0xF6),   // blue default
+    };
+
+    /// <summary>
+    /// Draws the diagram class NATIVELY: a radial mind-map behind the eye — a title plus up to five
+    /// colour-coded node pills spaced on a ring around the centred eye (the hub), each joined by a thin
+    /// connector. Deterministic layout means the eye is always exactly concentric (unlike a generated
+    /// image's wandering hole). Crossfades from the previous diagram.
+    /// </summary>
+    /// <param name="concept">The structured infographic concept (title + nodes).</param>
+    public void SetVisionDiagram(InfographicConcept concept)
+    {
+        if (concept is null) return;
+
+        var visual = BuildDiagram(concept);
+        visual.Opacity = 0;
+        DiagramLayer.Children.Add(visual);
+
+        var dur = new Duration(TimeSpan.FromMilliseconds(600));
+        visual.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur));
+
+        foreach (UIElement child in DiagramLayer.Children)
+        {
+            if (ReferenceEquals(child, visual)) continue;
+            var captured = child;
+            var fade = new DoubleAnimation(child.Opacity, 0, dur);
+            fade.Completed += (_, _) => DiagramLayer.Children.Remove(captured);
+            child.BeginAnimation(OpacityProperty, fade);
+        }
+    }
+
+    /// <summary>Clears the diagram layer (on close / reset) so a stale diagram doesn't linger.</summary>
+    private void ClearVisionDiagram()
+    {
+        foreach (UIElement child in DiagramLayer.Children)
+            child.BeginAnimation(OpacityProperty, null);
+        DiagramLayer.Children.Clear();
+    }
+
+    /// <summary>Builds one radial mind-map visual filling the diagram layer; nodes are laid out on load / resize.</summary>
+    private static FrameworkElement BuildDiagram(InfographicConcept concept)
+    {
+        var nodes = (concept.Nodes ?? [])
+            .Where(n => !string.IsNullOrWhiteSpace(n.Label))
+            .Take(5)
+            .ToList();
+
+        var root = new Grid();
+        var canvas = new Canvas();
+        root.Children.Add(canvas);
+
+        var title = new TextBlock
+        {
+            Text = concept.Title ?? string.Empty,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF0, 0xF3, 0xF6)),
+            FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+            FontSize = 30,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
+            Margin = new Thickness(0, 48, 0, 0),
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 720,
+        };
+        root.Children.Add(title);
+
+        void Relayout(object? s, EventArgs e) => LayoutDiagramNodes(canvas, nodes);
+        root.Loaded += Relayout;
+        root.SizeChanged += (_, _) => LayoutDiagramNodes(canvas, nodes);
+        return root;
+    }
+
+    /// <summary>Positions the connector ring, lines, and node pills around the centre of the canvas.</summary>
+    private static void LayoutDiagramNodes(Canvas canvas, IReadOnlyList<InfographicNode> nodes)
+    {
+        canvas.Children.Clear();
+        double w = canvas.ActualWidth, h = canvas.ActualHeight;
+        if (w < 20 || h < 20 || nodes.Count == 0) return;
+
+        double cx = w / 2, cy = h / 2;
+        double radius = Math.Max(170, Math.Min(cx, cy) - 130);   // ring sits outside the ~180px eye
+
+        var ring = new Ellipse
+        {
+            Width = radius * 2,
+            Height = radius * 2,
+            Stroke = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF)),
+            StrokeThickness = 1,
+        };
+        Canvas.SetLeft(ring, cx - radius);
+        Canvas.SetTop(ring, cy - radius);
+        canvas.Children.Add(ring);
+
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            double angle = -Math.PI / 2 + i * 2 * Math.PI / nodes.Count;   // start at top, clockwise
+            double nx = cx + radius * Math.Cos(angle);
+            double ny = cy + radius * Math.Sin(angle);
+            var fill = DiagramColor(nodes[i].Color);
+
+            var line = new Line
+            {
+                X1 = cx,
+                Y1 = cy,
+                X2 = nx,
+                Y2 = ny,
+                Stroke = new SolidColorBrush(Color.FromArgb(0x66, fill.R, fill.G, fill.B)),
+                StrokeThickness = 1.5,
+            };
+            canvas.Children.Add(line);   // the inner part is occluded by the eye on top
+
+            var pill = new Border
+            {
+                CornerRadius = new CornerRadius(22),
+                Background = new SolidColorBrush(fill),
+                Padding = new Thickness(18, 10, 18, 10),
+                Effect = new DropShadowEffect { Color = fill, BlurRadius = 26, ShadowDepth = 0, Opacity = 0.55 },
+                Child = new TextBlock
+                {
+                    Text = nodes[i].Label,
+                    Foreground = new SolidColorBrush(Colors.White),
+                    FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+                    FontSize = 17,
+                    FontWeight = FontWeights.SemiBold,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 150,
+                },
+            };
+            pill.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(pill, nx - pill.DesiredSize.Width / 2);
+            Canvas.SetTop(pill, ny - pill.DesiredSize.Height / 2);
+            canvas.Children.Add(pill);
+        }
     }
 
     /// <summary>

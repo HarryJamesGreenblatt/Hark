@@ -670,9 +670,13 @@
                 <SolidColorBrush Color="#05070A" Opacity="0.97" />
             </Grid.Background>
 
+            <!-- Diagram class (infographic mode): a native radial mind-map drawn behind the eye, which sits
+                 in its centre as the hub. Nodes are positioned deterministically so the hub is always exact. -->
+            <Grid x:Name="DiagramLayer" IsHitTestVisible="False" />
+
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <!-- Large HAL-eye replica, driven by the same audio envelope as the bar's eye. The
-                     rendered vision appears INSIDE the orb (the cornea becomes the crystal ball). -->
+                <!-- Large HAL-eye replica, centred on the canvas as the diagram's hub; driven by the same
+                     audio envelope as the bar's eye. In scene mode the rendered vision appears in the orb. -->
                 <Grid x:Name="HalEyeBig" Width="360" Height="360"
                       Cursor="Hand" Background="Transparent"
                       RenderTransformOrigin="0.5,0.5" HorizontalAlignment="Center"
@@ -754,8 +758,12 @@
                         </Ellipse.RenderTransform>
                     </Ellipse>
                 </Grid>
+            </StackPanel>
 
-                <TextBlock Text="VISION" HorizontalAlignment="Center" Margin="0,30,0,0"
+            <!-- Caption anchored at the bottom so it never offsets the eye from the canvas centre
+                 (the eye must stay concentric with the diagram's empty hub). -->
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,56">
+                <TextBlock Text="VISION" HorizontalAlignment="Center"
                            FontFamily="Segoe UI Variable, Segoe UI" FontSize="13"
                            FontWeight="SemiBold" Foreground="#9AA0A6" />
 
@@ -763,7 +771,7 @@
                      talk, not the picture. -->
                 <TextBlock x:Name="VisionStatusText"
                            Text="A live visual concept of the conversation will render here."
-                           HorizontalAlignment="Center" Margin="0,10,0,0"
+                           HorizontalAlignment="Center" Margin="0,8,0,0"
                            FontFamily="Segoe UI Variable, Segoe UI" FontSize="15"
                            Foreground="#C8CCD0" TextWrapping="Wrap" MaxWidth="560"
                            TextAlignment="Center" />

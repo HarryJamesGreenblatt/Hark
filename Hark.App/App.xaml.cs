@@ -99,6 +99,9 @@ public partial class App : Application
     /// <summary>The last rendered Vision image, reused when the eye is re-opened on unchanged captions.</summary>
     private byte[]? _cachedVisionImage;
 
+    /// <summary>The last diagram concept, redrawn (natively) when the eye is re-opened on unchanged captions.</summary>
+    private InfographicConcept? _cachedDiagram;
+
     /// <summary>The store revision the cached Vision image was conjured from.</summary>
     private int _cachedVisionRevision = -1;
 
@@ -791,10 +794,11 @@ public partial class App : Application
 
         _vision ??= BuildVisionService();
 
-        // Re-opening the eye with unchanged captions: reuse the last image, no service call.
-        if (_store.Revision == _cachedVisionRevision && _cachedVisionImage is not null)
+        // Re-opening the eye with unchanged captions: redraw the cached diagram + pupil scene, no service calls.
+        if (_store.Revision == _cachedVisionRevision && (_cachedDiagram is not null || _cachedVisionImage is not null))
         {
-            _overlay.SetVisionImage(_cachedVisionImage);
+            if (_cachedDiagram is not null) _overlay.SetVisionDiagram(_cachedDiagram);
+            if (_cachedVisionImage is not null) _overlay.SetVisionImage(_cachedVisionImage);
             return;
         }
 
@@ -870,11 +874,8 @@ public partial class App : Application
         int revision = _store.Revision;
         _lastVisionRenderUtc = DateTime.UtcNow;   // start-to-start cadence: overlaps the render latency
 
-        if (manual) _overlay.SetVisionStatus("Conjuring a vision…");
-        _overlay.BeginVisionConjuring();   // scrying sheen + buffer, unless a previous image is held
-
         // Window the transcript to the CURRENT beat: a small recent slice, and for an auto beat never
-        // reaching before the last rendered image — so the new image reflects the NEW material.
+        // reaching before the last rendered vision — so the new one reflects the NEW material.
         int count = _store.All.Count;
         int floor = manual ? 0 : Math.Clamp(_lastVisionRenderIndex, 0, count);
         int start = Math.Max(floor, count - VisionWindowLines);
@@ -884,30 +885,35 @@ public partial class App : Application
 
         try
         {
-            // Surface the fast concept immediately as an on-topic buffer, ahead of the slow render, so
-            // the caption keeps pace with the conversation while the image catches up.
-            void OnConcept(VisualConcept concept) => Dispatcher.BeginInvoke(() =>
-            {
-                if (!cts.IsCancellationRequested) _overlay.SetVisionConjuringConcept(concept.Concept);
-            });
+            _cachedVisionRevision = revision;
+            _lastVisionRenderIndex = count;             // next beat is windowed from here forward
 
-            // Pass the last shown concept so the Oracle deliberately conjures a different scene.
-            var result = await _vision.ConjureAsync(window, _shownVisionConcept, OnConcept, cts.Token);
-            if (cts.IsCancellationRequested || result is null) return;
+            // Both classes conjure IN PARALLEL from the same window: the native diagram (fast — the
+            // backdrop, drawn instantly) and the generative scene (slower — the pupil image). Each
+            // lands independently, so the diagram appears first and the pupil fills when its render is done.
+            var diagramTask = _vision.ConjureDiagramAsync(window, cts.Token);
+            var sceneTask = _vision.ConjureAsync(window, _shownVisionConcept, null, cts.Token);
 
-            if (result.Image is not null)
+            _overlay.BeginVisionConjuring();   // scrying sheen on the eye while the pupil scene renders
+
+            async Task ShowDiagramAsync()
             {
+                var diagram = await diagramTask;
+                if (cts.IsCancellationRequested || diagram is null) return;
+                _cachedDiagram = diagram;
+                _overlay.SetVisionDiagram(diagram);
+            }
+
+            async Task ShowSceneAsync()
+            {
+                var result = await sceneTask;
+                if (cts.IsCancellationRequested || result?.Image is null) return;
                 _cachedVisionImage = result.Image;
-                _cachedVisionRevision = revision;
-                _lastVisionRenderIndex = count;             // next beat is windowed from here forward
-                _shownVisionConcept = result.Concept.Concept;   // remember what we just showed, to differ next
+                _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
                 _overlay.SetVisionImage(result.Image);
             }
-            else if (manual)
-            {
-                // Concept-only (no render tier configured): show the art director's judgment as text.
-                _overlay.SetVisionConcept(result.Concept.Concept);
-            }
+
+            await Task.WhenAll(ShowDiagramAsync(), ShowSceneAsync());
         }
         catch (OperationCanceledException)
         {
@@ -926,14 +932,16 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Builds the Vision service: the art-director concept tier, plus the render tier when an image deployment is configured.</summary>
+    /// <summary>Builds the Vision service: the concept + diagram tiers, plus the render tier when an image deployment is configured.</summary>
     private VisionService BuildVisionService()
     {
-        var designer = new ConceptDesigner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+        var cred = new AzureCliCredential();
+        var designer = new ConceptDesigner(_aoaiEndpoint!, _aoaiDeployment!, cred);
+        var infographic = new InfographicDesigner(_aoaiEndpoint!, _aoaiDeployment!, cred);
         var renderer = string.IsNullOrWhiteSpace(_aoaiImageDeployment)
             ? null
-            : new VisionRenderer(_aoaiEndpoint!, _aoaiImageDeployment!, new AzureCliCredential(), _aoaiImageQuality, _aoaiImageProvider);
-        return new VisionService(designer, renderer);
+            : new VisionRenderer(_aoaiEndpoint!, _aoaiImageDeployment!, cred, _aoaiImageQuality, _aoaiImageProvider);
+        return new VisionService(designer, renderer, infographic);
     }
 
     /// <summary>Releases the hotkey, session, and tray icon when the application shuts down.</summary>
