@@ -1023,7 +1023,7 @@ public partial class OverlayWindow : Window
     /// <summary>Drives the pupil filler cycle while the Vision page is open.</summary>
     private DispatcherTimer? _fillerTimer;
 
-    private const int PupilBufferMax = 5;
+    private const int PupilBufferMax = 16;
     /// <summary>Average-hash Hamming distance at or below which two scenes count as near-identical (skip buffering).</summary>
     private const int PupilDupDistance = 6;
     private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(5);

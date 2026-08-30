@@ -39,6 +39,13 @@ public sealed class VisionRenderer
     /// <summary>Black Forest Labs provider route segment (e.g. <c>flux-2-pro</c>); non-null selects the FLUX path.</summary>
     private readonly string? _providerRoute;
 
+    /// <summary>
+    /// FLUX render dimension. The scene fills only the eye's small pupil (~200 px), so a modest square is
+    /// ample — generating at 1024² and scaling to ~200 px only adds latency and cost. (gpt-image has no
+    /// sub-1024 size, so its path stays at 1024.)
+    /// </summary>
+    private const int FluxRenderSize = 512;
+
     /// <summary>The composed BFL provider URL, the model name, and the credential — used on the FLUX path.</summary>
     private readonly string? _providerUri;
     private readonly string? _deployment;
@@ -127,7 +134,7 @@ public sealed class VisionRenderer
 
         // Buffer the body as a string so a Content-Length header is set — the BFL provider endpoint
         // rejects the chunked (Transfer-Encoding) requests that JsonContent.Create would produce.
-        var payload = JsonSerializer.Serialize(new { model = _deployment, prompt, width = 1024, height = 1024 });
+        var payload = JsonSerializer.Serialize(new { model = _deployment, prompt, width = FluxRenderSize, height = FluxRenderSize });
         using var request = new HttpRequestMessage(HttpMethod.Post, _providerUri)
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
