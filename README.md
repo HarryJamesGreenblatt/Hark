@@ -123,9 +123,12 @@ dotnet user-secrets set "HARK_AOAI_ENDPOINT" "https://<your-aoai>.openai.azure.c
 dotnet user-secrets set "HARK_AOAI_DEPLOYMENT" "<your-chat-deployment-name>" --project Hark.App
 ```
 
-> The optional **`HARK_AOAI_IMAGE_DEPLOYMENT`** (e.g. a `gpt-image-1` deployment) enables the desktop
-> **Vision** render tier (the HAL-eye crystal ball). Same keyless auth; leave it unset to keep Vision
-> in placeholder mode.
+> The optional **`HARK_AOAI_IMAGE_DEPLOYMENT`** enables the desktop **Vision** render tier (the FLUX/
+> gpt-image scene inside the HAL-eye crystal ball). The render tier is **provider-agnostic** — set
+> **`HARK_AOAI_IMAGE_PROVIDER`** (e.g. `flux-2-pro`, the effective default) for the Black Forest Labs
+> route, or leave it unset for the OpenAI `gpt-image` route (with optional **`HARK_AOAI_IMAGE_QUALITY`**).
+> Same keyless auth; leave the deployment unset to keep the scene tier off. (The didactic mind-map
+> **diagram** behind the eye is rendered natively and needs no image deployment.)
 
 Auth is the same keyless `AzureCliCredential`; your `az login` identity needs the
 **Cognitive Services OpenAI User** role on the resource. If these secrets are absent, the SUMMARY

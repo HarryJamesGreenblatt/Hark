@@ -9,7 +9,8 @@ public sealed record InfographicNode(string Label, string Color);
 /// A radial infographic intent distilled from a window of live conversation — the diagram analogue of
 /// <see cref="VisualConcept"/> for explanatory / conceptual passages. A central <see cref="Title"/> with
 /// up to five labeled <see cref="Nodes"/> radiating around an <em>empty centre</em>, so the HAL eye sits
-/// at the hub. Composed into a FLUX-idiomatic prompt by <see cref="InfographicPromptComposer"/>.
+/// at the hub. In the app this is <b>rendered natively</b> by the overlay (deterministic layout, exact
+/// hub); the Spike can instead compose it into a FLUX prompt via <see cref="InfographicPromptComposer"/>.
 /// </summary>
 /// <param name="Title">The central topic of this beat, a few words.</param>
 /// <param name="Nodes">Up to five short labeled facets radiating around the centre.</param>

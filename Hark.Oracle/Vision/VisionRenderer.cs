@@ -9,13 +9,15 @@ using OpenAI.Images;
 namespace Hark.Oracle.Vision;
 
 /// <summary>
-/// The image backend for <c>Oracle.Vision</c> — a thin, keyless wrapper over an Azure OpenAI
-/// <c>gpt-image</c> deployment (the analog of sequitur's <c>ImageStudio</c>, native in .NET). Renders a
-/// composed prompt into PNG bytes.
+/// The image backend for <c>Oracle.Vision</c>'s <b>scene</b> class — a thin, keyless renderer that turns a
+/// composed prompt into PNG bytes. <b>Provider-agnostic:</b> it drives either the Azure OpenAI
+/// <c>ImageClient</c> (gpt-image) or a raw-HTTP <b>Black Forest Labs</b> route (FLUX), selected by the
+/// <c>provider</c> ctor arg.
 /// <para>
-/// <b>Infra note:</b> requires a <c>gpt-image-1</c> image deployment on the Azure OpenAI resource
-/// (separate from the chat deployment the recap / concept calls use). The concept tier works without it;
-/// this tier is exercised only once the image model is provisioned.
+/// <b>Infra note:</b> requires an image deployment on the account (e.g. <c>flux2-pro</c> — the effective
+/// default — or a <c>gpt-image</c> deployment), separate from the chat deployment. The concept tier works
+/// without it; this tier renders only once an image model is provisioned. The didactic <b>diagram</b>
+/// class is rendered <b>natively</b> by the overlay and does NOT use this renderer.
 /// </para>
 /// </summary>
 public sealed class VisionRenderer

@@ -7,10 +7,12 @@ namespace Hark.Oracle.Vision;
 public sealed record VisionResult(VisualConcept Concept, string Prompt, byte[]? Image);
 
 /// <summary>
-/// <c>Oracle.Vision</c> — the augmentation service: turns a window of live conversation into an evocative
-/// image. Orchestrates the two tiers — <see cref="ConceptDesigner"/> (the art-director judgment) then
-/// <see cref="VisionPromptComposer"/> + <see cref="VisionRenderer"/> (the realisation). The renderer is
-/// optional so the concept judgment can be exercised before a gpt-image deployment exists.
+/// <c>Oracle.Vision</c> — the augmentation service. Produces two classes from a window of live
+/// conversation: the <b>scene</b> (an evocative image, via <see cref="ConceptDesigner"/> →
+/// <see cref="VisionPromptComposer"/> + <see cref="VisionRenderer"/>) for the eye's pupil, and the
+/// <b>diagram</b> (a structured <see cref="InfographicConcept"/>, via <see cref="ConjureDiagramAsync"/>)
+/// which the host renders NATIVELY. The renderer is optional so the concept judgment can be exercised
+/// before an image deployment (gpt-image or FLUX) exists.
 /// </summary>
 public sealed class VisionService
 {
