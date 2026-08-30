@@ -8,7 +8,6 @@ using Microsoft.Extensions.Configuration;
 // deployment, before any gpt-image deployment exists. Reads the same AOAI config as Hark.App:
 //   env var > %APPDATA%\Hark\config.json > user-secrets, resolved via the app's UserSecretsId.
 //   dotnet run --project Hark.Oracle.Spike [-- path\to\window.txt]
-
 var config = new ConfigurationBuilder()
     .AddUserSecrets(Assembly.GetExecutingAssembly())
     .AddJsonFile(
@@ -25,9 +24,14 @@ if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(deployment)
     return 1;
 }
 
-// A default evocative window; override by passing a text file path as the first argument.
-string window = args.Length > 0 && File.Exists(args[0])
-    ? await File.ReadAllTextAsync(args[0])
+// A default evocative window; override by passing a text file path as an argument.
+// Pass "raw" to BYPASS the ConceptDesigner + composer and send the transcript straight to the image
+// model — to see what the model does unguided by the art-director persona:
+//   dotnet run --project Hark.Oracle.Spike -- [raw] [path\to\window.txt]
+bool raw = args.Any(a => string.Equals(a, "raw", StringComparison.OrdinalIgnoreCase));
+string? windowFile = args.FirstOrDefault(a => File.Exists(a));
+string window = windowFile is not null
+    ? await File.ReadAllTextAsync(windowFile)
     : """
       Speaker-1: I keep thinking about the house I grew up in. Every summer felt like it would never end.
       Speaker-2: And now?
@@ -35,6 +39,46 @@ string window = args.Length > 0 && File.Exists(args[0])
       Speaker-2: It's not the door.
       Speaker-1: No. It's not the door.
       """;
+
+string? imageDeployment = config["HARK_AOAI_IMAGE_DEPLOYMENT"];
+
+// Renders a prompt, times it, saves the PNG to temp, opens it, and prints the path + elapsed.
+async Task<int> RenderAndSave(string prompt, string label)
+{
+    if (string.IsNullOrWhiteSpace(imageDeployment))
+    {
+        Console.Error.WriteLine("HARK_AOAI_IMAGE_DEPLOYMENT not set — nothing to render.");
+        return 4;
+    }
+    var provider = config["HARK_AOAI_IMAGE_PROVIDER"];
+    Console.WriteLine($"\n=== rendering ({label}) — deployment={imageDeployment}, provider={provider ?? "<openai>"} ===");
+    try
+    {
+        var renderer = new VisionRenderer(endpoint, imageDeployment, new AzureCliCredential(),
+            config["HARK_AOAI_IMAGE_QUALITY"], provider);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var png = await renderer.RenderAsync(prompt);
+        sw.Stop();
+        var path = Path.Combine(Path.GetTempPath(), $"hark-vision-{label}-{DateTime.Now:HHmmss}.png");
+        await File.WriteAllBytesAsync(path, png);
+        Console.WriteLine($"  OK — {png.Length} bytes in {sw.Elapsed.TotalSeconds:F1}s → {path}");
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  Render FAILED: {ex.Message}");
+        return 4;
+    }
+}
+
+// ── RAW: transcript straight to the image model, no concept persona ──
+if (raw)
+{
+    Console.WriteLine("RAW mode — bypassing ConceptDesigner; the transcript is the prompt.\n");
+    Console.WriteLine(window.Trim());
+    return await RenderAndSave(window.Trim(), "raw");
+}
 
 var designer = new ConceptDesigner(endpoint, deployment, new AzureCliCredential());
 var vision = new VisionService(designer);   // concept-only — the judgment spike
@@ -72,23 +116,4 @@ Console.WriteLine($"  palette     {c.Palette}");
 Console.WriteLine("\n=== composed image prompt ===\n");
 Console.WriteLine(result.Prompt);
 
-// Optional: exercise the render tier (gpt-image OpenAI route or FLUX provider route) with the exact
-// config Hark.App uses, to prove the renderer end-to-end.
-string? imageDeployment = config["HARK_AOAI_IMAGE_DEPLOYMENT"];
-if (!string.IsNullOrWhiteSpace(imageDeployment))
-{
-    Console.WriteLine("\n=== rendering image ===");
-    try
-    {
-        var renderer = new VisionRenderer(endpoint, imageDeployment, new AzureCliCredential(),
-            config["HARK_AOAI_IMAGE_QUALITY"], config["HARK_AOAI_IMAGE_PROVIDER"]);
-        var png = await renderer.RenderAsync(result.Prompt);
-        Console.WriteLine($"  OK — {png.Length} bytes (deployment={imageDeployment}, provider={config["HARK_AOAI_IMAGE_PROVIDER"] ?? "<openai>"})");
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"  Render FAILED: {ex}");
-        return 4;
-    }
-}
-return 0;
+return string.IsNullOrWhiteSpace(imageDeployment) ? 0 : await RenderAndSave(result.Prompt, "concept");
