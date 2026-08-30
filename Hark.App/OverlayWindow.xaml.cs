@@ -1062,7 +1062,9 @@ public partial class OverlayWindow : Window
     /// <summary>
     /// Transitions the pupil to a new image with a combined blink + cross-fade, used for BOTH fresh
     /// renders and filler scene-changes so the effect is consistent: the cornea-red eyelid sweeps DOWN
-    /// inside the pupil, the image swaps while hidden, then the lid sweeps UP as the new image fades in.
+    /// inside the pupil, the image swaps while hidden, then the lid sweeps UP while the new image
+    /// cross-fades in across the WHOLE up-stroke (settling just as the lid clears) — so the reveal reads
+    /// on the swipe-up rather than flashing in behind the closed lid.
     /// </summary>
     private void TransitionPupil(BitmapImage bmp)
     {
@@ -1071,7 +1073,7 @@ public partial class OverlayWindow : Window
         VisionOrb.Visibility = Visibility.Visible;
         VisionLid.Visibility = Visibility.Visible;
 
-        var down = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(130)))
+        var down = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(150)))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn },
         };
@@ -1079,17 +1081,19 @@ public partial class OverlayWindow : Window
         {
             VisionOrbBrush.ImageSource = bmp;   // swap while hidden behind the closed lid
 
-            // Cross-fade the new image in as the lid opens (the "crossfade while blinking").
-            VisionOrbImage.BeginAnimation(OpacityProperty, null);
-            VisionOrbImage.Opacity = 0;
-            VisionOrbImage.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300))));
-
-            var up = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(170)))
+            // Reveal: the lid sweeps UP while the new image cross-fades in over the same (longer) stroke,
+            // the fade outlasting the sweep slightly so the image settles in step with the opening lid.
+            var up = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromMilliseconds(340)))
             {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
             };
             up.Completed += (_, _) => VisionLid.Visibility = Visibility.Collapsed;
+
+            VisionOrbImage.BeginAnimation(OpacityProperty, null);
+            VisionOrbImage.Opacity = 0;
+            VisionOrbImage.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(420))));
+
             VisionLidScale.BeginAnimation(ScaleTransform.ScaleYProperty, up);
         };
         VisionLidScale.BeginAnimation(ScaleTransform.ScaleYProperty, down);
