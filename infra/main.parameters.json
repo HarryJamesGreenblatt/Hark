@@ -33,16 +33,31 @@
       "value": false
     },
     "openAiImageDeploymentName": {
-      "value": "gpt-image-1"
+      "value": "gpt-image-2"
     },
     "openAiImageModelName": {
-      "value": "gpt-image-1"
+      "value": "gpt-image-2"
     },
     "openAiImageModelVersion": {
-      "value": "2025-04-15"
+      "value": "2026-04-21"
     },
     "openAiImageCapacity": {
       "value": 1
+    },
+    "deployFlux": {
+      "value": true
+    },
+    "fluxDeploymentName": {
+      "value": "flux2-pro"
+    },
+    "fluxModelName": {
+      "value": "FLUX.2-pro"
+    },
+    "fluxModelVersion": {
+      "value": "1"
+    },
+    "fluxCapacity": {
+      "value": 10
     }
   }
 }

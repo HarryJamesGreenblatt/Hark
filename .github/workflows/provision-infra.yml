@@ -27,7 +27,7 @@ on:
         required: true
         default: false
       deployOpenAiImage:
-        description: 'Also deploy gpt-image-1 (desktop Vision render tier; requires deployOpenAi)'
+        description: 'Also deploy the optional gpt-image render tier (FLUX.2-pro deploys by default with deployOpenAi; requires deployOpenAi)'
         type: boolean
         required: true
         default: false

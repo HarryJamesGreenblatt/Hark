@@ -3,6 +3,18 @@
 > A design brief for HARK's Vision feature, grounded in game-dev, HCI, and procedural-generation
 > research. Written 2026-08-29 after an impasse: chasing *low-latency generative images synced to live
 > speech* as an engineering race, and losing.
+>
+> **Outcome (EP25, 2026-08-30) — how this resolved:** the diagnosis here (it's an *ambient* display, not
+> a latency race; the "laptop-loop" is *procedural oatmeal*) held up, but the proposed *mechanisms* did
+> not survive contact. **Rejected:** the L4D-style "AI Director" (HOLD/EVOLVE/CUT) and cross-dissolve /
+> predict-and-morph — read as decorative and a poor fit for an unattended WPF app; and multimodal
+> anti-repetition (spike-proven to vary only *treatment*, not subject). **What actually worked** was a
+> different cut of §4 (content-adaptive class): the oatmeal wasn't beaten by pacing or prediction but by
+> recognising that the didactic layer is a **diagram = structured data**, which should be **drawn natively**
+> (exact, crisp, instant) rather than generated — freeing the generative model for the **pictorial** pupil
+> scene it's actually good at. Vision shipped as a **dual layer** (native mind-map + FLUX scene, parallel).
+> See [`storyline/EP25`](./storyline/EP25-vision-native-diagrams-and-dual-layer-crystal-ball.md). The
+> ambient stance (§3) and the oatmeal diagnosis (§4) remain the durable takeaways.
 
 ## The reframe (the whole point)
 
