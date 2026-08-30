@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 
 namespace Hark.Installer;
@@ -103,6 +104,7 @@ public partial class InstallerWindow : Window
             Margin = new Thickness(8, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false,
+            TextTrimming = TextTrimming.CharacterEllipsis,   // a long hint must not force horizontal overflow
         };
         box.TextChanged += (_, _) =>
             watermark.Visibility = string.IsNullOrEmpty(box.Text) ? Visibility.Visible : Visibility.Collapsed;
@@ -117,7 +119,13 @@ public partial class InstallerWindow : Window
     void UpdateStatus(string text, int pct)
     {
         StatusText.Text = text;
-        Progress.Value = pct;
+        // Glide the bar to the new value instead of snapping — a custom-Foreground WPF ProgressBar has no
+        // built-in fill animation, so discrete Value sets read as jumps.
+        var glide = new DoubleAnimation(pct, TimeSpan.FromMilliseconds(450))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        Progress.BeginAnimation(ProgressBar.ValueProperty, glide);
     }
 
     async void OnActionClick(object sender, RoutedEventArgs e)
