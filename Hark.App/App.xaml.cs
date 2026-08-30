@@ -40,6 +40,9 @@ public partial class App : Application
     /// <summary>The active capture/transcription session, or <see langword="null"/> when captions are stopped.</summary>
     private HarkSession? _session;
 
+    /// <summary>Cancellation for the in-flight offline diarization refine, cancelled when the session is toggled again.</summary>
+    private CancellationTokenSource? _refineCts;
+
     /// <summary>Accumulates transcript segments and speaker metadata for the current session.</summary>
     private readonly ConversationStore _store = new();
 
@@ -308,6 +311,10 @@ public partial class App : Application
     {
         if (_busy) return;          // ignore re-entrancy while starting/stopping
         _busy = true;
+
+        // Any toggle supersedes an offline refine still running from a previous stop — cancel it so its
+        // remaining Fast-Transcription / Oracle calls aren't wasted on a session that's been left behind.
+        _refineCts?.Cancel();
         try
         {
             if (_session?.IsRunning == true)
@@ -319,7 +326,10 @@ public partial class App : Application
                 StopNamingLoop();
 
                 // Second pass: re-diarize the buffered audio offline for better speaker attribution.
-                _ = RefineDiarizationAsync();
+                // Cancellable so a subsequent toggle drops it (see the cancel at the top of this method).
+                _refineCts?.Dispose();
+                _refineCts = new CancellationTokenSource();
+                _ = RefineDiarizationAsync(_refineCts.Token);
             }
             else
             {
@@ -402,7 +412,7 @@ public partial class App : Application
     /// attribution. Runs in the background; failures are surfaced quietly and leave the live result
     /// intact. The rebuilt transcript feeds the speaker pages and both recap views.
     /// </summary>
-    private async Task RefineDiarizationAsync()
+    private async Task RefineDiarizationAsync(CancellationToken cancellationToken)
     {
         var session = _session;
         if (session is null || string.IsNullOrWhiteSpace(_resourceId)) return;
@@ -417,7 +427,7 @@ public partial class App : Application
             int maxSpeakers = Math.Clamp(liveSpeakers > 0 ? liveSpeakers : 2, 2, 8);
 
             var refiner = new FastTranscriptionRefiner(_resourceId!, new AzureCliCredential());
-            var segments = await refiner.RefineAsync(pcm, maxSpeakers);
+            var segments = await refiner.RefineAsync(pcm, maxSpeakers, cancellationToken: cancellationToken);
             if (segments.Count == 0) return;
 
             // Recognition-mode oracle (Stage 0): an optional text-only semantic pass re-labels the
@@ -428,7 +438,7 @@ public partial class App : Application
                 try
                 {
                     var semantic = new SemanticDiarizationRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
-                    segments = await semantic.RefineAsync(segments);
+                    segments = await semantic.RefineAsync(segments, cancellationToken);
                 }
                 catch
                 {
@@ -440,7 +450,7 @@ public partial class App : Application
                 try
                 {
                     var namer = new SpeakerNamingRefiner(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
-                    segments = await namer.NameAsync(segments);
+                    segments = await namer.NameAsync(segments, cancellationToken);
                 }
                 catch
                 {
@@ -451,6 +461,10 @@ public partial class App : Application
             var rebuilt = segments;
             Dispatcher.BeginInvoke(() =>
             {
+                // Superseded: the refine was cancelled, or a new session started while it ran — applying
+                // now would resurrect the previous session's conversation. Drop it.
+                if (cancellationToken.IsCancellationRequested || !ReferenceEquals(session, _session)) return;
+
                 _overlay?.ClearSpeakers();
                 _store.Rebuild(rebuilt.Select(s => new ConversationStore.Entry(
                     string.IsNullOrEmpty(s.SpeakerId) ? ConversationStore.DefaultSpeaker : s.SpeakerId!,
@@ -467,10 +481,13 @@ public partial class App : Application
                 _cachedRevision = -1;
             });
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Dispatcher.BeginInvoke(() => _tray?.ShowBalloonTip(
-                4000, "HARK — refine", $"Couldn't refine speakers: {ex.Message}", ToolTipIcon.Warning));
+            // Superseded by a subsequent toggle — expected; drop it silently.
+        }
+        catch
+        {
+            // Best-effort background enhancement; the live result stands. Fail silently (no toast).
         }
     }
 
@@ -952,6 +969,7 @@ public partial class App : Application
         _micHotkey?.Dispose();
         _visionTimer?.Stop();
         _visionCts?.Cancel();
+        _refineCts?.Cancel();
         try { _session?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* best effort */ }
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }
         base.OnExit(e);
