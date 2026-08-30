@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-28 (end of Episode 22; HARK **1.0.0** released — plus the concept literal-bias fix and the interim-visual revert)._
+_Last updated: 2026-08-29 (end of Episode 24; Vision migrated to a **Foundry (`AIServices`)** account with a **dual-path renderer** driving **FLUX.2-pro**, the latency chase pinned to **capacity=1** (not the model), and the feature **reframed** as an AI-directed ambient display — see [`../crystal-ball-design-brief.md`](../crystal-ball-design-brief.md))._
 
 - **Status:** CLI MVP + desktop overlay working **and now at 1.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -131,6 +131,7 @@ _Last updated: 2026-08-28 (end of Episode 22; HARK **1.0.0** released — plus t
 | 21 | 2026-08-28 | [The Eye Comes Alive: Banded Audio, an Organic Pupil & a Drifting Highlight](./EP21-vision-sound-reactive-eye-pupil-highlight.md) | Made the Vision eye **sound-reactive across dimensions**: split the capture RMS into **bass/treble** bands (a one-pole low-pass, no FFT) via a new `AudioFeatures` event, then drove the image **"pupil"** dilation from a slow **bass capacitor + under-damped spring** (organic, inertial swell — **WavBall's peak-fed autonomous-goal** idea applied to a UI param, *not* a peak-locked map) and the glass **highlight** from a treble-widened **Lissajous drift**. Also: eye **300→360** with a **thinner silver ring**, and dropped the off-topic abstract `Theme` caption. Tuned across **three live self-tests** (dilation too fast → capacitor+spring; highlight jerky → slow amp follower; pupil too small → higher gains + full-iris rail) into "the animations are looking good." Commit `19f8825`. |
 | 22 | 2026-08-28 | [HARK 1.0.0: The Milestone, and the Interim-Visual Dead-End](./EP22-release-1.0.0-and-interim-visual-dead-end.md) | Cut **HARK 1.0.0** (first non-`0.1.x` release; `Release` run success → single `Hark-Setup.zip`, changelog v0.1.4→v1.0.0) after biasing the Oracle **concept tier toward literal, on-topic scenes** (`CONTRAST` only on real irony, anti-repetition softened to "don't change subject just to differ", temp 0.9→0.7) to kill the "chair reading a book" absurdity (`8297cd6`). Key **dead-end**: running the scrying sheen on **every** conjure regressed (autonomous conjuring is near-continuous → sheen always on, masked the pupil swell, "never renders") and was **reverted before commit** — so `main` kept only `03092db`'s first-open buffer. The **interim-visual objective (convey meaning during every render) stays OPEN**; also corrected a self-inflicted false "missing portable zip" discrepancy (WavBall≠HARK). Commits `03092db..8297cd6`, tag `v1.0.0`. |
 | 23 | 2026-08-28 | [The Second Machine: Auth, the Installer, One Endpoint & gpt-image-2's Catch](./EP23-second-machine-auth-installer-endpoint-gpt-image-2.md) | Took 1.0.0 to a **second machine** and ran a gauntlet. `AzureCliCredential` needs **elevation** there (`WinError 5`; works running HARK **as admin**) — RBAC was fine (sub-scope Speech/OpenAI User inherit). Keys are **policy-blocked** on that sub (disable-local-auth) and interactive Entra (WAM + multi-tenant app reg + consent) was judged **overkill** for a personal tool, so **run-as-admin is the accepted call**. **Stale pre-Vision user-secrets** hid the installer's config fields → made the panel **always show, prefilled** from env→config.json→user-secrets (`6b6a84b`); the **scrunched** high-DPI window got **PerMonitorV2 + AutoScaleMode.Dpi** (`c524ed9`) but is **still cramped** → WPF rewrite proposed. Vision's "deployment not found" was a **two-foundry split** (chat + image must share one `HARK_AOAI_ENDPOINT`) → **consolidated** to one foundry rather than decouple (decoupling written, then reverted). Released **v1.0.1**. Live finding: **gpt-image-2 is slower + more abstract** than gpt-image-1 — the pipeline is tuned for image-1. |
+| 24 | 2026-08-29 | [FLUX on Foundry, the Latency Red Herring & the Ambient Reframe](./EP24-foundry-flux-provider-latency-and-ambient-reframe.md) | Migrated Vision onto a **Foundry (`AIServices`)** account (`fdry-hark-fb360`: gpt-4.1-mini + gpt-image-2 + **flux2-pro** on one endpoint) and built a **dual-path `VisionRenderer`** — OpenAI `ImageClient` **or** a raw-HTTP **Black Forest Labs** provider route (`/providers/blackforestlabs/v1/...`, `cognitiveservices` scope) — behind new `HARK_AOAI_IMAGE_QUALITY`/`HARK_AOAI_IMAGE_PROVIDER` knobs (`cf89cf5`). Chased the "multi-minute lag" and pinned it to **capacity = 1** (~1 RPM → 429 backoff), **not** the model (Spike benchmarks: **FLUX ~10 s vs gpt-image-2 ~35 s**; FLUX quota 15 vs 2) → bumped `flux2-pro` to **capacity 10**; the silent "no image" was `JsonContent.Create` sending **chunked** → BFL `400 no_content_length_header`, fixed with `StringContent`. Hit an **impasse** on the repeating "laptop-loop" + speech lag and **reframed the whole feature**: a research-grounded **design brief** (`crystal-ball-design-brief.md`) recasts Vision as an **AI-directed ambient display** (Valve **AI Director**; **client-side prediction**/cross-dissolve; **calm tech**; **"procedural oatmeal"** = the loop's real name). Commits `0879711..cf89cf5`; brief + Spike `raw` mode uncommitted. |
 
 ---
 
@@ -154,12 +155,21 @@ These are unresolved at the end of the latest episode — natural starting point
   render, so both models must live on **one foundry** (different RGs fine, different **resources** not).
   Chose to **consolidate** (deploy gpt-image-2 onto the gpt-4.1 foundry) over decoupling — a
   `HARK_AOAI_IMAGE_ENDPOINT` was written then reverted; revisit only if a real two-resource need returns.
-- **Vision image model — gpt-image-2 is not a free upgrade (Episode 23):** live, **gpt-image-2 renders
-  slower and more abstract** than gpt-image-1; HARK's prompt composer + hard-coded `"medium"` quality are
-  tuned for gpt-image-1. Before adopting: make quality configurable (`HARK_AOAI_IMAGE_QUALITY`), revisit
-  the prompt/literal steer for image-2, weigh the latency, and **A/B** gpt-image-2 vs `gpt-image-1.5` vs
-  **FLUX.2** (BFL) vs **MAI-Image-2.5** (all on Foundry; the latter two target concept-visualization /
-  prompt-adherence). Only then bump the Bicep default off `gpt-image-1`.
+- **Vision image model — FLUX.2-pro on Foundry is now the default (Episode 24):** the EP23 gpt-image-2
+  concern was resolved by going **provider-agnostic**. A **Foundry (`AIServices`)** account
+  `fdry-hark-fb360` hosts gpt-4.1-mini + gpt-image-2 + **flux2-pro** on **one** endpoint; a **dual-path
+  `VisionRenderer`** drives either the OpenAI `ImageClient` **or** the raw-HTTP **Black Forest Labs**
+  route (`/providers/blackforestlabs/v1/...`, `cognitiveservices` scope, `StringContent` for
+  Content-Length), selected by `HARK_AOAI_IMAGE_PROVIDER` (+ `HARK_AOAI_IMAGE_QUALITY` for gpt-image).
+  **FLUX chosen** on the Spike benchmark: **~10 s vs gpt-image-2 ~35 s**, quota **15 vs 2**, and the user
+  prefers its photographic look. The "multi-minute" app lag was **capacity = 1** (429 backoff), **not**
+  the model → `flux2-pro` bumped to **capacity 10**. **Still open:** the new config knobs aren't in the
+  README / installer / `config.json` guidance; a wider A/B (`gpt-image-1.5`, **MAI-Image-2.5**) is
+  optional now that FLUX satisfies. Full record: [`EP24`](./EP24-foundry-flux-provider-latency-and-ambient-reframe.md).
+- **Infra as Code is out of date (Episode 24):** `infra/main.bicep` + `modules/openai.bicep` still
+  describe `kind: 'OpenAI'`, `gpt-image-1`, capacity **1** — not the **Foundry (`AIServices`)** account,
+  `gpt-image-2` / `flux2-pro`, capacity **10**, or the FLUX **Cognitive Services User** RBAC. The stack is
+  **not reproducible from code** until reconciled.
 
 - **Installable release — shipped (Episode 13); 1.0.0 cut (Episode 22):** a HAL-eye icon set, a signed MSIX
   (`Package.appxmanifest` with a launch-at-startup task), and a single self-contained
@@ -237,17 +247,21 @@ These are unresolved at the end of the latest episode — natural starting point
   highlight; see the HAL-eye thread). **Episode 22** biased the concept tier to **literal/on-topic**
   (CONTRAST only on real irony; anti-repetition softened to "don't change subject just to differ"; temp
   0.9→0.7, `8297cd6`) — the first lever against the "absurd/off-topic" renders, **needs live proof**.
-  **Interim visual is still OPEN:** a first-open-only concept caption + scrying sheen ship in 1.0.0, but
-  running the sheen on *every* conjure **regressed** (near-continuous conjuring → sheen always on, masked
-  the pupil swell) and was **reverted**; the real goal — convey the current topic's meaning during
-  **every** ~1 min render — is unsolved (candidates: a fast `low`-quality first pass then refine; a cheap
-  text→icon/CSS motif; keep the concept caption visible under the held image). Full records:
+  **Interim visual is still OPEN — now reframed (Episode 24):** the "convey meaning during every ~1 min
+  render" goal is **superseded** by a research-grounded **design brief**
+  ([`../crystal-ball-design-brief.md`](../crystal-ball-design-brief.md)) that recasts Vision as an
+  **AI-directed ambient display** — (1) an **AI Director** (HOLD/EVOLVE/CUT + **speculative pre-render**),
+  (2) **client-side prediction**/**cross-dissolve** (never hard-cut), (3) **calm-tech** ambience (peripheral,
+  "work even when it fails" idle state) that **dissolves** the real-time requirement, (4) fixing the
+  **"procedural oatmeal"** laptop-loop with framing-variety + content-adaptive visual class. Proposed next
+  step: the low-risk **cross-dissolve + always-"becoming" idle state** first. Full records:
   [`EP15`](./EP15-oracle-spike-vision-concept.md),
   [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
   [`EP16`](./EP16-hal-eye-vision-mode-shell.md), [`EP17`](./EP17-vision-render-wired-into-app.md),
   [`EP18`](./EP18-vision-autonomous-beats-and-concept-refinement.md),
   [`EP21`](./EP21-vision-sound-reactive-eye-pupil-highlight.md),
-  [`EP22`](./EP22-release-1.0.0-and-interim-visual-dead-end.md).
+  [`EP22`](./EP22-release-1.0.0-and-interim-visual-dead-end.md),
+  [`EP24`](./EP24-foundry-flux-provider-latency-and-ambient-reframe.md).
 - **Codename Cristóbal — the visualization north star (design captured):** hook HARK into an agent
   that dispatches a generative image model to render live *didactic* visualizations. The hard-won
   insight: **summaries are the wrong seed** (they force literalism + over-complication); the right seed
