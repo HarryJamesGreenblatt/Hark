@@ -140,9 +140,18 @@ public sealed class VisionRenderer
             throw new InvalidOperationException($"FLUX render failed ({(int)response.StatusCode}): {json}");
 
         using var doc = JsonDocument.Parse(json);
-        var b64 = doc.RootElement.GetProperty("data")[0].GetProperty("b64_json").GetString()
-            ?? throw new InvalidOperationException("FLUX render returned no image bytes.");
-        return Convert.FromBase64String(b64);
+        if (doc.RootElement.TryGetProperty("data", out var data)
+            && data.ValueKind == JsonValueKind.Array
+            && data.GetArrayLength() > 0
+            && data[0].TryGetProperty("b64_json", out var b64El)
+            && b64El.GetString() is { } b64)
+        {
+            return Convert.FromBase64String(b64);
+        }
+
+        // 200 but no image (e.g. a soft-moderated empty `data: []`) — surface the body so the cause is visible.
+        var body = json.Length > 400 ? json[..400] + "…" : json;
+        throw new InvalidOperationException($"FLUX render returned 200 with no image (body: {body})");
     }
 
     #endregion
