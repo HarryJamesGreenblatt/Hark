@@ -240,7 +240,14 @@ public partial class InstallerWindow : Window
         var imageDeployment = _aoaiImageDeploymentBox.Text.Trim();
         if (endpoint.Length > 0) map["HARK_AOAI_ENDPOINT"] = endpoint;
         if (deployment.Length > 0) map["HARK_AOAI_DEPLOYMENT"] = deployment;
-        if (imageDeployment.Length > 0) map["HARK_AOAI_IMAGE_DEPLOYMENT"] = imageDeployment;
+        if (imageDeployment.Length > 0)
+        {
+            map["HARK_AOAI_IMAGE_DEPLOYMENT"] = imageDeployment;
+            // A FLUX deployment must render via the Black Forest Labs provider route; without this key the
+            // app falls back to the gpt-image OpenAI route and silently produces no image.
+            if (imageDeployment.Contains("flux", StringComparison.OrdinalIgnoreCase))
+                map["HARK_AOAI_IMAGE_PROVIDER"] = "flux-2-pro";
+        }
         return map;
     }
 
