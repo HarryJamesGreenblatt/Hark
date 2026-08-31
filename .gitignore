@@ -19,6 +19,7 @@ artifacts/
 ## Installer / packaging (keep private keys and large build outputs out of the repo)
 *.pfx
 *.msix
+Hark.Installer/main.json
 publish/
 publish-dev/
 publish-msix/

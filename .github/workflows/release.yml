@@ -79,6 +79,13 @@ jobs:
           Remove-Item $pfxPath -ErrorAction SilentlyContinue
 
       # ── Single-file installer exe with the signed MSIX embedded ──
+      - name: Compile Bicep to ARM JSON for the installer
+        shell: pwsh
+        run: |
+          # Ship pre-compiled ARM JSON so the target machine never needs the Bicep compiler at provision time.
+          az bicep install
+          az bicep build --file infra/main.bicep --outfile Hark.Installer/main.json
+
       - name: Build Hark-Setup.exe
         shell: pwsh
         run: |

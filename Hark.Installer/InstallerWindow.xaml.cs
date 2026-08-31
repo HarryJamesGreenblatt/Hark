@@ -32,8 +32,8 @@ public partial class InstallerWindow : Window
     readonly TextBox _aoaiDeploymentBox;
     readonly TextBox _aoaiImageDeploymentBox;
 
-    enum Phase { ChooseMode, Provision, Configure, Done }
-    Phase _phase = Phase.ChooseMode;
+    enum Phase { Configure, PostInstall }
+    Phase _phase = Phase.Configure;
 
     /// <summary>Non-secret external config the desktop app reads at runtime.</summary>
     static string ConfigPath => Path.Combine(
@@ -73,13 +73,9 @@ public partial class InstallerWindow : Window
         _aoaiDeploymentBox      = AddConfigField("OpenAI chat deployment (optional)", "e.g. gpt-4.1-mini");
         _aoaiImageDeploymentBox = AddConfigField("OpenAI image deployment (optional — enables Vision)", "e.g. gpt-image-1");
 
-        // Detect existing config up front so the landing can recommend an upgrade install.
-        if (PrefillConfigFields())
-        {
-            DetectedNote.Text = "Existing configuration detected — choose “Use existing” for an upgrade install, or provision fresh infrastructure.";
-            DetectedNote.Visibility = Visibility.Visible;
-        }
-        StatusText.Text = "Choose how to set up HARK.";
+        // Prefill from any detected config; the config fields ARE the landing view now.
+        PrefillConfigFields();
+        StatusText.Text = "Enter or confirm your Azure settings, then Install. You can provision them after installing.";
     }
 
     /// <summary>Adds a labeled textbox (with a watermark overlay) to the config panel and returns the textbox.</summary>
@@ -137,66 +133,22 @@ public partial class InstallerWindow : Window
         Progress.BeginAnimation(ProgressBar.ValueProperty, glide);
     }
 
-    // ── Mode selection (landing) ──
-
-    void OnChooseProvision(object sender, RoutedEventArgs e)
-    {
-        _phase = Phase.Provision;
-        ModePanel.Visibility = Visibility.Collapsed;
-        ProvisionPanel.Visibility = Visibility.Visible;
-        ConfigPanel.Visibility = Visibility.Collapsed;
-        ActionBtn.Visibility = Visibility.Visible;
-        ActionBtn.IsEnabled = BuildConfigMap() is not null;   // enabled once provisioned (or already filled)
-        BackBtn.Visibility = Visibility.Visible;
-        StatusText.Text = "Provision your Azure infrastructure, then Install & Finish.";
-    }
-
-    void OnChooseConfigure(object sender, RoutedEventArgs e)
-    {
-        _phase = Phase.Configure;
-        ModePanel.Visibility = Visibility.Collapsed;
-        ProvisionPanel.Visibility = Visibility.Collapsed;
-        ConfigPanel.Visibility = Visibility.Visible;
-        ActionBtn.Visibility = Visibility.Visible;
-        ActionBtn.IsEnabled = true;
-        BackBtn.Visibility = Visibility.Visible;
-        StatusText.Text = "Confirm your Azure settings, then Install & Finish.";
-    }
-
-    void OnBackClick(object sender, RoutedEventArgs e)
-    {
-        _phase = Phase.ChooseMode;
-        ModePanel.Visibility = Visibility.Visible;
-        ProvisionPanel.Visibility = Visibility.Collapsed;
-        ConfigPanel.Visibility = Visibility.Collapsed;
-        ActionBtn.Visibility = Visibility.Collapsed;
-        BackBtn.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Choose how to set up HARK.";
-    }
-
     async void OnActionClick(object sender, RoutedEventArgs e)
     {
-        if (_phase == Phase.Done) { Close(); return; }
-        await InstallAndFinishAsync();
+        if (_phase == Phase.PostInstall) { Close(); return; }
+        await InstallAsync();
     }
 
     /// <summary>
-    /// The final commit: persists config + user-secrets, trusts the cert, and installs the MSIX — LAST,
-    /// so bailing out during mode selection or provisioning never leaves a half-configured install behind.
+    /// Installs HARK: persists whatever config is filled in (config.json + user-secrets), trusts the cert,
+    /// and installs the MSIX. Config is OPTIONAL here — a fresh machine can install first, then provision.
     /// </summary>
-    async Task InstallAndFinishAsync()
+    async Task InstallAsync()
     {
-        if (BuildConfigMap() is not { } config)
-        {
-            UpdateStatus("Enter at least the Azure Speech region and resource id first.", 0);
-            return;
-        }
-
         ActionBtn.IsEnabled = false;
-        BackBtn.IsEnabled = false;
 
-        // 1) Persist so the app reads it now AND a later upgrade install detects it (no re-provision).
-        SaveConfigAndSecrets(config);
+        // 1) Persist any config the user entered (so the app reads it, and a re-run detects it).
+        if (BuildConfigMap() is { } config) SaveConfigAndSecrets(config);
 
         // 2) Trust the signing cert (in-process when elevated).
         if (!IsCertTrusted())
@@ -238,7 +190,7 @@ public partial class InstallerWindow : Window
         {
             UpdateStatus("Opening App Installer...", 85);
             Process.Start(new ProcessStartInfo(msixPath) { UseShellExecute = true });
-            FinishDone("Follow the App Installer prompts to finish. Your settings are saved.");
+            EnterPostInstall("HARK is installing via App Installer. You can provision Azure infrastructure below, or Finish.");
             return;
         }
         finally
@@ -246,24 +198,26 @@ public partial class InstallerWindow : Window
             try { File.Delete(msixPath); } catch { /* temp cleanup is best-effort */ }
         }
 
-        FinishDone("All set. Launch HARK from Start / Search and press Ctrl+Win+H to caption.");
+        EnterPostInstall("HARK is installed. Optionally provision Azure infrastructure below, or Finish.");
     }
 
-    /// <summary>Re-enables the buttons after a failed install step, with an optional message.</summary>
+    /// <summary>Re-enables the action button after a failed install step, with an optional message.</summary>
     void FailInstall(string? message)
     {
         if (message is not null) UpdateStatus(message, 0);
         ActionBtn.IsEnabled = true;
-        BackBtn.IsEnabled = true;
     }
 
-    /// <summary>Moves to the terminal Done state.</summary>
-    void FinishDone(string message)
+    /// <summary>
+    /// Post-install: reveal the OPTIONAL provisioning card (skippable; when run it updates the saved config)
+    /// and turn the primary button into Finish.
+    /// </summary>
+    void EnterPostInstall(string message)
     {
-        _phase = Phase.Done;
-        ActionBtn.Content = "Close";
+        _phase = Phase.PostInstall;
+        ProvisionPanel.Visibility = Visibility.Visible;
+        ActionBtn.Content = "Finish";
         ActionBtn.IsEnabled = true;
-        BackBtn.Visibility = Visibility.Collapsed;
         UpdateStatus(message, 100);
     }
 
@@ -414,9 +368,8 @@ public partial class InstallerWindow : Window
                 if (result.Config.TryGetValue("HARK_AOAI_DEPLOYMENT", out var v4)) _aoaiDeploymentBox.Text = v4;
                 if (result.Config.TryGetValue("HARK_AOAI_IMAGE_DEPLOYMENT", out var v5)) _aoaiImageDeploymentBox.Text = v5;
             }
-            ConfigPanel.Visibility = Visibility.Visible;
-            ActionBtn.IsEnabled = true;
-            Status("Provisioned. Review the values below, then Install & Finish.");
+            if (BuildConfigMap() is { } cfg) SaveConfigAndSecrets(cfg);   // persist so the installed app reads it
+            Status("Provisioned — settings saved. You can Finish.");
         }
         catch (Exception ex)
         {
@@ -431,10 +384,21 @@ public partial class InstallerWindow : Window
     /// <summary>Trimmed text, or a fallback when blank.</summary>
     static string OrDefault(string s, string fallback) => string.IsNullOrWhiteSpace(s) ? fallback : s.Trim();
 
-    /// <summary>Extracts the embedded Bicep to a temp folder (main.bicep + modules/) and returns the main template path.</summary>
+    /// <summary>Extracts the embedded infra to a temp folder and returns the deployable template path.</summary>
     static string ExtractTemplates()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"Hark-infra-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+
+        // Prefer the pre-compiled ARM JSON (embedded by CI) so the target machine never needs the Bicep
+        // compiler — az deployment consumes ARM JSON directly.
+        if (typeof(Program).Assembly.GetManifestResourceNames().Contains("infra.main.json"))
+        {
+            var json = Path.Combine(dir, "main.json");
+            ExtractResource("infra.main.json", json);
+            return json;
+        }
+
         Directory.CreateDirectory(Path.Combine(dir, "modules"));
         ExtractResource("infra.main.bicep", Path.Combine(dir, "main.bicep"));
         ExtractResource("infra.modules.speech.bicep", Path.Combine(dir, "modules", "speech.bicep"));

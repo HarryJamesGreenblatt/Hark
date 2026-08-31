@@ -44,6 +44,11 @@
     <EmbeddedResource Include="..\infra\modules\openai.bicep">
       <LogicalName>infra.modules.openai.bicep</LogicalName>
     </EmbeddedResource>
+    <!-- Pre-compiled ARM JSON (built from main.bicep by CI just before publish). Preferred at provision
+         time so the target machine never needs the Bicep compiler; absent in dev builds (Bicep fallback). -->
+    <EmbeddedResource Include="main.json" Condition="Exists('main.json')">
+      <LogicalName>infra.main.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
