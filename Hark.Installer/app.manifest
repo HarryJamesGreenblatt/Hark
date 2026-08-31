@@ -17,11 +17,12 @@
     </windowsSettings>
   </application>
 
-  <!-- asInvoker: only the brief cert import self-elevates (a separate relaunch); the MSIX installs per-user. -->
+  <!-- requireAdministrator: the installer provisions Azure infra via the Azure CLI and imports the
+       signing cert into LocalMachine, so it runs elevated from the start. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

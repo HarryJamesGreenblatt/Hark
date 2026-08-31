@@ -33,6 +33,17 @@
     <EmbeddedResource Include="Hark.msix" Condition="Exists('Hark.msix')">
       <LogicalName>Hark.msix</LogicalName>
     </EmbeddedResource>
+    <!-- Infra Bicep (single source of truth) embedded so the installer can run the same subscription
+         deployment the provisioning pipeline does. Extracted to a temp folder at provision time. -->
+    <EmbeddedResource Include="..\infra\main.bicep">
+      <LogicalName>infra.main.bicep</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\infra\modules\speech.bicep">
+      <LogicalName>infra.modules.speech.bicep</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\infra\modules\openai.bicep">
+      <LogicalName>infra.modules.openai.bicep</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

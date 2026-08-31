@@ -38,6 +38,17 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="FieldBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#1E1E22"/>
+            <Setter Property="Foreground" Value="#F0F4F8"/>
+            <Setter Property="CaretBrush" Value="#F0F4F8"/>
+            <Setter Property="BorderBrush" Value="#3A3A40"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,2,0,10"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -68,6 +79,47 @@
                            Text="Click Install to set up HARK. It lives in the system tray; press Ctrl+Win+H to caption."/>
                 <ProgressBar x:Name="Progress" Height="18" Margin="0,10,0,0" Minimum="0" Maximum="100" Value="0"
                              Background="#1E1E22" Foreground="#960A04" BorderBrush="#FF281A" BorderThickness="1"/>
+
+                <!-- Provisioning card (shown in the Configure phase): runs the same subscription deployment
+                     as the pipeline against the embedded Bicep, then fills the config fields below. -->
+                <Border x:Name="ProvisionPanel" Visibility="Collapsed" Margin="0,18,0,0"
+                        Background="#141416" BorderBrush="#2A2A2E" BorderThickness="1" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="Provision Azure infrastructure (optional)" Foreground="#F0F4F8"
+                                   FontSize="14" FontWeight="SemiBold"/>
+                        <TextBlock Text="Requires the Azure CLI, already signed in (az login) to the target subscription. Creates Speech + Azure OpenAI (Foundry) and fills the fields below."
+                                   Foreground="#8A8F96" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,12"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Region" Foreground="#C8CDD4" FontSize="12"/>
+                                <TextBox x:Name="ProvRegion" Style="{StaticResource FieldBox}" Text="eastus2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Resource group" Foreground="#C8CDD4" FontSize="12"/>
+                                <TextBox x:Name="ProvResourceGroup" Style="{StaticResource FieldBox}" Text="rg-hark"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Foundry account name (blank = auto-generate)" Foreground="#C8CDD4" FontSize="12"/>
+                        <TextBox x:Name="ProvAccountName" Style="{StaticResource FieldBox}"/>
+
+                        <CheckBox x:Name="ProvDeployOpenAi" IsChecked="True" Foreground="#C8CDD4" Margin="0,2,0,6"
+                                  Content="Deploy Summary + Vision (Azure OpenAI Foundry + FLUX)"/>
+                        <CheckBox x:Name="ProvDeployImage" IsChecked="False" Foreground="#C8CDD4" Margin="0,0,0,12"
+                                  Content="Also deploy the gpt-image-2 tier"/>
+
+                        <Button x:Name="ProvisionBtn" Style="{StaticResource HalButton}" Content="Provision Azure infra"
+                                Height="34" Padding="18,0" HorizontalAlignment="Left" Click="OnProvisionClick"/>
+                        <TextBlock x:Name="ProvStatus" Foreground="#C8CDD4" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </Border>
+
                 <StackPanel x:Name="ConfigPanel" Margin="0,18,0,0" Visibility="Collapsed"/>
             </StackPanel>
         </ScrollViewer>

@@ -150,34 +150,22 @@ public partial class InstallerWindow : Window
     {
         ActionBtn.IsEnabled = false;
 
-        // Step 1: trust the signing cert (elevated — one UAC prompt), unless already trusted.
+        // Step 1: trust the signing cert, unless already trusted. The installer runs elevated
+        // (requireAdministrator), so import in-process; fall back to an elevated relaunch otherwise.
         if (!IsCertTrusted())
         {
-            UpdateStatus("Installing certificate (admin required)...", 15);
-            var psi = new ProcessStartInfo
+            UpdateStatus("Installing certificate...", 15);
+            if (IsElevated())
             {
-                FileName = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName,
-                Arguments = "--cert-only",
-                Verb = "runas",
-                UseShellExecute = true,
-            };
-            try
-            {
-                var proc = Process.Start(psi);
-                if (proc is not null)
+                if (Program.InstallCertificate() != 0)
                 {
-                    await proc.WaitForExitAsync();
-                    if (proc.ExitCode != 0)
-                    {
-                        UpdateStatus("Certificate installation failed.", 0);
-                        ActionBtn.IsEnabled = true;
-                        return;
-                    }
+                    UpdateStatus("Certificate installation failed.", 0);
+                    ActionBtn.IsEnabled = true;
+                    return;
                 }
             }
-            catch (System.ComponentModel.Win32Exception)
+            else if (!await RelaunchCertOnlyAsync())
             {
-                UpdateStatus("Installation cancelled at the elevation prompt.", 0);
                 ActionBtn.IsEnabled = true;
                 return;
             }
@@ -245,6 +233,7 @@ public partial class InstallerWindow : Window
         bool prefilled = PrefillConfigFields();
         _phase = Phase.Configure;
         ConfigPanel.Visibility = Visibility.Visible;
+        ProvisionPanel.Visibility = Visibility.Visible;
         ActionBtn.Content = "Save & Finish";
         UpdateStatus(prefilled
             ? "HARK installed. Confirm or update your Azure resources below, then Save & Finish."
@@ -319,6 +308,137 @@ public partial class InstallerWindow : Window
                 : null;
         }
         catch { return null; }
+    }
+
+    /// <summary>Runs the embedded Bicep deployment via the Azure CLI, then fills the config fields from its outputs.</summary>
+    async void OnProvisionClick(object sender, RoutedEventArgs e)
+    {
+        ProvisionBtn.IsEnabled = false;
+        void Status(string s) => ProvStatus.Text = s;
+        try
+        {
+            Status("Checking Azure CLI…");
+            if (!await AzureProvisioner.IsAzAvailableAsync())
+            {
+                Status("Azure CLI not found. Install it and run `az login`, then retry.");
+                return;
+            }
+
+            var sub = await AzureProvisioner.GetSubscriptionIdAsync();
+            if (sub is null)
+            {
+                Status("Not signed in. Run `az login` (and `az account set --subscription <id>`), then retry.");
+                return;
+            }
+
+            var principalId = await AzureProvisioner.GetPrincipalIdAsync();
+            if (string.IsNullOrEmpty(principalId))
+            {
+                Status("Couldn't resolve your Azure user id. Sign in as a user (not a service principal), then retry.");
+                return;
+            }
+
+            var opts = new AzureProvisioner.Options(
+                OrDefault(ProvRegion.Text, "eastus2"),
+                OrDefault(ProvResourceGroup.Text, "rg-hark"),
+                ProvAccountName.Text.Trim(),
+                principalId,
+                ProvDeployOpenAi.IsChecked == true,
+                ProvDeployImage.IsChecked == true);
+
+            var templateFile = ExtractTemplates();
+            Status($"Provisioning to subscription {sub}…  This can take several minutes — please wait.");
+            var result = await AzureProvisioner.ProvisionAsync(opts, templateFile, CancellationToken.None);
+            if (!result.Ok)
+            {
+                Status("Provisioning failed: " + result.Message);
+                return;
+            }
+
+            if (result.Config is not null)
+            {
+                if (result.Config.TryGetValue("HARK_SPEECH_REGION", out var v1)) _regionBox.Text = v1;
+                if (result.Config.TryGetValue("HARK_SPEECH_RESOURCE_ID", out var v2)) _resourceBox.Text = v2;
+                if (result.Config.TryGetValue("HARK_AOAI_ENDPOINT", out var v3)) _aoaiEndpointBox.Text = v3;
+                if (result.Config.TryGetValue("HARK_AOAI_DEPLOYMENT", out var v4)) _aoaiDeploymentBox.Text = v4;
+                if (result.Config.TryGetValue("HARK_AOAI_IMAGE_DEPLOYMENT", out var v5)) _aoaiImageDeploymentBox.Text = v5;
+            }
+            Status("Provisioned. Review the values below, then Save & Finish.");
+        }
+        catch (Exception ex)
+        {
+            Status("Provisioning error: " + ex.Message);
+        }
+        finally
+        {
+            ProvisionBtn.IsEnabled = true;
+        }
+    }
+
+    /// <summary>Trimmed text, or a fallback when blank.</summary>
+    static string OrDefault(string s, string fallback) => string.IsNullOrWhiteSpace(s) ? fallback : s.Trim();
+
+    /// <summary>Extracts the embedded Bicep to a temp folder (main.bicep + modules/) and returns the main template path.</summary>
+    static string ExtractTemplates()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"Hark-infra-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(dir, "modules"));
+        ExtractResource("infra.main.bicep", Path.Combine(dir, "main.bicep"));
+        ExtractResource("infra.modules.speech.bicep", Path.Combine(dir, "modules", "speech.bicep"));
+        ExtractResource("infra.modules.openai.bicep", Path.Combine(dir, "modules", "openai.bicep"));
+        return Path.Combine(dir, "main.bicep");
+    }
+
+    /// <summary>Copies one embedded resource to a destination path.</summary>
+    static void ExtractResource(string logicalName, string destPath)
+    {
+        using var s = typeof(Program).Assembly.GetManifestResourceStream(logicalName)
+            ?? throw new FileNotFoundException($"Embedded template {logicalName} not found.");
+        using var f = File.Create(destPath);
+        s.CopyTo(f);
+    }
+
+    /// <summary>Relaunches this exe elevated to import the cert; returns false if it failed or was cancelled.</summary>
+    async Task<bool> RelaunchCertOnlyAsync()
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName,
+            Arguments = "--cert-only",
+            Verb = "runas",
+            UseShellExecute = true,
+        };
+        try
+        {
+            var proc = Process.Start(psi);
+            if (proc is not null)
+            {
+                await proc.WaitForExitAsync();
+                if (proc.ExitCode != 0)
+                {
+                    UpdateStatus("Certificate installation failed.", 0);
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            UpdateStatus("Installation cancelled at the elevation prompt.", 0);
+            return false;
+        }
+    }
+
+    /// <summary>True when the process is running with administrator rights.</summary>
+    static bool IsElevated()
+    {
+        try
+        {
+            using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(id)
+                .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 
     /// <summary>Writes the embedded MSIX to a temp file and returns its path.</summary>
