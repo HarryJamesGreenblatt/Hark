@@ -49,6 +49,32 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Margin" Value="0,2,0,10"/>
         </Style>
+
+        <Style x:Key="SubtleButton" TargetType="Button">
+            <Setter Property="Background" Value="#1E1E22"/>
+            <Setter Property="Foreground" Value="#F0F4F8"/>
+            <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="#3A3A40" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2A2A2E"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#8A8F96"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -80,12 +106,24 @@
                 <ProgressBar x:Name="Progress" Height="18" Margin="0,10,0,0" Minimum="0" Maximum="100" Value="0"
                              Background="#1E1E22" Foreground="#960A04" BorderBrush="#FF281A" BorderThickness="1"/>
 
-                <!-- Provisioning card (shown in the Configure phase): runs the same subscription deployment
+                <!-- Mode chooser (landing): provision fresh infra, or use existing/detected config. Nothing
+                     is installed until a mode is picked and the user commits with Install &amp; Finish. -->
+                <StackPanel x:Name="ModePanel" Margin="0,18,0,0">
+                    <TextBlock Text="How do you want to set up HARK?" Foreground="#F0F4F8" FontSize="14" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="DetectedNote" Foreground="#8A8F96" FontSize="11.5" TextWrapping="Wrap"
+                               Margin="0,2,0,12" Visibility="Collapsed"/>
+                    <Button x:Name="ModeProvisionBtn" Content="Provision Azure infrastructure" Click="OnChooseProvision"
+                            Style="{StaticResource HalButton}" Height="40" HorizontalAlignment="Stretch" Margin="0,10,0,10"/>
+                    <Button x:Name="ModeConfigBtn" Content="Use existing / enter configuration" Click="OnChooseConfigure"
+                            Style="{StaticResource SubtleButton}" Height="40" HorizontalAlignment="Stretch"/>
+                </StackPanel>
+
+                <!-- Provisioning card (shown in the Provision mode): runs the same subscription deployment
                      as the pipeline against the embedded Bicep, then fills the config fields below. -->
                 <Border x:Name="ProvisionPanel" Visibility="Collapsed" Margin="0,18,0,0"
                         Background="#141416" BorderBrush="#2A2A2E" BorderThickness="1" Padding="16">
                     <StackPanel>
-                        <TextBlock Text="Provision Azure infrastructure (optional)" Foreground="#F0F4F8"
+                        <TextBlock Text="Provision Azure infrastructure" Foreground="#F0F4F8"
                                    FontSize="14" FontWeight="SemiBold"/>
                         <TextBlock Text="Requires the Azure CLI, already signed in (az login) to the target subscription. Creates Speech + Azure OpenAI (Foundry) and fills the fields below."
                                    Foreground="#8A8F96" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,12"/>
@@ -124,11 +162,16 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Bottom bar: the single action button -->
+        <!-- Bottom bar: Back (to the mode chooser) + the primary action, revealed once a mode is chosen. -->
         <Border Grid.Row="2" Background="#141416" BorderBrush="#FF281A" BorderThickness="0,2,0,0" Height="70">
-            <Button x:Name="ActionBtn" Style="{StaticResource HalButton}" Content="Install"
-                    Width="200" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Click="OnActionClick"/>
+            <Grid Margin="24,0">
+                <Button x:Name="BackBtn" Content="← Back" Click="OnBackClick" Style="{StaticResource SubtleButton}"
+                        Height="34" Padding="14,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Visibility="Collapsed"/>
+                <Button x:Name="ActionBtn" Style="{StaticResource HalButton}" Content="Install &amp; Finish"
+                        Width="200" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="Collapsed" Click="OnActionClick"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

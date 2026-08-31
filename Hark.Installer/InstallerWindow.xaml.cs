@@ -11,10 +11,11 @@ using System.Windows.Media.Imaging;
 namespace Hark.Installer;
 
 /// <summary>
-/// A single-window installer: trusts the signing cert, installs the embedded MSIX, then — only if
-/// HARK isn't already configured — collects the (non-secret) Azure resource locations and writes
-/// <c>%APPDATA%\Hark\config.json</c> so the user never has to hunt down the README. WPF is used so the
-/// dialog scales correctly on high-DPI displays instead of rendering cramped.
+/// A single-window installer. The user first picks a MODE — provision fresh Azure infrastructure, or use
+/// existing/detected configuration — then commits with <c>Install &amp; Finish</c>, which persists config to
+/// both <c>%APPDATA%\Hark\config.json</c> and user-secrets, trusts the signing cert, and installs the
+/// embedded MSIX. Install happens LAST, so abandoning setup never leaves a half-configured install behind.
+/// WPF is used so the dialog scales correctly on high-DPI displays.
 /// </summary>
 public partial class InstallerWindow : Window
 {
@@ -31,8 +32,8 @@ public partial class InstallerWindow : Window
     readonly TextBox _aoaiDeploymentBox;
     readonly TextBox _aoaiImageDeploymentBox;
 
-    enum Phase { Install, Configure, Done }
-    Phase _phase = Phase.Install;
+    enum Phase { ChooseMode, Provision, Configure, Done }
+    Phase _phase = Phase.ChooseMode;
 
     /// <summary>Non-secret external config the desktop app reads at runtime.</summary>
     static string ConfigPath => Path.Combine(
@@ -71,6 +72,14 @@ public partial class InstallerWindow : Window
         _aoaiEndpointBox        = AddConfigField("Azure OpenAI endpoint (optional — enables SUMMARY)", "https://<name>.openai.azure.com/");
         _aoaiDeploymentBox      = AddConfigField("OpenAI chat deployment (optional)", "e.g. gpt-4.1-mini");
         _aoaiImageDeploymentBox = AddConfigField("OpenAI image deployment (optional — enables Vision)", "e.g. gpt-image-1");
+
+        // Detect existing config up front so the landing can recommend an upgrade install.
+        if (PrefillConfigFields())
+        {
+            DetectedNote.Text = "Existing configuration detected — choose “Use existing” for an upgrade install, or provision fresh infrastructure.";
+            DetectedNote.Visibility = Visibility.Visible;
+        }
+        StatusText.Text = "Choose how to set up HARK.";
     }
 
     /// <summary>Adds a labeled textbox (with a watermark overlay) to the config panel and returns the textbox.</summary>
@@ -128,69 +137,84 @@ public partial class InstallerWindow : Window
         Progress.BeginAnimation(ProgressBar.ValueProperty, glide);
     }
 
-    async void OnActionClick(object sender, RoutedEventArgs e)
-    {
-        switch (_phase)
-        {
-            case Phase.Configure:
-                SaveConfigIfProvided();
-                _phase = Phase.Done;
-                ActionBtn.Content = "Close";
-                UpdateStatus("All set. Launch HARK from Start / Search and press Ctrl+Win+H to caption.", 100);
-                return;
-            case Phase.Done:
-                Close();
-                return;
-        }
+    // ── Mode selection (landing) ──
 
-        await RunInstallAsync();
+    void OnChooseProvision(object sender, RoutedEventArgs e)
+    {
+        _phase = Phase.Provision;
+        ModePanel.Visibility = Visibility.Collapsed;
+        ProvisionPanel.Visibility = Visibility.Visible;
+        ConfigPanel.Visibility = Visibility.Collapsed;
+        ActionBtn.Visibility = Visibility.Visible;
+        ActionBtn.IsEnabled = BuildConfigMap() is not null;   // enabled once provisioned (or already filled)
+        BackBtn.Visibility = Visibility.Visible;
+        StatusText.Text = "Provision your Azure infrastructure, then Install & Finish.";
     }
 
-    async Task RunInstallAsync()
+    void OnChooseConfigure(object sender, RoutedEventArgs e)
     {
-        ActionBtn.IsEnabled = false;
+        _phase = Phase.Configure;
+        ModePanel.Visibility = Visibility.Collapsed;
+        ProvisionPanel.Visibility = Visibility.Collapsed;
+        ConfigPanel.Visibility = Visibility.Visible;
+        ActionBtn.Visibility = Visibility.Visible;
+        ActionBtn.IsEnabled = true;
+        BackBtn.Visibility = Visibility.Visible;
+        StatusText.Text = "Confirm your Azure settings, then Install & Finish.";
+    }
 
-        // Step 1: trust the signing cert, unless already trusted. The installer runs elevated
-        // (requireAdministrator), so import in-process; fall back to an elevated relaunch otherwise.
-        if (!IsCertTrusted())
-        {
-            UpdateStatus("Installing certificate...", 15);
-            if (IsElevated())
-            {
-                if (Program.InstallCertificate() != 0)
-                {
-                    UpdateStatus("Certificate installation failed.", 0);
-                    ActionBtn.IsEnabled = true;
-                    return;
-                }
-            }
-            else if (!await RelaunchCertOnlyAsync())
-            {
-                ActionBtn.IsEnabled = true;
-                return;
-            }
-            UpdateStatus("Certificate installed.", 40);
-        }
-        else
-        {
-            UpdateStatus("Certificate already trusted.", 40);
-        }
+    void OnBackClick(object sender, RoutedEventArgs e)
+    {
+        _phase = Phase.ChooseMode;
+        ModePanel.Visibility = Visibility.Visible;
+        ProvisionPanel.Visibility = Visibility.Collapsed;
+        ConfigPanel.Visibility = Visibility.Collapsed;
+        ActionBtn.Visibility = Visibility.Collapsed;
+        BackBtn.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Choose how to set up HARK.";
+    }
 
-        // Step 2: extract the embedded MSIX to a temp file.
-        string msixPath;
-        try
+    async void OnActionClick(object sender, RoutedEventArgs e)
+    {
+        if (_phase == Phase.Done) { Close(); return; }
+        await InstallAndFinishAsync();
+    }
+
+    /// <summary>
+    /// The final commit: persists config + user-secrets, trusts the cert, and installs the MSIX — LAST,
+    /// so bailing out during mode selection or provisioning never leaves a half-configured install behind.
+    /// </summary>
+    async Task InstallAndFinishAsync()
+    {
+        if (BuildConfigMap() is not { } config)
         {
-            msixPath = ExtractEmbeddedMsix();
-        }
-        catch
-        {
-            UpdateStatus("ERROR: this installer was built without an embedded package.", 40);
-            ActionBtn.IsEnabled = true;
+            UpdateStatus("Enter at least the Azure Speech region and resource id first.", 0);
             return;
         }
 
-        // Step 3: install the signed package (per-user, no elevation).
-        UpdateStatus("Installing HARK...", 70);
+        ActionBtn.IsEnabled = false;
+        BackBtn.IsEnabled = false;
+
+        // 1) Persist so the app reads it now AND a later upgrade install detects it (no re-provision).
+        SaveConfigAndSecrets(config);
+
+        // 2) Trust the signing cert (in-process when elevated).
+        if (!IsCertTrusted())
+        {
+            UpdateStatus("Installing certificate...", 20);
+            if (IsElevated())
+            {
+                if (Program.InstallCertificate() != 0) { FailInstall("Certificate installation failed."); return; }
+            }
+            else if (!await RelaunchCertOnlyAsync()) { FailInstall(null); return; }
+        }
+
+        // 3) Install the signed MSIX.
+        UpdateStatus("Installing HARK...", 60);
+        string msixPath;
+        try { msixPath = ExtractEmbeddedMsix(); }
+        catch { FailInstall("This installer was built without an embedded package."); return; }
+
         try
         {
             var psi = new ProcessStartInfo
@@ -214,10 +238,7 @@ public partial class InstallerWindow : Window
         {
             UpdateStatus("Opening App Installer...", 85);
             Process.Start(new ProcessStartInfo(msixPath) { UseShellExecute = true });
-            UpdateStatus("Follow the App Installer prompts, then re-run this setup to configure Azure.", 100);
-            ActionBtn.Content = "Close";
-            _phase = Phase.Done;
-            ActionBtn.IsEnabled = true;
+            FinishDone("Follow the App Installer prompts to finish. Your settings are saved.");
             return;
         }
         finally
@@ -225,27 +246,33 @@ public partial class InstallerWindow : Window
             try { File.Delete(msixPath); } catch { /* temp cleanup is best-effort */ }
         }
 
-        // Step 4: configure — always show the panel, prefilled with whatever the app would read
-        // (env → config.json → user-secrets), so the user confirms or updates the resources on every
-        // install instead of stale config silently hiding the fields. Saving writes config.json,
-        // which takes precedence over user-secrets and so overrides anything stale there.
-        ActionBtn.IsEnabled = true;
-        bool prefilled = PrefillConfigFields();
-        _phase = Phase.Configure;
-        ConfigPanel.Visibility = Visibility.Visible;
-        ProvisionPanel.Visibility = Visibility.Visible;
-        ActionBtn.Content = "Save & Finish";
-        UpdateStatus(prefilled
-            ? "HARK installed. Confirm or update your Azure resources below, then Save & Finish."
-            : "HARK installed. Enter your Azure resource locations (or leave blank to set up later).", 90);
+        FinishDone("All set. Launch HARK from Start / Search and press Ctrl+Win+H to caption.");
     }
 
-    /// <summary>Writes config.json when a Speech region + resource id are supplied; a blank pair skips it.</summary>
-    void SaveConfigIfProvided()
+    /// <summary>Re-enables the buttons after a failed install step, with an optional message.</summary>
+    void FailInstall(string? message)
+    {
+        if (message is not null) UpdateStatus(message, 0);
+        ActionBtn.IsEnabled = true;
+        BackBtn.IsEnabled = true;
+    }
+
+    /// <summary>Moves to the terminal Done state.</summary>
+    void FinishDone(string message)
+    {
+        _phase = Phase.Done;
+        ActionBtn.Content = "Close";
+        ActionBtn.IsEnabled = true;
+        BackBtn.Visibility = Visibility.Collapsed;
+        UpdateStatus(message, 100);
+    }
+
+    /// <summary>Builds the config map from the fields, or null when the required Speech pair is blank.</summary>
+    Dictionary<string, string>? BuildConfigMap()
     {
         var region = _regionBox.Text.Trim();
         var resource = _resourceBox.Text.Trim();
-        if (region.Length == 0 || resource.Length == 0) return;   // treat blank as "skip, set up later"
+        if (region.Length == 0 || resource.Length == 0) return null;
 
         var map = new Dictionary<string, string>
         {
@@ -258,13 +285,37 @@ public partial class InstallerWindow : Window
         if (endpoint.Length > 0) map["HARK_AOAI_ENDPOINT"] = endpoint;
         if (deployment.Length > 0) map["HARK_AOAI_DEPLOYMENT"] = deployment;
         if (imageDeployment.Length > 0) map["HARK_AOAI_IMAGE_DEPLOYMENT"] = imageDeployment;
+        return map;
+    }
 
+    /// <summary>Persists config to BOTH config.json (the app's runtime config) and user-secrets, merged so a
+    /// later upgrade install detects it — no need to re-provision after the first time.</summary>
+    static void SaveConfigAndSecrets(IReadOnlyDictionary<string, string> map)
+    {
+        WriteJsonMerge(ConfigPath, map);
+        WriteJsonMerge(UserSecretsPath, map);
+    }
+
+    /// <summary>Merges the given keys into a flat JSON file (creating it), preserving any other keys.</summary>
+    static void WriteJsonMerge(string path, IReadOnlyDictionary<string, string> map)
+    {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-            File.WriteAllText(ConfigPath, JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
+            var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (File.Exists(path))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                        if (p.Value.ValueKind == JsonValueKind.String)
+                            merged[p.Name] = p.Value.GetString()!;
+            }
+            foreach (var kv in map) merged[kv.Key] = kv.Value;
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch { /* leave config unwritten; the app shows a friendly note and the README covers it */ }
+        catch { /* best-effort; the app shows a friendly note and the README covers it */ }
     }
 
     /// <summary>
@@ -363,7 +414,9 @@ public partial class InstallerWindow : Window
                 if (result.Config.TryGetValue("HARK_AOAI_DEPLOYMENT", out var v4)) _aoaiDeploymentBox.Text = v4;
                 if (result.Config.TryGetValue("HARK_AOAI_IMAGE_DEPLOYMENT", out var v5)) _aoaiImageDeploymentBox.Text = v5;
             }
-            Status("Provisioned. Review the values below, then Save & Finish.");
+            ConfigPanel.Visibility = Visibility.Visible;
+            ActionBtn.IsEnabled = true;
+            Status("Provisioned. Review the values below, then Install & Finish.");
         }
         catch (Exception ex)
         {
