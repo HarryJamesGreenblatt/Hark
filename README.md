@@ -2,11 +2,19 @@
 
 **Hear. Adapt. Recognize. Keep.**
 
-A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via **Azure AI Speech**, emitting clean text to stdout plus optional rolling text, JSON Lines, and SRT outputs. The desktop overlay can optionally mix in your **local microphone** too, so a headset user's own voice is captioned alongside the far side.
+A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on
+Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via
+**Azure AI Speech**, emitting clean text to stdout plus optional rolling text, JSON Lines, and SRT
+outputs. The desktop overlay adds real-time **speaker diarization**, per-speaker pages, an AI **recap**,
+and a sound-reactive **"crystal ball" Vision** — and can optionally mix in your **local microphone** so a
+headset user's own voice is captioned alongside the far side.
 
-It exists to replace accessibility-only tooling (Live Captions, Voice Typing) with something **owned, automatable, and agent-friendly**.
+It exists to replace accessibility-only tooling (Live Captions, Voice Typing) with something **owned,
+automatable, and agent-friendly**.
 
-![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4) ![Azure AI Speech](https://img.shields.io/badge/Azure-AI%20Speech-0078D4) ![Auth](https://img.shields.io/badge/auth-Entra%20ID%20(keyless)-2F8D46)
+![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4) ![Azure AI Speech](https://img.shields.io/badge/Azure-AI%20Speech-0078D4) ![Vision](https://img.shields.io/badge/Vision-FLUX.2--pro%20on%20Foundry-8A2BE2) ![Auth](https://img.shields.io/badge/auth-Entra%20ID%20(keyless)-2F8D46)
+
+---
 
 ## Install (Windows)
 
@@ -18,24 +26,34 @@ build step required (it ships a self-contained app).
    `Hark-Setup.exe`. (Shipping the exe *inside a zip* keeps the browser download clean; SmartScreen's
    "isn't commonly downloaded" reputation gate applies to bare executables, not archives.)
 2. Run **`Hark-Setup.exe`**. SmartScreen shows *"Windows protected your PC"* for a new publisher —
-   click **More info → Run anyway**.
-3. Click **Install** and approve the single **UAC prompt** — it trusts HARK's signing certificate so
-   the packaged app validates. HARK then installs into **Start / Search**, with an **Add/Remove
-   Programs** entry and a launch-at-startup task.
-4. If the machine isn't already configured (via env vars, `config.json`, or user-secrets), the
-   installer prompts for your **Azure resource locations** — Speech region + resource id, and
-   optionally the Azure OpenAI endpoint/deployment for recaps — and writes them to
-   `%APPDATA%\Hark\config.json`. Already-configured machines skip this step.
+   click **More info → Run anyway**. The installer runs **elevated** (one **UAC prompt**), since it
+   trusts HARK's signing certificate and can optionally provision Azure resources via the Azure CLI.
+3. **Enter or confirm your Azure settings.** The window opens on the config fields, prefilled from
+   anything already on the machine (env vars → `config.json` → user-secrets): the **Speech** region +
+   resource id, and optionally your **Foundry** endpoint + chat/image deployments (which enable the
+   **Summary** and **Vision** features). Have no infrastructure yet? Leave them blank — you can
+   **provision** them in the next step.
+4. Click **Install & Finish.** Nothing touches the machine until this point, so abandoning setup never
+   leaves a half-configured install behind. It trusts the cert, installs the packaged app (Start /
+   Search entry, Add/Remove Programs, launch-at-startup task), and writes your settings to **both**
+   `%APPDATA%\Hark\config.json` **and** user-secrets — so a later re-run is a clean **upgrade install**.
+5. _(Optional)_ **Provision Azure infrastructure.** After installing, an optional card can stand up the
+   whole stack on whatever subscription you're signed into (`az login`) — Speech + a **Foundry**
+   account with the chat and **FLUX** deployments — then fills the config fields from the deployment
+   outputs. It **auto-fits FLUX capacity to the subscription's quota**, so it works on a fresh sub
+   without a quota dance. Skip it if you already have resources.
 
 HARK lives in the system tray; press **Ctrl+Win+H** to toggle captions. Uninstall via **Add/Remove
-Programs** like any packaged app. You still need an Azure **Speech** resource and `az login` with the
-right role — see [Prerequisites](#prerequisites) and [Configuration](#configuration).
+Programs** like any packaged app. You still need an Azure **Speech** resource (or provision one) and
+`az login` with the right role — see [Prerequisites](#prerequisites) and [Configuration](#configuration).
 
 > **How the installer is built:** pushing a `vX.Y.Z` tag runs
 > [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds and **signs** the
-> MSIX, embeds it into a single self-contained `Hark-Setup.exe`, and publishes it (zipped) as a
-> GitHub Release. Signing uses the `MSIX_CERT_PFX` / `MSIX_CERT_PASSWORD` repo secrets; the public
-> cert ships inside the installer to establish trust at install time.
+> MSIX, compiles the `infra/` Bicep to **ARM JSON**, embeds both into a single self-contained
+> `Hark-Setup.exe`, and publishes it (zipped) as a GitHub Release. Signing uses the `MSIX_CERT_PFX` /
+> `MSIX_CERT_PASSWORD` repo secrets; the public cert ships inside the installer to establish trust at
+> install time. The embedded ARM JSON is what the in-app provisioner deploys (so the target never needs
+> the Bicep compiler).
 
 ## How it works
 
@@ -43,7 +61,7 @@ right role — see [Prerequisites](#prerequisites) and [Configuration](#configur
 ┌──────────────┐  48k stereo float  ┌──────────────┐  16k mono PCM  ┌───────────────────┐  segments  ┌──────────────┐
 │     Hear     │ ─────────────────► │    Adapt     │ ─────────────► │     Recognize     │ ─────────► │     Keep     │
 │ WASAPI loop  │   DataAvailable    │ resample +   │  PushStream    │ Azure Speech      │  Interim/  │ stdout · txt │
-│ (NAudio)     │                    │ downmix +16b │                │ continuous reco   │  Final     │ json · srt   │
+│ (+ local mic)│                    │ downmix +16b │                │ continuous reco   │  Final     │ json · srt   │
 └──────────────┘                    └──────────────┘                └───────────────────┘            └──────────────┘
 ```
 
@@ -51,30 +69,35 @@ right role — see [Prerequisites](#prerequisites) and [Configuration](#configur
 |---|---|---|
 | **Hear** | `Capture/LoopbackCaptureService` (+ `MicCaptureService`) | Taps the default render endpoint via WASAPI loopback; the desktop app can also mix in the local mic (opt-in), so a headset user's own voice is captioned too |
 | **Adapt** | `Audio/PcmConverter` | Downmix → resample to 16 kHz mono → 16-bit PCM (loopback + mic mixed in the float domain) |
-| **Recognize** | `Transcription/AzureSpeechTranscriber` | Streams PCM to Azure Speech; raises `Interim`/`Final` |
-| **Keep** | `Output/*Sink` | Fans results to stdout, rolling text, JSON Lines, SRT |
+| **Recognize** | `Transcription/AzureSpeechTranscriber` · `ConversationDiarizingTranscriber` | Streams PCM to Azure Speech; raises `Interim`/`Final`; diarized mode attributes lines to `Guest-N` |
+| **Keep** | `Output/*Sink` | Fans results to stdout, rolling text, JSON Lines, SRT, and the overlay |
 
-`ISpeechTranscriber` is an explicit **swap point**: the Azure engine is the default, and a local/offline `WhisperTranscriber` can drop in without touching the rest of the pipeline.
+`ISpeechTranscriber` is an explicit **swap point**: the Azure engine is the default, and a
+local/offline transcriber can drop in without touching the rest of the pipeline. The solution is three
+projects over a shared core: **`Hark.Cli`** (terminal), **`Hark.App`** (WPF tray overlay), and
+**`Hark.Oracle`** (the AI recap + Vision tiers), all driving **`Hark.Core/HarkSession`**.
 
 ## Prerequisites
 
 - Windows 10/11 with a default output device
-- .NET 9 SDK
-- An Azure AI **Speech** resource (`kind=SpeechServices`, `S0`)
+- .NET 9 SDK _(to build/run from source; the installer ships self-contained)_
+- An Azure AI **Speech** resource (`kind=SpeechServices`, `S0`) — or let the installer **provision** one
 - The signed-in identity holds the **Cognitive Services Speech User** role on that resource
 - Signed in via Azure CLI (`az login`) — its identity is used for keyless auth
-- _(Optional, desktop only)_ An **Azure OpenAI** resource with a **chat model deployment** for AI
-  recaps, and the **Cognitive Services OpenAI User** role on it. Without this, captions and speaker
-  pages work fully; only the **SUMMARY** view is disabled (it shows a "not configured" note).
+- _(Optional, desktop only)_ A **Foundry (`AIServices`)** account for **Summary** and **Vision**, with a
+  **chat deployment** (e.g. `gpt-4.1-mini`) and — for Vision — a **FLUX** deployment (e.g. `flux2-pro`)
+  on the **same endpoint**. Your identity needs **Cognitive Services OpenAI User** (chat/gpt-image) and
+  **Cognitive Services User** (the FLUX provider route) on it. Without this, captions and speaker pages
+  work fully; only **Summary** and **Vision** are disabled (they show a "not configured" note).
 - _(Desktop only)_ **Microphone mixing** is off by default (loopback-only, like native Live Captions).
-  Toggle the **mic button** in the overlay (or set `HARK_MIX_MIC=1`) to also caption your own voice
-  alongside system/far-side audio — the headset scenario. Leave it off on speakers, where the mic
-  would re-capture playback and double the transcript.
+  Toggle the **mic button** in the overlay (or set `HARK_MIX_MIC=1`, or **Ctrl+Shift+M**) to also caption
+  your own voice — the headset scenario. Leave it off on speakers, where the mic would re-capture playback
+  and double the transcript.
 
 ## Configuration
 
-Provide the resource via flags, environment variables, an external config file, or
-`dotnet user-secrets` — checked in this priority order:
+Provide resources via flags, environment variables, an external config file, or `dotnet user-secrets` —
+checked in this priority order:
 
 ```
 CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dotnet user-secrets
@@ -82,8 +105,14 @@ CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dot
 
 | Setting | Flag | Env var / key |
 |---|---|---|
-| Region | `--region eastus2` | `HARK_SPEECH_REGION` |
-| Resource ARM id | `--resource-id <id>` | `HARK_SPEECH_RESOURCE_ID` |
+| Speech region | `--region eastus2` | `HARK_SPEECH_REGION` |
+| Speech resource ARM id | `--resource-id <id>` | `HARK_SPEECH_RESOURCE_ID` |
+| Foundry endpoint (Summary + Vision) | — | `HARK_AOAI_ENDPOINT` |
+| Chat deployment (Summary) | — | `HARK_AOAI_DEPLOYMENT` |
+| Image deployment (Vision) | — | `HARK_AOAI_IMAGE_DEPLOYMENT` |
+| Image provider route (FLUX) | — | `HARK_AOAI_IMAGE_PROVIDER` |
+| Image quality (gpt-image only) | — | `HARK_AOAI_IMAGE_QUALITY` |
+| Mix local mic (desktop) | — | `HARK_MIX_MIC` |
 
 > **The resource ARM id embeds your subscription id**, so it's never hardcoded in source or
 > `launchSettings.json`. Store it locally instead (one-time, per project):
@@ -94,47 +123,49 @@ CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dot
 > ```
 > User secrets live outside the repo (`%APPDATA%\Microsoft\UserSecrets\`) and are never committed.
 
-> **Published exe?** `dotnet user-secrets` is a **development-only** mechanism — it doesn't ship with
-> a built executable. For a published build on a non-dev machine, drop the same values in an external
-> **`%APPDATA%\Hark\config.json`** instead (it lives in your user profile, so it's never in the repo
-> and can't be committed). Only resource *locations* live here — auth stays keyless, no keys:
+> **Published exe?** `dotnet user-secrets` is a **development-only** mechanism — it doesn't ship with a
+> built executable. For a published build on a non-dev machine, drop the same values in an external
+> **`%APPDATA%\Hark\config.json`** (the installer writes this for you). Only resource *locations* live
+> here — auth stays keyless, no keys:
 > ```json
 > {
 >   "HARK_SPEECH_REGION": "eastus2",
 >   "HARK_SPEECH_RESOURCE_ID": "<your-speech-resource-arm-id>",
->   "HARK_AOAI_ENDPOINT": "https://<your-aoai>.openai.azure.com/",
->   "HARK_AOAI_DEPLOYMENT": "<your-chat-deployment-name>",
->   "HARK_AOAI_IMAGE_DEPLOYMENT": "<your-image-deployment-name>"
+>   "HARK_AOAI_ENDPOINT": "https://<your-foundry>.openai.azure.com/",
+>   "HARK_AOAI_DEPLOYMENT": "gpt-4.1-mini",
+>   "HARK_AOAI_IMAGE_DEPLOYMENT": "flux2-pro",
+>   "HARK_AOAI_IMAGE_PROVIDER": "flux-2-pro"
 > }
 > ```
 
 > **Auth is keyless.** HARK authenticates with `AzureCliCredential` (your `az login` identity) and
-> never reads or stores account keys. The explicit credential keeps `DefaultAzureCredential` free
-> for other tooling and ensures the role-bearing CLI identity is the one used.
+> never reads or stores account keys. The explicit credential keeps `DefaultAzureCredential` free for
+> other tooling and ensures the role-bearing CLI identity is the one used.
 
-### Summaries (desktop, optional)
+### Summary & Vision (desktop, optional)
 
-The desktop overlay can generate an AI recap of the captured conversation via **Azure OpenAI**.
-Point HARK at a **chat model deployment** using `dotnet user-secrets` (endpoint and deployment name
-only — no keys):
+The desktop overlay's **Summary** (AI recap) and **Vision** (crystal-ball visualization) tiers both run
+on a single **Foundry** endpoint that hosts the chat and image deployments. Point HARK at it with
+user-secrets (endpoint + deployment names only — no keys):
 
 ```powershell
-dotnet user-secrets set "HARK_AOAI_ENDPOINT" "https://<your-aoai>.openai.azure.com/" --project Hark.App
-dotnet user-secrets set "HARK_AOAI_DEPLOYMENT" "<your-chat-deployment-name>" --project Hark.App
+dotnet user-secrets set "HARK_AOAI_ENDPOINT" "https://<your-foundry>.openai.azure.com/" --project Hark.App
+dotnet user-secrets set "HARK_AOAI_DEPLOYMENT" "gpt-4.1-mini" --project Hark.App        # Summary (chat)
+dotnet user-secrets set "HARK_AOAI_IMAGE_DEPLOYMENT" "flux2-pro" --project Hark.App     # Vision (image)
+dotnet user-secrets set "HARK_AOAI_IMAGE_PROVIDER" "flux-2-pro" --project Hark.App      # FLUX route
 ```
 
-> The optional **`HARK_AOAI_IMAGE_DEPLOYMENT`** enables the desktop **Vision** render tier (the FLUX/
-> gpt-image scene inside the HAL-eye crystal ball). The render tier is **provider-agnostic** — set
-> **`HARK_AOAI_IMAGE_PROVIDER`** (e.g. `flux-2-pro`, the effective default) for the Black Forest Labs
-> route, or leave it unset for the OpenAI `gpt-image` route (with optional **`HARK_AOAI_IMAGE_QUALITY`**).
-> Same keyless auth; leave the deployment unset to keep the scene tier off. (The didactic mind-map
-> **diagram** behind the eye is rendered natively and needs no image deployment.)
+> The render tier is **provider-agnostic**. Set **`HARK_AOAI_IMAGE_PROVIDER=flux-2-pro`** to render the
+> Vision scene via the **Black Forest Labs (FLUX)** route (the effective default), or leave it **unset**
+> to use the OpenAI **`gpt-image`** route (with optional **`HARK_AOAI_IMAGE_QUALITY`**). Leave
+> `HARK_AOAI_IMAGE_DEPLOYMENT` unset to keep the scene tier off entirely. (The didactic mind-map
+> **diagram** behind the eye is rendered **natively** and needs no image deployment.)
+>
+> Your `az login` identity needs **Cognitive Services OpenAI User** (chat/gpt-image) and, for FLUX,
+> **Cognitive Services User** on the Foundry account. If the config is absent, Summary/Vision simply
+> show a note instead of failing.
 
-Auth is the same keyless `AzureCliCredential`; your `az login` identity needs the
-**Cognitive Services OpenAI User** role on the resource. If these secrets are absent, the SUMMARY
-view simply shows a note instead of failing.
-
-## Usage
+## Usage (CLI)
 
 ```powershell
 # Easiest: the launcher sets region + resource id, then runs
@@ -146,69 +177,87 @@ view simply shows a note instead of failing.
 dotnet run --project Hark.Cli -- --region eastus2 --out transcript.txt --json transcript.jsonl
 ```
 
-Play a clear-speech video through your speakers/headphones; transcription streams live and finalized lines persist to the chosen outputs. Press **Ctrl+C** to stop (SRT is written on exit).
+Play clear-speech audio through your speakers/headphones; transcription streams live and finalized lines
+persist to the chosen outputs. Press **Ctrl+C** to stop (SRT is written on exit).
 
 ## Desktop overlay (`Hark.App`)
 
 A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 
-- **Toggle:** `Ctrl+Win+H` shows/hides a selectable, resizable, always-on-top captions bar. It docks
-  as a **full-width bar at the top** of the screen (native Live Captions layout), and stays movable.
-- **HAL-9000 status eye:** a metallic-framed red "eye" indicator that's dim when idle and, while
-  listening, glows and **pulses in time with the captured audio** (RMS level, eased at 60fps). Red
-  reads as "recording."
-- **Speaker diarization:** captions are attributed to anonymous, session-scoped speakers
-  (`Guest-1`, `Guest-2`, …) using Azure Speech's `ConversationTranscriber`. Each detected speaker
-  gets a **pill**; clicking it opens a dedicated **page** showing just that speaker's lines.
-- **Naming speakers:** give a speaker a real name two ways — **right-click a pill → Rename** (applied
-  globally; renaming into an existing name **merges** them), or let the **Oracle name them
-  automatically** as the conversation reveals identities (introductions, direct address, self-ID). Both
-  bind the name to the voice, so it follows every later line; a manual name always wins. Auto-naming
-  reuses the optional Azure OpenAI config below.
-- **CAPTIONS / SUMMARY switch:** a segmented control cross-fades between the live captions and an
-  **AI recap** (Teams-style by default; Narrative and per-speaker styles also available). SUMMARY is
-  disabled until there are captions to summarize; the recap is cached and only regenerated when the
-  captions change, so switching back and forth is free. Requires the optional Azure OpenAI config above.
+- **Toggle:** `Ctrl+Win+H` shows/hides a selectable, always-on-top captions bar that docks as a
+  **full-width bar at the top** of the screen (native Live Captions layout) and fits its content height.
+- **HAL-9000 status eye:** a metallic-framed red "eye" that's dim when idle and, while listening, glows
+  and **pulses in time with the captured audio** — the pupil dilates on **bass**, the highlight drifts on
+  **treble**.
+- **Speaker diarization:** captions are attributed to anonymous, session-scoped speakers (`Guest-1`,
+  `Guest-2`, …) via Azure Speech's `ConversationTranscriber`. Each speaker gets a **pill**; clicking it
+  opens a dedicated **page** of just that speaker's lines. On **Stop**, an offline **Fast Transcription**
+  second pass re-diarizes the buffered audio globally and rebuilds the conversation, fixing streaming
+  crossups.
+- **Naming speakers:** **right-click a pill → Rename** (applied globally; renaming into an existing name
+  **merges** them), or let the **Oracle name speakers automatically**, live, as identities are revealed
+  (introductions, direct address, self-ID). A manual name always wins.
+- **CAPTIONS / SUMMARY switch:** a segmented control cross-fades between live captions and an **AI recap**
+  — **Conversation** (topic-pivoted) or **Speakers** (people-pivoted), both structured/expandable. The
+  recap is cached and regenerated only when captions change.
+- **Vision — the crystal ball:** **clicking the HAL eye** dilates it into a full-window Vision page (a
+  corner→centre match-cut zoom; the large eye stays audio-reactive) that renders a **dual-layer** live
+  visualization of the conversation, **conjured in parallel every beat** by `Hark.Oracle.Vision`:
+  - a **native WPF radial mind-map** drawn behind the eye — the eye sits at its empty centre as the hub
+    (exact concentricity, crisp text, instant, crossfaded) — from a structured `InfographicConcept`
+    (title + colour-coded facet nodes); **plus**
+  - a **FLUX cinematographic scene** rendered inside the orb (the pupil) from a `VisualConcept` — anchored
+    to each beat's actual subject, rendered evocatively so it tracks the talk without repeating.
+
+  The architectural turn: **a diagram is structured data — drawn natively, not generated by an image
+  model** — which freed the generative model (FLUX.2-pro) for the imagery it's actually good at.
 
 > Diarization labels start anonymous and can occasionally swap or merge — expected for single-channel
-> speaker separation. Names are best-effort and bounded by transcription accuracy; the right-click
-> Rename is always there to fix or set one. Spoken/narration audio works best; sung or heavily
-> overlapping speech is harder.
+> separation; the right-click Rename is always there to fix one. Spoken/narration audio works best; sung
+> or heavily overlapping speech is harder.
 
 ## Provisioning
 
-HARK's Azure resources are defined as **Infrastructure-as-Code** under [`infra/`](infra) (Bicep),
-so the whole stack can be stood up reproducibly on any subscription — no click-ops required. Auth
-stays keyless (Entra ID / RBAC) throughout; the templates create the resources **and** the
-data-plane role assignments.
+HARK's Azure resources are defined as **Infrastructure-as-Code** under [`infra/`](infra) (Bicep), so the
+whole stack stands up reproducibly on any subscription — no click-ops. Auth stays keyless (Entra ID /
+RBAC) throughout; the templates create the resources **and** the data-plane role assignments.
 
 | File | Purpose |
 |---|---|
 | `infra/main.bicep` | Subscription-scoped entry point (resource group + modules + outputs) |
 | `infra/modules/speech.bicep` | Azure AI Speech account + `Cognitive Services Speech User` role |
-| `infra/modules/openai.bicep` | (Optional) Azure OpenAI account + chat deployment + `OpenAI User` role |
-| `infra/main.parameters.json` | Sample parameters (region, model, optional overrides) |
+| `infra/modules/openai.bicep` | (Optional) **Foundry (`AIServices`)** account + chat + **FLUX** (+ optional gpt-image) deployments, with `Cognitive Services OpenAI User` **and** `Cognitive Services User` roles |
+| `infra/main.parameters.json` | Sample parameters (region, models, capacities, optional overrides) |
 
-> Resource names double as **globally-unique** custom subdomains (required for keyless auth), so
-> the templates auto-generate them from a subscription-derived suffix by default — deploying to a
-> fresh subscription never collides with an existing one. Supply `speechAccountName` /
-> `openAiAccountName` only if you want to pin your own names.
+Toggles: `deployOpenAi` adds the Foundry account (chat + Summary), `deployFlux` (**default true**) adds
+the FLUX render tier, and `deployOpenAiImage` (default false) adds an optional gpt-image deployment.
 
-### Option A — GitHub Actions (portable, keyless)
+> Resource names double as **globally-unique** custom subdomains (required for keyless auth), so the
+> templates auto-generate them from a subscription-derived (deterministic) suffix by default — deploying
+> to a fresh subscription never collides, and re-running is idempotent. Supply `speechAccountName` /
+> `openAiAccountName` only to pin your own.
+
+There are three ways to deploy it:
+
+### Option A — from the installer (easiest)
+
+Run `Hark-Setup.exe`, install, and use the **Provision Azure infrastructure** card. It deploys the
+embedded ARM JSON to whatever subscription you're `az login`'d into, **auto-fits FLUX capacity to that
+sub's quota**, and fills the config for you. See [Install](#install-windows).
+
+### Option B — GitHub Actions (portable, keyless)
 
 The [`Provision Azure Infra`](.github/workflows/provision-infra.yml) workflow deploys the Bicep to
-whichever subscription you point it at, authenticating via **OpenID Connect** (federated
-credentials — no keys stored in GitHub). It runs automatically on pushes that touch `infra/**`, and
-can also be triggered manually from the **Actions** tab (`workflow_dispatch`) to choose a region and
-whether to include Azure OpenAI. On success it prints the exact `dotnet user-secrets` values to set
-locally.
+whichever subscription you point it at, authenticating via **OpenID Connect** (federated credentials —
+no keys stored in GitHub). It runs on pushes that touch `infra/**`, and can be triggered manually
+(`workflow_dispatch`) to choose a region and toggles. On success it prints the exact user-secrets to set.
 
-One-time setup (per subscription): create an Entra app with a federated credential for this repo,
-grant it `Owner` (or `Contributor` + `User Access Administrator`) on the subscription, and add the
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` repository secrets. See the
-comments at the top of the workflow file for details.
+One-time setup (per subscription): create an Entra app with a federated credential for this repo, grant
+it `Owner` (or `Contributor` + `User Access Administrator`), and add the `AZURE_CLIENT_ID`,
+`AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` repository secrets. See the comments at the top of the
+workflow file.
 
-### Option B — deploy from your machine
+### Option C — deploy from your machine
 
 ```powershell
 az login
@@ -218,21 +267,21 @@ $me = az ad signed-in-user show --query id -o tsv
 az deployment sub create --location eastus2 --template-file infra/main.bicep `
   --parameters infra/main.parameters.json principalId=$me
 
-# ...or include Azure OpenAI for desktop recaps:
+# ...or include the Foundry account (chat Summary + FLUX Vision):
 az deployment sub create --location eastus2 --template-file infra/main.bicep `
   --parameters infra/main.parameters.json principalId=$me deployOpenAi=true
 ```
 
-The deployment **outputs** map directly to the user-secrets above
-(`speechRegion`, `speechResourceId`, `openAiEndpoint`, `openAiDeployment`).
+The deployment **outputs** map directly to the config keys (`speechRegion`, `speechResourceId`,
+`openAiEndpoint`, `openAiDeployment`, `fluxDeployment`).
 
 ## Dependencies
 
 | Package | Purpose |
 |---|---|
-| [NAudio](https://github.com/naudio/NAudio) | WASAPI loopback capture + resampling |
+| [NAudio](https://github.com/naudio/NAudio) | WASAPI loopback + mic capture and resampling |
 | [Microsoft.CognitiveServices.Speech](https://learn.microsoft.com/azure/ai-services/speech-service/) | Continuous speech recognition + diarization |
-| [Azure.AI.OpenAI](https://learn.microsoft.com/azure/ai-services/openai/) | AI recaps (desktop SUMMARY view) |
+| [Azure.AI.OpenAI](https://learn.microsoft.com/azure/ai-services/openai/) | AI recaps + Vision concept tier (Foundry chat) |
 | [Azure.Identity](https://learn.microsoft.com/dotnet/api/azure.identity) | Keyless Entra ID auth (`AzureCliCredential`) |
 
 ## License
