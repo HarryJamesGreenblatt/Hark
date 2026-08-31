@@ -216,6 +216,7 @@ public partial class InstallerWindow : Window
     void EnterPostInstall(string message)
     {
         _phase = Phase.PostInstall;
+        ConfigPanel.Visibility = Visibility.Collapsed;   // provisioning gets its own uncluttered view (no scrolling)
         ProvisionPanel.Visibility = Visibility.Visible;
         ActionBtn.Content = "Finish";
         ActionBtn.IsEnabled = true;
@@ -370,6 +371,7 @@ public partial class InstallerWindow : Window
                 if (result.Config.TryGetValue("HARK_AOAI_IMAGE_DEPLOYMENT", out var v5)) _aoaiImageDeploymentBox.Text = v5;
             }
             if (BuildConfigMap() is { } cfg) SaveConfigAndSecrets(cfg);   // persist so the installed app reads it
+            ConfigPanel.Visibility = Visibility.Visible;                  // reveal the resolved values as confirmation
             Status("Provisioned — settings saved. You can Finish.");
         }
         catch (Exception ex)

@@ -64,26 +64,41 @@ internal static class AzureProvisioner
         create.Append(" deployOpenAiImage=").Append(o.DeployImage ? "true" : "false");
         if (!string.IsNullOrWhiteSpace(o.AccountNameOverride))
             create.Append(" openAiAccountName=").Append(o.AccountNameOverride);
-        // -o none: az can throw "content ... already consumed" while formatting the create response even
-        // though the deployment SUCCEEDED, so we don't read outputs here — nor trust this exit code.
-        create.Append(" --only-show-errors -o none");
+        // --no-wait: submit and return immediately. The synchronous form makes az long-poll the ARM
+        // operation and (in some az builds) throw "content ... already consumed" while reading that
+        // streamed response; submitting + polling `show` ourselves avoids that code path entirely.
+        create.Append(" --no-wait --only-show-errors -o none");
 
-        var (_, _, createErr) = await RunAzAsync(create.ToString(), ct).ConfigureAwait(false);
+        var (createCode, _, createErr) = await RunAzAsync(create.ToString(), ct).ConfigureAwait(false);
+        if (createCode != 0)
+            return new Result(false, Tail(createErr.Length > 0 ? createErr : "Couldn't submit the deployment."), null);
 
-        // Verify the ACTUAL deployment state with a separate call (immune to the create-response bug).
-        var (stateCode, state, _) = await RunAzAsync(
-            $"deployment sub show --name {name} --query properties.provisioningState -o tsv --only-show-errors", ct)
-            .ConfigureAwait(false);
-
-        if (stateCode != 0 || !string.Equals(state, "Succeeded", StringComparison.OrdinalIgnoreCase))
+        // Poll for a terminal provisioning state (up to ~10 minutes). A transient show failure just retries.
+        string state = string.Empty;
+        for (int i = 0; i < 120 && !ct.IsCancellationRequested; i++)
         {
-            var msg = createErr.Length > 0 ? createErr
+            await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+            var (sc, s, _) = await RunAzAsync(
+                $"deployment sub show --name {name} --query properties.provisioningState -o tsv --only-show-errors", ct)
+                .ConfigureAwait(false);
+            if (sc == 0 && s.Length > 0)
+            {
+                state = s;
+                if (IsTerminal(s)) break;
+            }
+        }
+
+        if (!string.Equals(state, "Succeeded", StringComparison.OrdinalIgnoreCase))
+        {
+            var (_, err, _) = await RunAzAsync(
+                $"deployment sub show --name {name} --query properties.error -o json --only-show-errors", ct)
+                .ConfigureAwait(false);
+            var msg = err.Length > 0 && err != "null" ? err
                 : state.Length > 0 ? $"Deployment state: {state}"
-                : "Deployment did not complete.";
+                : "Deployment did not complete in time.";
             return new Result(false, Tail(msg), null);
         }
 
-        // Succeeded — fetch outputs separately.
         var (outCode, outputs, outErr) = await RunAzAsync(
             $"deployment sub show --name {name} --query properties.outputs -o json --only-show-errors", ct)
             .ConfigureAwait(false);
@@ -99,6 +114,9 @@ internal static class AzureProvisioner
             return new Result(false, $"Deployed, but its outputs couldn't be read ({ex.Message}).", null);
         }
     }
+
+    /// <summary>True for a terminal ARM deployment state.</summary>
+    private static bool IsTerminal(string state) => state is "Succeeded" or "Failed" or "Canceled";
 
     /// <summary>Maps the deployment's outputs object to the HARK_* config keys the app reads.</summary>
     private static Dictionary<string, string> ParseOutputs(string outputsJson)
