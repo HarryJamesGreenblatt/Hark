@@ -351,7 +351,8 @@ public partial class InstallerWindow : Window
                 ProvAccountName.Text.Trim(),
                 principalId,
                 ProvDeployOpenAi.IsChecked == true,
-                ProvDeployImage.IsChecked == true);
+                ProvDeployImage.IsChecked == true,
+                ParseCapacity(ProvFluxCapacity.Text));
 
             var templateFile = ExtractTemplates();
             Status($"Provisioning to subscription {sub}…  This can take several minutes — please wait.");
@@ -386,6 +387,9 @@ public partial class InstallerWindow : Window
 
     /// <summary>Trimmed text, or a fallback when blank.</summary>
     static string OrDefault(string s, string fallback) => string.IsNullOrWhiteSpace(s) ? fallback : s.Trim();
+
+    /// <summary>Parses the FLUX capacity field: a positive number, or null to auto-fit to the quota.</summary>
+    static int? ParseCapacity(string text) => int.TryParse(text.Trim(), out var c) && c > 0 ? c : null;
 
     /// <summary>Extracts the embedded infra to a temp folder and returns the deployable template path.</summary>
     static string ExtractTemplates()

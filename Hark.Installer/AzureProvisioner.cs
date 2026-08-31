@@ -19,7 +19,8 @@ internal static class AzureProvisioner
         string? AccountNameOverride,
         string PrincipalId,
         bool DeployOpenAi,
-        bool DeployImage);
+        bool DeployImage,
+        int? FluxCapacity);   // null = auto-fit to the subscription's FLUX.2-pro quota
 
     /// <summary>The outcome of a provisioning run: success + the config the app should read, or an error.</summary>
     internal sealed record Result(bool Ok, string Message, IReadOnlyDictionary<string, string>? Config);
@@ -50,6 +51,9 @@ internal static class AzureProvisioner
     {
         var name = "hark-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 
+        // Auto-fit FLUX capacity to the target subscription's quota headroom when not overridden.
+        int fluxCapacity = o.FluxCapacity ?? await ResolveFluxCapacityAsync(o.Location, ct).ConfigureAwait(false);
+
         var create = new StringBuilder();
         create.Append("deployment sub create");
         create.Append(" --name ").Append(name);
@@ -62,6 +66,8 @@ internal static class AzureProvisioner
         create.Append(" principalType=User");
         create.Append(" deployOpenAi=").Append(o.DeployOpenAi ? "true" : "false");
         create.Append(" deployOpenAiImage=").Append(o.DeployImage ? "true" : "false");
+        // FLUX capacity (RPM) must fit the target subscription's FLUX.2-pro quota, or preflight validation fails.
+        create.Append(" fluxCapacity=").Append(fluxCapacity);
         if (!string.IsNullOrWhiteSpace(o.AccountNameOverride))
             create.Append(" openAiAccountName=").Append(o.AccountNameOverride);
         // --no-wait: submit and return immediately. The synchronous form makes az long-poll the ARM
@@ -117,6 +123,34 @@ internal static class AzureProvisioner
 
     /// <summary>True for a terminal ARM deployment state.</summary>
     private static bool IsTerminal(string state) => state is "Succeeded" or "Failed" or "Canceled";
+
+    /// <summary>
+    /// The FLUX.2-pro (GlobalStandard) capacity to request: the subscription's available quota headroom in
+    /// the region, so provisioning fits whatever the target sub allows. Falls back to 1 if quota can't be read.
+    /// </summary>
+    private static async Task<int> ResolveFluxCapacityAsync(string location, CancellationToken ct)
+    {
+        var (code, json, _) = await RunAzAsync(
+            $"cognitiveservices usage list --location {location} -o json --only-show-errors", ct).ConfigureAwait(false);
+        if (code != 0 || json.Length == 0) return 1;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var u in doc.RootElement.EnumerateArray())
+            {
+                if (u.TryGetProperty("name", out var n) && n.TryGetProperty("value", out var v)
+                    && string.Equals(v.GetString(), "AIServices.GlobalStandard.FLUX.2-pro", StringComparison.OrdinalIgnoreCase))
+                {
+                    double limit = u.TryGetProperty("limit", out var l) ? l.GetDouble() : 0;
+                    double current = u.TryGetProperty("currentValue", out var c) ? c.GetDouble() : 0;
+                    var available = (int)Math.Floor(limit - current);
+                    return available > 0 ? available : 1;
+                }
+            }
+        }
+        catch { /* fall back to a safe minimum */ }
+        return 1;
+    }
 
     /// <summary>Maps the deployment's outputs object to the HARK_* config keys the app reads.</summary>
     private static Dictionary<string, string> ParseOutputs(string outputsJson)

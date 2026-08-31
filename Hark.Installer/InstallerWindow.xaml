@@ -139,6 +139,9 @@
                         <TextBlock Text="Foundry account name (blank = auto-generate)" Foreground="#C8CDD4" FontSize="12"/>
                         <TextBox x:Name="ProvAccountName" Style="{StaticResource FieldBox}"/>
 
+                        <TextBlock Text="FLUX capacity — requests/min (blank = auto-fit to your quota)" Foreground="#C8CDD4" FontSize="12"/>
+                        <TextBox x:Name="ProvFluxCapacity" Style="{StaticResource FieldBox}"/>
+
                         <CheckBox x:Name="ProvDeployOpenAi" IsChecked="True" Foreground="#C8CDD4" Margin="0,2,0,6"
                                   Content="Deploy Summary + Vision (Azure OpenAI Foundry + FLUX)"/>
                         <CheckBox x:Name="ProvDeployImage" IsChecked="False" Foreground="#C8CDD4" Margin="0,0,0,12"
