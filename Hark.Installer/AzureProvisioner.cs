@@ -48,29 +48,51 @@ internal static class AzureProvisioner
     /// <summary>Runs the subscription-scoped deployment and maps its outputs to the app's config keys.</summary>
     internal static async Task<Result> ProvisionAsync(Options o, string templateFile, CancellationToken ct)
     {
-        var args = new StringBuilder();
-        args.Append("deployment sub create");
-        args.Append(" --name hark-").Append(DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
-        args.Append(" --location ").Append(o.Location);
-        args.Append(" --template-file \"").Append(templateFile).Append('"');
-        args.Append(" --parameters");
-        args.Append(" location=").Append(o.Location);
-        args.Append(" resourceGroupName=").Append(o.ResourceGroup);
-        args.Append(" principalId=").Append(o.PrincipalId);
-        args.Append(" principalType=User");
-        args.Append(" deployOpenAi=").Append(o.DeployOpenAi ? "true" : "false");
-        args.Append(" deployOpenAiImage=").Append(o.DeployImage ? "true" : "false");
-        if (!string.IsNullOrWhiteSpace(o.AccountNameOverride))
-            args.Append(" openAiAccountName=").Append(o.AccountNameOverride);
-        args.Append(" --query properties.outputs -o json");
+        var name = "hark-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 
-        var (code, stdout, stderr) = await RunAzAsync(args.ToString(), ct).ConfigureAwait(false);
-        if (code != 0)
-            return new Result(false, Tail(stderr.Length > 0 ? stderr : stdout), null);
+        var create = new StringBuilder();
+        create.Append("deployment sub create");
+        create.Append(" --name ").Append(name);
+        create.Append(" --location ").Append(o.Location);
+        create.Append(" --template-file \"").Append(templateFile).Append('"');
+        create.Append(" --parameters");
+        create.Append(" location=").Append(o.Location);
+        create.Append(" resourceGroupName=").Append(o.ResourceGroup);
+        create.Append(" principalId=").Append(o.PrincipalId);
+        create.Append(" principalType=User");
+        create.Append(" deployOpenAi=").Append(o.DeployOpenAi ? "true" : "false");
+        create.Append(" deployOpenAiImage=").Append(o.DeployImage ? "true" : "false");
+        if (!string.IsNullOrWhiteSpace(o.AccountNameOverride))
+            create.Append(" openAiAccountName=").Append(o.AccountNameOverride);
+        // -o none: az can throw "content ... already consumed" while formatting the create response even
+        // though the deployment SUCCEEDED, so we don't read outputs here — nor trust this exit code.
+        create.Append(" --only-show-errors -o none");
+
+        var (_, _, createErr) = await RunAzAsync(create.ToString(), ct).ConfigureAwait(false);
+
+        // Verify the ACTUAL deployment state with a separate call (immune to the create-response bug).
+        var (stateCode, state, _) = await RunAzAsync(
+            $"deployment sub show --name {name} --query properties.provisioningState -o tsv --only-show-errors", ct)
+            .ConfigureAwait(false);
+
+        if (stateCode != 0 || !string.Equals(state, "Succeeded", StringComparison.OrdinalIgnoreCase))
+        {
+            var msg = createErr.Length > 0 ? createErr
+                : state.Length > 0 ? $"Deployment state: {state}"
+                : "Deployment did not complete.";
+            return new Result(false, Tail(msg), null);
+        }
+
+        // Succeeded — fetch outputs separately.
+        var (outCode, outputs, outErr) = await RunAzAsync(
+            $"deployment sub show --name {name} --query properties.outputs -o json --only-show-errors", ct)
+            .ConfigureAwait(false);
+        if (outCode != 0)
+            return new Result(false, Tail(outErr.Length > 0 ? outErr : "Couldn't read deployment outputs."), null);
 
         try
         {
-            return new Result(true, "Provisioned.", ParseOutputs(stdout));
+            return new Result(true, "Provisioned.", ParseOutputs(outputs));
         }
         catch (Exception ex)
         {
