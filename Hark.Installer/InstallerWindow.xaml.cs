@@ -66,12 +66,13 @@ public partial class InstallerWindow : Window
         }
         catch { /* logo/icon is cosmetic */ }
 
-        // ── Config fields (revealed after install only when config.json is absent) ──
+        // ── Config fields (the landing; entered/confirmed before install). One Foundry account hosts
+        //    both the chat deployment (Summary) and the image deployment (Vision/FLUX). ──
         _regionBox              = AddConfigField("Azure Speech region", "e.g. eastus2");
         _resourceBox            = AddConfigField("Speech resource ID (ARM id)", "/subscriptions/.../Microsoft.CognitiveServices/accounts/...");
-        _aoaiEndpointBox        = AddConfigField("Azure OpenAI endpoint (optional — enables SUMMARY)", "https://<name>.openai.azure.com/");
-        _aoaiDeploymentBox      = AddConfigField("OpenAI chat deployment (optional)", "e.g. gpt-4.1-mini");
-        _aoaiImageDeploymentBox = AddConfigField("OpenAI image deployment (optional — enables Vision)", "e.g. gpt-image-1");
+        _aoaiEndpointBox        = AddConfigField("Foundry endpoint (optional — enables Summary + Vision)", "https://<name>.openai.azure.com/");
+        _aoaiDeploymentBox      = AddConfigField("Foundry chat deployment (optional)", "e.g. gpt-4.1-mini");
+        _aoaiImageDeploymentBox = AddConfigField("Foundry image deployment (optional — FLUX)", "e.g. flux2-pro");
 
         // Prefill from any detected config; the config fields ARE the landing view now.
         PrefillConfigFields();
