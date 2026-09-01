@@ -940,6 +940,19 @@ public partial class OverlayWindow : Window
         VisionCanvas.BeginAnimation(OpacityProperty, fade);
     }
 
+    /// <summary>
+    /// Clears ALL Vision session state — the pupil ring buffer/filler cycle, the diagram, the pupil image,
+    /// and any scrying sheen — so a new capture session starts with a blank crystal ball. Called on a caption
+    /// toggle (which bypasses <see cref="CloseVision"/>'s cleanup).
+    /// </summary>
+    public void ResetVision()
+    {
+        StopScrying();
+        StopPupilFiller();
+        ClearVisionDiagram();
+        HideVisionOrb();
+    }
+
     /// <summary>Shows a status line on the Vision page (idle hint, "conjuring…", unconfigured, or error).</summary>
     /// <param name="message">The status text to display.</param>
     public void SetVisionStatus(string message)

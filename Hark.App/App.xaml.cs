@@ -529,6 +529,12 @@ public partial class App : Application
         _overlay?.RenameSpeaker(oldName, applied);
         _overlay?.SetCaptionLines(BuildCaptionLines());
 
+        // The recap's follow-up-task owners reference speaker labels, so a rename makes the cached recap
+        // stale — invalidate it so the next SUMMARY view regenerates from the relabeled transcript.
+        _cachedRecap = null;
+        _cachedSpeakerRecap = null;
+        _cachedRevision = -1;
+
         // Follow any open page for the renamed speaker: merge into an existing one, or rebind in place.
         if (_speakerWindows.Remove(oldName, out var window))
         {
@@ -689,11 +695,14 @@ public partial class App : Application
         _cachedSpeakerRecap = null;
         _cachedRevision = -1;
 
-        // ...and any Vision state (a cleared store makes the render index and cache stale).
+        // ...and any Vision state (a cleared store makes the render index and cache stale). Also clear the
+        // overlay's pupil ring buffer + on-screen visuals so a toggled session never reuses the old one's.
         _cachedVisionImage = null;
+        _cachedDiagram = null;
         _cachedVisionRevision = -1;
         _lastVisionRenderIndex = 0;
         _shownVisionConcept = null;
+        _overlay?.ResetVision();
     }
 
     /// <summary>

@@ -46,6 +46,9 @@ public sealed class VisionRenderer
     /// </summary>
     private const int FluxRenderSize = 512;
 
+    /// <summary>Max permissible FLUX safety_tolerance (BFL range 0-5, 5 = least strict) — least content moderation.</summary>
+    private const int FluxSafetyTolerance = 5;
+
     /// <summary>The composed BFL provider URL, the model name, and the credential — used on the FLUX path.</summary>
     private readonly string? _providerUri;
     private readonly string? _deployment;
@@ -134,7 +137,9 @@ public sealed class VisionRenderer
 
         // Buffer the body as a string so a Content-Length header is set — the BFL provider endpoint
         // rejects the chunked (Transfer-Encoding) requests that JsonContent.Create would produce.
-        var payload = JsonSerializer.Serialize(new { model = _deployment, prompt, width = FluxRenderSize, height = FluxRenderSize });
+        // safety_tolerance 5 = the max permissible (BFL range 0-5, default 2) for input+output moderation —
+        // minimizes model-side content blocks (e.g. fairy-tale violence read too literally).
+        var payload = JsonSerializer.Serialize(new { model = _deployment, prompt, width = FluxRenderSize, height = FluxRenderSize, safety_tolerance = FluxSafetyTolerance });
         using var request = new HttpRequestMessage(HttpMethod.Post, _providerUri)
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
