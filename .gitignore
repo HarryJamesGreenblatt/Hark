@@ -25,5 +25,8 @@ publish-dev/
 publish-msix/
 installer-output/
 
+# Saved session reports (local scratch output)
+context/output/
+
 # Code Workspaces
 *.code-workspace 
