@@ -907,6 +907,7 @@ public partial class OverlayWindow : Window
         if (!_visionOpen) return;
         _visionAnimating = true;
         StopScrying();
+        LivePill.Visibility = Visibility.Collapsed;   // leaving review; a reopen starts live
         VisionClosed?.Invoke();   // cancel any in-flight conjure
 
         var zoom = new Duration(TimeSpan.FromMilliseconds(320));
@@ -951,6 +952,7 @@ public partial class OverlayWindow : Window
         StopPupilFiller();
         ClearVisionDiagram();
         HideVisionOrb();
+        ClearVisionHistory();
     }
 
     /// <summary>Shows a status line on the Vision page (idle hint, "conjuring…", unconfigured, or error).</summary>
@@ -1379,6 +1381,147 @@ public partial class OverlayWindow : Window
         pill.MouseEnter += (_, _) => popup.IsOpen = true;
         pill.MouseLeave += (_, _) => popup.IsOpen = false;
         canvas.Children.Add(popup);
+    }
+
+    // ── Vision timeline (history rail) ──
+
+    /// <summary>A past Vision beat kept for the timeline rail: its diagram + optional scene bytes.</summary>
+    private sealed record VisionBeat(InfographicConcept Diagram, byte[]? Scene);
+    private readonly List<VisionBeat> _visionBeats = new();
+    private const int VisionHistoryMax = 12;
+
+    /// <summary>Raised when the user opens a past beat for review (host should pause the live loop).</summary>
+    public event Action? VisionReviewRequested;
+    /// <summary>Raised when the user returns to the live present (host should resume the loop).</summary>
+    public event Action? VisionLiveRequested;
+
+    /// <summary>Records a completed beat (its diagram + optional scene) as a card in the timeline rail.</summary>
+    public void AddVisionBeat(InfographicConcept diagram, byte[]? scene)
+    {
+        if (diagram is null) return;
+        var beat = new VisionBeat(diagram, scene);
+        _visionBeats.Add(beat);
+        while (_visionBeats.Count > VisionHistoryMax && HistoryRail.Children.Count > 0)
+        {
+            _visionBeats.RemoveAt(0);
+            HistoryRail.Children.RemoveAt(0);
+        }
+        HistoryRail.Children.Add(BuildHistoryCard(beat));
+        HistoryRailPanel.Visibility = Visibility.Visible;
+        HistoryScroll.ScrollToBottom();
+    }
+
+    /// <summary>Builds a clickable timeline card: a scene thumbnail (or accent block) + the beat title.</summary>
+    private FrameworkElement BuildHistoryCard(VisionBeat beat)
+    {
+        FrameworkElement thumb;
+        if (beat.Scene is not null)
+        {
+            var bmp = new BitmapImage();
+            using (var ms = new MemoryStream(beat.Scene))
+            {
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.DecodePixelWidth = 148;
+                bmp.StreamSource = ms;
+                bmp.EndInit();
+            }
+            bmp.Freeze();
+            thumb = new Border
+            {
+                Height = 84,
+                CornerRadius = new CornerRadius(6),
+                Background = new ImageBrush(bmp) { Stretch = Stretch.UniformToFill },
+            };
+        }
+        else
+        {
+            var accent = DiagramColor(beat.Diagram.Nodes is { Count: > 0 } ? beat.Diagram.Nodes[0].Color : "blue");
+            thumb = new Border
+            {
+                Height = 84,
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Color.FromArgb(0x4D, accent.R, accent.G, accent.B)),
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(1),
+            };
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(thumb);
+        stack.Children.Add(new TextBlock
+        {
+            Text = beat.Diagram.Title ?? string.Empty,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xCD, 0xD4)),
+            FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+            MaxHeight = 32,
+            Margin = new Thickness(2, 5, 2, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+
+        var card = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 10),
+            Padding = new Thickness(6),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromRgb(0x14, 0x16, 0x1A)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Child = stack,
+        };
+        card.MouseLeftButtonUp += (_, _) => ShowHistoryBeat(beat);
+        return card;
+    }
+
+    /// <summary>Enters review: shows a past beat's diagram + scene and reveals the Live button.</summary>
+    private void ShowHistoryBeat(VisionBeat beat)
+    {
+        SetVisionDiagram(beat.Diagram);
+        if (beat.Scene is not null) ShowPupilBytes(beat.Scene);
+        LivePill.Visibility = Visibility.Visible;
+        VisionReviewRequested?.Invoke();
+    }
+
+    /// <summary>Returns from review to the live present (the most recent beat) and resumes the loop.</summary>
+    private void OnLivePillClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        LivePill.Visibility = Visibility.Collapsed;
+        if (_visionBeats.Count > 0)
+        {
+            var latest = _visionBeats[^1];
+            SetVisionDiagram(latest.Diagram);
+            if (latest.Scene is not null) ShowPupilBytes(latest.Scene);
+        }
+        VisionLiveRequested?.Invoke();
+    }
+
+    /// <summary>Displays image bytes in the pupil WITHOUT touching the filler ring buffer (review display).</summary>
+    private void ShowPupilBytes(byte[] png)
+    {
+        StopScrying();
+        var bmp = new BitmapImage();
+        using (var ms = new MemoryStream(png))
+        {
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = ms;
+            bmp.EndInit();
+        }
+        bmp.Freeze();
+        _lastPupilUpdateUtc = DateTime.UtcNow;   // suppress the filler cycle while reviewing
+        TransitionPupil(bmp);
+    }
+
+    /// <summary>Clears the timeline history + rail (on session reset).</summary>
+    private void ClearVisionHistory()
+    {
+        _visionBeats.Clear();
+        HistoryRail.Children.Clear();
+        HistoryRailPanel.Visibility = Visibility.Collapsed;
+        LivePill.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>

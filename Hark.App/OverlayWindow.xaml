@@ -803,6 +803,31 @@
                        HorizontalAlignment="Center" Margin="0,0,0,32"
                        FontFamily="Segoe UI Variable, Segoe UI" FontSize="11"
                        Foreground="#3A3F45" />
+
+            <!-- Timeline rail (left): past beats as clickable cards; click one to review, then go Live. -->
+            <Border x:Name="HistoryRailPanel" Visibility="Collapsed" HorizontalAlignment="Left"
+                    VerticalAlignment="Stretch" Width="168" Background="#080B10" Opacity="0.97">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="TIMELINE" Foreground="#8A8F96"
+                               FontFamily="Segoe UI Variable, Segoe UI" FontSize="11" FontWeight="SemiBold"
+                               Margin="16,16,16,10" />
+                    <ScrollViewer x:Name="HistoryScroll" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="HistoryRail" Margin="12,0,12,12" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Reviewing indicator: click to jump back to the live present. -->
+            <Border x:Name="LivePill" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,18,22,0" Background="#960A04" CornerRadius="16" Padding="14,7" Cursor="Hand"
+                    MouseLeftButtonUp="OnLivePillClick">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8" Fill="#FF281A" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="Reviewing — go Live" Foreground="#F0F4F8"
+                               FontFamily="Segoe UI Variable, Segoe UI" FontSize="12" FontWeight="SemiBold" />
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

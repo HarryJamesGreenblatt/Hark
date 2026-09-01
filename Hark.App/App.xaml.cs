@@ -108,6 +108,9 @@ public partial class App : Application
     /// <summary>The store revision the cached Vision image was conjured from.</summary>
     private int _cachedVisionRevision = -1;
 
+    /// <summary>True while the user is reviewing a past beat from the timeline — the autonomous loop pauses.</summary>
+    private bool _visionReviewing;
+
     /// <summary>Whether the full-window Vision page is currently open (drives the auto-conjure loop).</summary>
     private bool _visionPageOpen;
 
@@ -208,6 +211,8 @@ public partial class App : Application
         _overlay.SpeakerSelected += OpenSpeakerWindow;
         _overlay.SpeakerRenameRequested += OnSpeakerRenameRequested;
         _overlay.SummaryRequested += OnSummaryRequested;
+        _overlay.VisionReviewRequested += () => _visionReviewing = true;
+        _overlay.VisionLiveRequested += () => _visionReviewing = false;
         _overlay.MicToggleRequested += OnMicToggleRequested;
         _overlay.VisionRequested += OnVisionRequested;
         _overlay.VisionClosed += OnVisionClosed;
@@ -835,6 +840,7 @@ public partial class App : Application
     private void OnVisionClosed()
     {
         _visionPageOpen = false;
+        _visionReviewing = false;
         _visionTimer?.Stop();
         _visionCts?.Cancel();
     }
@@ -866,6 +872,7 @@ public partial class App : Application
     private async void OnVisionAutoTick(object? sender, EventArgs e)
     {
         if (!_visionPageOpen || _visionConjuring || _overlay is null) return;
+        if (_visionReviewing) return;   // paused while reviewing a past beat from the timeline
         if (_store.All.Count == 0) return;
 
         // Self-heal: if the page was opened before captioning, build the service once config + speech exist.
@@ -922,11 +929,15 @@ public partial class App : Application
 
             _overlay.BeginVisionConjuring();   // scrying sheen on the eye while the pupil scene renders
 
+            InfographicConcept? beatDiagram = null;   // captured for the timeline once both land
+            byte[]? beatScene = null;
+
             async Task ShowDiagramAsync()
             {
                 var diagram = await diagramTask;
                 if (cts.IsCancellationRequested || diagram is null) return;
                 _cachedDiagram = diagram;
+                beatDiagram = diagram;
                 _overlay.SetVisionDiagram(diagram);
             }
 
@@ -937,6 +948,7 @@ public partial class App : Application
                     var result = await sceneTask;
                     if (cts.IsCancellationRequested || result?.Image is null) return;
                     _cachedVisionImage = result.Image;
+                    beatScene = result.Image;
                     _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
                     _overlay.SetVisionImage(result.Image);
                 }
@@ -953,6 +965,10 @@ public partial class App : Application
             }
 
             await Task.WhenAll(ShowDiagramAsync(), ShowSceneAsync());
+
+            // Record the completed beat in the timeline rail (skip a superseded one).
+            if (!cts.IsCancellationRequested && beatDiagram is not null)
+                _overlay.AddVisionBeat(beatDiagram, beatScene);
         }
         catch (OperationCanceledException)
         {
