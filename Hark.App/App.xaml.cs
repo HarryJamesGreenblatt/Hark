@@ -939,6 +939,7 @@ public partial class App : Application
                 _cachedDiagram = diagram;
                 beatDiagram = diagram;
                 _overlay.SetVisionDiagram(diagram);
+                _overlay.FadePupilToEye();   // topic shifted — rest on the red glow until the new scene lands
             }
 
             async Task ShowSceneAsync()
@@ -949,7 +950,7 @@ public partial class App : Application
                     if (cts.IsCancellationRequested) return;
                     if (result?.Image is null)
                     {
-                        _overlay.HandleMissingScene();   // no image this beat — keep a scene up (or rest on the eye)
+                        _overlay.FadePupilToEye();   // no image this beat — stay on the red glow
                         return;
                     }
                     _cachedVisionImage = result.Image;
@@ -964,8 +965,8 @@ public partial class App : Application
                 catch (Exception)
                 {
                     // A render error (e.g. a FLUX 200-with-no-image or content refusal) yields no image;
-                    // keep a recent scene up rather than a spinner or a bare eye.
-                    if (!cts.IsCancellationRequested) _overlay.HandleMissingScene();
+                    // stay on the red glow until a later beat's scene lands.
+                    if (!cts.IsCancellationRequested) _overlay.FadePupilToEye();
                 }
             }
 

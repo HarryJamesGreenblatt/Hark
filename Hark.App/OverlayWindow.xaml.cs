@@ -987,21 +987,6 @@ public partial class OverlayWindow : Window
     /// <summary>Stops the conjuring/scrying state (e.g. a conjure that yielded no image). Idempotent.</summary>
     public void StopVisionConjuring() => StopScrying();
 
-    /// <summary>
-    /// Handles a beat whose scene render produced no image: FILLS the pupil rather than baring the eye —
-    /// keeps the currently-held scene if one is up, else shows the most recent buffered scene; only when
-    /// nothing has ever rendered does it rest on the plain red sound-reactive eye.
-    /// </summary>
-    public void HandleMissingScene()
-    {
-        StopScrying();
-        VisionStatusText.Visibility = Visibility.Collapsed;
-        bool orbShown = VisionOrb.Visibility == Visibility.Visible && VisionOrb.Opacity > 0.01;
-        if (orbShown) return;                                   // a held scene already fills the pupil
-        if (_pupilBuffer.Count > 0) { TransitionPupil(_pupilBuffer[^1]); return; }
-        HideVisionOrb();                                        // nothing rendered yet — rest on the red eye
-    }
-
     /// <summary>Shows the art-director concept as text when there's no render tier (or it failed).</summary>
     /// <param name="concept">The one-line visual concept.</param>
     public void SetVisionConcept(string concept)
@@ -1211,6 +1196,27 @@ public partial class OverlayWindow : Window
         VisionOrb.BeginAnimation(OpacityProperty, null);
         VisionOrb.Opacity = 0;
         VisionOrb.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Cross-fades the pupil image out to reveal the red sound-reactive cornea — used when a new topic
+    /// rolls in ahead of its scene, so the eye rests red (aligned with the topic change) until the new
+    /// image is ready to cross-fade back in. No-op when the pupil is already the bare eye.
+    /// </summary>
+    public void FadePupilToEye()
+    {
+        if (VisionOrb.Visibility != Visibility.Visible || VisionOrb.Opacity < 0.01) return;
+        var fade = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(550)))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+        };
+        fade.Completed += (_, _) =>
+        {
+            if (VisionOrb.Opacity >= 0.01) return;   // a new image re-showed mid-fade
+            VisionOrb.Visibility = Visibility.Collapsed;
+            VisionOrbBrush.ImageSource = null;       // clear so the reveal doesn't flash the old scene
+        };
+        VisionOrb.BeginAnimation(OpacityProperty, fade);
     }
 
     /// <summary>Maps a node colour word to a saturated fill colour (also used for its glow and connector).</summary>
