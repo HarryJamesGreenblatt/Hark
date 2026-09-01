@@ -14,6 +14,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Hark.Core.Summarization;
 using Hark.Oracle.Vision;
+using Hark.App.Reporting;
 using Size = System.Windows.Size;
 using FontFamily = System.Windows.Media.FontFamily;
 
@@ -1805,22 +1806,27 @@ public partial class OverlayWindow : Window
     /// <summary>Remembers the folder of the last saved report, so the picker reopens there.</summary>
     private string? _lastReportDir;
 
+    /// <summary>Report writers offered in the Save picker, in filter order (first = default extension).</summary>
+    private readonly IReadOnlyList<IReportWriter> _reportWriters = new IReportWriter[]
+    {
+        new MarkdownReportWriter(),
+        new HtmlReportWriter(),
+    };
+
     /// <summary>
-    /// Builds a full self-contained HTML report — transcript, the Conversation and Speakers recaps, and
-    /// the vision slideshow (each beat's diagram nodes + its scene image embedded as base64) — and asks
-    /// the user where to save it. Self-contained, so it persists past the temp scene cache (cleared on toggle).
+    /// Snapshots the session (transcript, recaps, vision slideshow) and asks the user where — and in
+    /// which format — to save it. Self-contained, so it persists past the temp scene cache (cleared on toggle).
     /// </summary>
     private async void SaveReport()
     {
-        var html = BuildReportHtml();
-        if (string.IsNullOrWhiteSpace(html)) return;   // nothing captured yet
+        var report = BuildSessionReport();
+        if (report is null) return;   // nothing captured yet
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Save Hark report",
-            FileName = $"Hark-{DateTime.Now:yyyyMMdd-HHmmss}.html",
-            DefaultExt = ".html",
-            Filter = "Web page (*.html)|*.html|All files (*.*)|*.*",
+            FileName = $"Hark-{DateTime.Now:yyyyMMdd-HHmmss}",
+            Filter = string.Join("|", _reportWriters.Select(w => $"{w.FilterName} (*{w.Extension})|*{w.Extension}")),
             AddExtension = true,
             OverwritePrompt = true,
             InitialDirectory = _lastReportDir
@@ -1828,7 +1834,11 @@ public partial class OverlayWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;   // user cancelled the picker
 
-        try { await File.WriteAllTextAsync(dialog.FileName, html); }
+        var ext = System.IO.Path.GetExtension(dialog.FileName);
+        var writer = _reportWriters.FirstOrDefault(w => string.Equals(w.Extension, ext, StringComparison.OrdinalIgnoreCase))
+                     ?? _reportWriters[Math.Clamp(dialog.FilterIndex - 1, 0, _reportWriters.Count - 1)];
+
+        try { await writer.WriteAsync(report, dialog.FileName); }
         catch { return; }   // disk/permission hiccup — skip feedback rather than crash
         _lastReportDir = System.IO.Path.GetDirectoryName(dialog.FileName);
 
@@ -1839,133 +1849,28 @@ public partial class OverlayWindow : Window
         SaveButton.ToolTip = "Save a full report (transcript, summary, vision)";
     }
 
-    /// <summary>Builds the self-contained HTML report; returns empty when there is nothing worth saving.</summary>
-    private string BuildReportHtml()
+    /// <summary>Snapshots the current session into a format-agnostic report; null when there's nothing worth saving.</summary>
+    private SessionReport? BuildSessionReport()
     {
         var transcript = FullText();
         bool hasRecap = _lastRecap is not null;
         bool hasSpeakers = _lastSpeakerRecap is { Speakers.Count: > 0 };
-        bool hasVision = _visionBeats.Count > 0;
-        if (string.IsNullOrWhiteSpace(transcript) && !hasRecap && !hasSpeakers && !hasVision)
-            return string.Empty;
 
-        var stamp = HtmlEscape(DateTime.Now.ToString("f"));
-        var sb = new StringBuilder();
-        sb.AppendLine("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
-        sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-        sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title><style>");
-        sb.AppendLine("body{font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;background:#0B0D10;color:#DEE3E8;margin:0;padding:32px;line-height:1.5}");
-        sb.AppendLine("h1{font-size:22px;margin:0 0 4px}.sub{color:#8A8F96;font-size:13px;margin-bottom:28px}");
-        sb.AppendLine("h2{font-size:16px;color:#C8CDD4;border-bottom:1px solid #23272E;padding-bottom:6px;margin-top:36px}");
-        sb.AppendLine("h3{font-size:14px;margin:18px 0 6px}");
-        sb.AppendLine("pre{white-space:pre-wrap;word-wrap:break-word;background:#111418;border:1px solid #1E232A;border-radius:8px;padding:14px;font-family:inherit;font-size:13px}");
-        sb.AppendLine("ul{margin:6px 0}li{margin:3px 0}p{margin:6px 0}");
-        sb.AppendLine(".beat{background:#111418;border:1px solid #1E232A;border-radius:10px;padding:16px;margin:16px 0}");
-        sb.AppendLine(".beat img{max-width:360px;width:100%;border-radius:8px;margin-top:10px;display:block}");
-        sb.AppendLine(".chips{margin:6px 0}.chip{display:inline-block;border-radius:12px;padding:3px 10px;margin:3px 6px 3px 0;font-size:12px;font-weight:600;color:#fff}");
-        sb.AppendLine(".detail{color:#9AA0A6;font-size:12px;margin:2px 0 8px 2px}");
-        sb.AppendLine("</style></head><body>");
-        sb.Append("<h1>Hark session report</h1><div class=\"sub\">").Append(stamp).AppendLine("</div>");
-
-        if (!string.IsNullOrWhiteSpace(transcript))
-            sb.Append("<h2>Transcript</h2><pre>").Append(HtmlEscape(transcript)).AppendLine("</pre>");
-        if (hasRecap) AppendRecapHtml(sb, _lastRecap!);
-        if (hasSpeakers) AppendSpeakersHtml(sb, _lastSpeakerRecap!);
-        if (hasVision) AppendVisionHtml(sb);
-
-        sb.AppendLine("</body></html>");
-        return sb.ToString();
-    }
-
-    /// <summary>Appends the Conversation recap (overview, topics, follow-ups) as HTML.</summary>
-    private static void AppendRecapHtml(StringBuilder sb, MeetingRecap recap)
-    {
-        sb.AppendLine("<h2>Conversation summary</h2>");
-        if (!string.IsNullOrWhiteSpace(recap.Overview))
-            sb.Append("<p>").Append(HtmlEscape(recap.Overview.Trim())).AppendLine("</p>");
-        foreach (var t in recap.Topics)
+        var beats = new List<ReportBeat>(_visionBeats.Count);
+        foreach (var b in _visionBeats)
         {
-            sb.Append("<h3>").Append(HtmlEscape(t.Title?.Trim())).AppendLine("</h3>");
-            if (!string.IsNullOrWhiteSpace(t.Summary)) sb.Append("<p>").Append(HtmlEscape(t.Summary.Trim())).AppendLine("</p>");
-            if (t.Details.Count > 0)
-            {
-                sb.AppendLine("<ul>");
-                foreach (var d in t.Details) sb.Append("<li>").Append(HtmlEscape(d?.Trim())).AppendLine("</li>");
-                sb.AppendLine("</ul>");
-            }
+            byte[]? scene = null;
+            if (!string.IsNullOrEmpty(b.ScenePath) && File.Exists(b.ScenePath))
+                try { scene = File.ReadAllBytes(b.ScenePath); } catch { /* skip a missing frame */ }
+            beats.Add(new ReportBeat(b.Diagram.Title ?? string.Empty, b.Diagram.Nodes ?? [], scene));
         }
-        if (recap.FollowUps.Count > 0)
-        {
-            sb.AppendLine("<h3>Follow-up tasks</h3><ul>");
-            foreach (var f in recap.FollowUps)
-            {
-                sb.Append("<li>").Append(HtmlEscape(f.Task?.Trim()));
-                if (!string.IsNullOrWhiteSpace(f.Owner)) sb.Append(" \u2014 ").Append(HtmlEscape(f.Owner.Trim()));
-                sb.AppendLine("</li>");
-            }
-            sb.AppendLine("</ul>");
-        }
-    }
 
-    /// <summary>Appends the Speakers recap (one heading + points per speaker) as HTML.</summary>
-    private static void AppendSpeakersHtml(StringBuilder sb, SpeakerRecap recap)
-    {
-        sb.AppendLine("<h2>Speakers</h2>");
-        foreach (var s in recap.Speakers)
-        {
-            sb.Append("<h3>").Append(HtmlEscape(s.Speaker?.Trim())).AppendLine("</h3>");
-            if (!string.IsNullOrWhiteSpace(s.Summary)) sb.Append("<p>").Append(HtmlEscape(s.Summary.Trim())).AppendLine("</p>");
-            if (s.Points.Count > 0)
-            {
-                sb.AppendLine("<ul>");
-                foreach (var p in s.Points) sb.Append("<li>").Append(HtmlEscape(p?.Trim())).AppendLine("</li>");
-                sb.AppendLine("</ul>");
-            }
-        }
-    }
+        if (string.IsNullOrWhiteSpace(transcript) && !hasRecap && !hasSpeakers && beats.Count == 0)
+            return null;
 
-    /// <summary>Appends the vision slideshow — each beat's title, colour-coded nodes + details, and its scene image (base64).</summary>
-    private void AppendVisionHtml(StringBuilder sb)
-    {
-        sb.AppendLine("<h2>Vision slideshow</h2>");
-        int n = 1;
-        foreach (var beat in _visionBeats)
-        {
-            sb.AppendLine("<div class=\"beat\">");
-            sb.Append("<h3>").Append(n++).Append(". ").Append(HtmlEscape(beat.Diagram.Title?.Trim())).AppendLine("</h3>");
-            var nodes = beat.Diagram.Nodes;
-            if (nodes is { Count: > 0 })
-            {
-                sb.AppendLine("<div class=\"chips\">");
-                foreach (var node in nodes)
-                {
-                    var c = DiagramColor(node.Color);
-                    sb.Append("<span class=\"chip\" style=\"background:#").Append($"{c.R:X2}{c.G:X2}{c.B:X2}")
-                      .Append("\">").Append(HtmlEscape(node.Label?.Trim())).AppendLine("</span>");
-                }
-                sb.AppendLine("</div>");
-                foreach (var node in nodes)
-                    if (!string.IsNullOrWhiteSpace(node.Detail))
-                        sb.Append("<div class=\"detail\"><b>").Append(HtmlEscape(node.Label?.Trim()))
-                          .Append(":</b> ").Append(HtmlEscape(node.Detail.Trim())).AppendLine("</div>");
-            }
-            var dataUri = SceneDataUri(beat.ScenePath);
-            if (dataUri is not null) sb.Append("<img alt=\"scene\" src=\"").Append(dataUri).AppendLine("\">");
-            sb.AppendLine("</div>");
-        }
+        return new SessionReport("Hark session report", DateTime.Now, transcript,
+            _lastRecap, _lastSpeakerRecap, beats);
     }
-
-    /// <summary>Reads a scene PNG from disk and returns it as a base64 data URI (null if missing/unreadable).</summary>
-    private static string? SceneDataUri(string? path)
-    {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
-        try { return "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path)); }
-        catch { return null; }
-    }
-
-    /// <summary>XML/HTML-escapes a string for safe insertion as element text or an attribute value.</summary>
-    private static string HtmlEscape(string? s) =>
-        System.Security.SecurityElement.Escape(s ?? string.Empty) ?? string.Empty;
 
     /// <summary>Docks the window as a full working-area-width bar flush at the top of the screen.</summary>
     private void PositionAsTopBar()
