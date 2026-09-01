@@ -57,7 +57,7 @@ public sealed class InfographicDesigner
         var options = new ChatCompletionOptions
         {
             Temperature = 0.5f,   // legible, on-topic diagrams; less variety than the scene tier
-            MaxOutputTokenCount = 800,
+            MaxOutputTokenCount = 1200,   // room for a one-sentence detail per node
             ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
                 "infographic_concept", BinaryData.FromString(Schema), jsonSchemaIsStrict: true),
         };
@@ -70,7 +70,7 @@ public sealed class InfographicDesigner
 
         var nodes = (dto.Nodes ?? [])
             .Where(n => !string.IsNullOrWhiteSpace(n.Label))
-            .Select(n => new InfographicNode(n.Label!, n.Color ?? string.Empty))
+            .Select(n => new InfographicNode(n.Label!, n.Color ?? string.Empty, n.Detail ?? string.Empty))
             .ToList();
 
         return new InfographicConcept(dto.Title ?? string.Empty, nodes);
@@ -86,7 +86,8 @@ public sealed class InfographicDesigner
 
     private sealed record NodeDto(
         [property: JsonPropertyName("label")] string? Label,
-        [property: JsonPropertyName("color")] string? Color);
+        [property: JsonPropertyName("color")] string? Color,
+        [property: JsonPropertyName("detail")] string? Detail);
 
     #endregion
 
@@ -97,8 +98,9 @@ public sealed class InfographicDesigner
         "You are the Oracle — HARK's inner seer, drawing a live mind-map of a conversation. You are given a " +
         "window of what is being said RIGHT NOW. Distil this beat into a radial mind-map.\n\n" +
         "Return: a TITLE (the central topic of this beat, a few words) and up to 5 NODES (the key facets or " +
-        "sub-points actually being discussed). Each NODE has a short LABEL (1-4 words) and a COLOR word " +
-        "(choose from blue, green, orange, purple, red).\n\n" +
+        "sub-points actually being discussed). Each NODE has a short LABEL (1-4 words), a COLOR word " +
+        "(choose from blue, green, orange, purple, red), and a DETAIL: ONE concise sentence expanding the " +
+        "label with the specific point from the conversation (shown when the user hovers the node).\n\n" +
         "Keep labels short and legible; prefer 3-5 nodes drawn straight from what is being said. Never use hex " +
         "colour codes — only the colour words above. The mind-map should teach, at a glance, what THIS beat is " +
         "about.";
@@ -115,9 +117,10 @@ public sealed class InfographicDesigner
                 "type": "object",
                 "properties": {
                   "label": { "type": "string" },
-                  "color": { "type": "string", "enum": ["blue", "green", "orange", "purple", "red"] }
+                  "color": { "type": "string", "enum": ["blue", "green", "orange", "purple", "red"] },
+                  "detail": { "type": "string" }
                 },
-                "required": ["label", "color"],
+                "required": ["label", "color", "detail"],
                 "additionalProperties": false
               }
             }

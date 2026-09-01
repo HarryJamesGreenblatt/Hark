@@ -1,9 +1,10 @@
 namespace Hark.Oracle.Vision;
 
-/// <summary>One node of a radial mind-map: a short label and a colour word for its pill.</summary>
+/// <summary>One node of a radial mind-map: a short label, a colour word, and a hover detail.</summary>
 /// <param name="Label">A short label (1-4 words) naming a facet of the topic.</param>
 /// <param name="Color">A plain colour word for the node (blue/green/orange/purple/red) — never a hex code (FLUX leaks hex as text).</param>
-public sealed record InfographicNode(string Label, string Color);
+/// <param name="Detail">One concise sentence expanding the label, revealed when the node is hovered; may be empty.</param>
+public sealed record InfographicNode(string Label, string Color, string Detail = "");
 
 /// <summary>
 /// A radial infographic intent distilled from a window of live conversation — the diagram analogue of

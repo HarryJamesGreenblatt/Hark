@@ -672,7 +672,9 @@
 
             <!-- Diagram class (infographic mode): a native radial mind-map drawn behind the eye, which sits
                  in its centre as the hub. Nodes are positioned deterministically so the hub is always exact. -->
-            <Grid x:Name="DiagramLayer" IsHitTestVisible="False" />
+            <!-- Native radial mind-map behind the eye. Hit-testable so node pills reveal details on hover;
+                 the transparent canvas/empty areas have no fill, so they don't capture clicks. -->
+            <Grid x:Name="DiagramLayer" IsHitTestVisible="True" />
 
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                 <!-- Large HAL-eye replica, centred on the canvas as the diagram's hub; driven by the same

@@ -1260,12 +1260,11 @@ public partial class OverlayWindow : Window
             FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
             FontSize = 30,
             FontWeight = FontWeights.Bold,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
             VerticalAlignment = System.Windows.VerticalAlignment.Top,
-            Margin = new Thickness(0, 48, 0, 0),
+            Margin = new Thickness(40, 48, 40, 0),   // span the window width; wrap only near the edges
             TextAlignment = TextAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 720,
         };
         root.Children.Add(title);
 
@@ -1336,7 +1335,50 @@ public partial class OverlayWindow : Window
             Canvas.SetLeft(pill, nx - pill.DesiredSize.Width / 2);
             Canvas.SetTop(pill, ny - pill.DesiredSize.Height / 2);
             canvas.Children.Add(pill);
+
+            // Hover a pill to reveal its detail; placed outward (above top-half nodes, below bottom-half).
+            if (!string.IsNullOrWhiteSpace(nodes[i].Detail))
+                AttachDetailPopup(canvas, pill, nodes[i].Detail, fill, ny < cy);
         }
+    }
+
+    /// <summary>Wires a hover popup to a node pill, revealing its detail on a HAL-styled bubble.</summary>
+    private static void AttachDetailPopup(Canvas canvas, Border pill, string detail, Color accent, bool aboveCentre)
+    {
+        var popup = new System.Windows.Controls.Primitives.Popup
+        {
+            PlacementTarget = pill,
+            Placement = aboveCentre
+                ? System.Windows.Controls.Primitives.PlacementMode.Top
+                : System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            AllowsTransparency = true,
+            PopupAnimation = System.Windows.Controls.Primitives.PopupAnimation.Fade,
+            StaysOpen = true,
+            Child = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x1A)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x99, accent.R, accent.G, accent.B)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(13, 9, 13, 9),
+                Margin = new Thickness(8),
+                MaxWidth = 260,
+                Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 18, ShadowDepth = 2, Opacity = 0.6 },
+                Child = new TextBlock
+                {
+                    Text = detail,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xDE, 0xE3, 0xE8)),
+                    FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+                    FontSize = 14,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+
+        pill.Cursor = System.Windows.Input.Cursors.Hand;
+        pill.MouseEnter += (_, _) => popup.IsOpen = true;
+        pill.MouseLeave += (_, _) => popup.IsOpen = false;
+        canvas.Children.Add(popup);
     }
 
     /// <summary>
