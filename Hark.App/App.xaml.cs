@@ -946,7 +946,12 @@ public partial class App : Application
                 try
                 {
                     var result = await sceneTask;
-                    if (cts.IsCancellationRequested || result?.Image is null) return;
+                    if (cts.IsCancellationRequested) return;
+                    if (result?.Image is null)
+                    {
+                        _overlay.HandleMissingScene();   // no image this beat — keep a scene up (or rest on the eye)
+                        return;
+                    }
                     _cachedVisionImage = result.Image;
                     beatScene = result.Image;
                     _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
@@ -956,11 +961,11 @@ public partial class App : Application
                 {
                     // Superseded/closed — expected.
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    // TEMPORARY DIAGNOSTIC: surface WHY the pupil scene stopped (e.g. a FLUX 429) on
-                    // autonomous beats, which are otherwise swallowed. Remove once the cause is confirmed.
-                    _tray?.ShowBalloonTip(6000, "HARK — Vision render failed", ex.Message, ToolTipIcon.Warning);
+                    // A render error (e.g. a FLUX 200-with-no-image or content refusal) yields no image;
+                    // keep a recent scene up rather than a spinner or a bare eye.
+                    if (!cts.IsCancellationRequested) _overlay.HandleMissingScene();
                 }
             }
 

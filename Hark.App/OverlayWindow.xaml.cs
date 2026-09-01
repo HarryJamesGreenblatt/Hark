@@ -138,9 +138,6 @@ public partial class OverlayWindow : Window
     /// <summary>Accumulated time (s) that advances the highlight's slow drift, independent of audio.</summary>
     private double _glossPhase;
 
-    /// <summary>Whether the orb is currently in its "conjuring" (scrying-sheen) state, awaiting a render.</summary>
-    private bool _scrying;
-
     /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
     private TimeSpan _lastRenderTime;
 
@@ -970,56 +967,40 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Begins the orb's "conjuring" state — a slow scrying sheen sweeping the cornea plus a status
-    /// line — but only when no image is currently shown (a first open). During autonomous beats the
-    /// previous image is held on screen, so there's nothing to buffer and we leave it untouched.
+    /// Marks the start of a conjure. Deliberately shows NO synthetic "loading" spinner — while a scene
+    /// renders the crystal ball simply rests in its regular red sound-reactive state; a held image, if
+    /// any, stays until the new one lands.
     /// </summary>
     public void BeginVisionConjuring()
     {
-        if (VisionOrb.Visibility == Visibility.Visible && VisionOrb.Opacity > 0.01) return;
-        StartScrying();
-        VisionStatusText.Text = "Conjuring a vision…";
-        VisionStatusText.Visibility = Visibility.Visible;
+        VisionStatusText.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>
-    /// While still scrying (image not yet rendered), surfaces the fast concept as an on-topic buffer
-    /// caption so the conversation's current thread is reflected immediately, ahead of the slow image.
-    /// </summary>
-    /// <param name="concept">The art director's one-line concept.</param>
-    public void SetVisionConjuringConcept(string concept)
-    {
-        if (!_scrying || string.IsNullOrWhiteSpace(concept)) return;
-        VisionStatusText.Text = concept;
-        VisionStatusText.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>Starts the rotating, softly-pulsing scrying sheen over the cornea.</summary>
-    private void StartScrying()
-    {
-        _scrying = true;
-        ScryingSheen.Visibility = Visibility.Visible;
-        ScryingSheen.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0.14, 0.5, new Duration(TimeSpan.FromSeconds(1.1)))
-            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
-        ScryingRotate.BeginAnimation(RotateTransform.AngleProperty,
-            new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(2.8)))
-            { RepeatBehavior = RepeatBehavior.Forever });
-    }
-
-    /// <summary>Fades out and stops the scrying sheen (when a render lands, or the page closes).</summary>
+    /// <summary>Ensures the (legacy) scrying sheen is hidden. Kept as a no-op-safe clear called on render/close.</summary>
     private void StopScrying()
     {
-        if (!_scrying) return;
-        _scrying = false;
         ScryingRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-        var fade = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(350)));
-        fade.Completed += (_, _) => ScryingSheen.Visibility = Visibility.Collapsed;
-        ScryingSheen.BeginAnimation(OpacityProperty, fade);
+        ScryingSheen.BeginAnimation(OpacityProperty, null);
+        ScryingSheen.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Stops the conjuring/scrying state (e.g. a conjure that yielded no image). Idempotent.</summary>
     public void StopVisionConjuring() => StopScrying();
+
+    /// <summary>
+    /// Handles a beat whose scene render produced no image: FILLS the pupil rather than baring the eye —
+    /// keeps the currently-held scene if one is up, else shows the most recent buffered scene; only when
+    /// nothing has ever rendered does it rest on the plain red sound-reactive eye.
+    /// </summary>
+    public void HandleMissingScene()
+    {
+        StopScrying();
+        VisionStatusText.Visibility = Visibility.Collapsed;
+        bool orbShown = VisionOrb.Visibility == Visibility.Visible && VisionOrb.Opacity > 0.01;
+        if (orbShown) return;                                   // a held scene already fills the pupil
+        if (_pupilBuffer.Count > 0) { TransitionPupil(_pupilBuffer[^1]); return; }
+        HideVisionOrb();                                        // nothing rendered yet — rest on the red eye
+    }
 
     /// <summary>Shows the art-director concept as text when there's no render tier (or it failed).</summary>
     /// <param name="concept">The one-line visual concept.</param>
@@ -1039,21 +1020,23 @@ public partial class OverlayWindow : Window
     private DateTime _lastPupilUpdateUtc = DateTime.MinValue;
     /// <summary>Index into <see cref="_pupilBuffer"/> for the filler cycle.</summary>
     private int _fillerIndex;
-    /// <summary>Index into <see cref="_visionBeats"/> for the idle topic (whole-beat) recap cycle.</summary>
+    /// <summary>Index into <see cref="_visionBeats"/> for the review-mode slideshow.</summary>
     private int _fillerBeatIndex;
-    /// <summary>Wall-clock of the last idle topic advance, to pace the recap slower than the image cycle.</summary>
-    private DateTime _lastTopicCycleUtc = DateTime.MinValue;
+    /// <summary>Wall-clock of the last filler advance (a review slide, or a live image-blink), pacing each.</summary>
+    private DateTime _lastFillerAdvanceUtc = DateTime.MinValue;
     /// <summary>Drives the pupil filler cycle while the Vision page is open.</summary>
     private DispatcherTimer? _fillerTimer;
 
     private const int PupilBufferMax = 16;
     /// <summary>Average-hash Hamming distance at or below which two scenes count as near-identical (skip buffering).</summary>
     private const int PupilDupDistance = 6;
-    private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(2);
     /// <summary>Only cycle once the pupil has been static past the normal render cadence (i.e. renders are stalling).</summary>
     private static readonly TimeSpan FillerIdle = TimeSpan.FromSeconds(16);
-    /// <summary>Minimum dwell on each topic during the idle recap cycle (calmer than the image cadence).</summary>
-    private static readonly TimeSpan TopicCycleInterval = TimeSpan.FromSeconds(8);
+    /// <summary>Dwell on each beat while the review-mode slideshow auto-advances the timeline.</summary>
+    private static readonly TimeSpan ReviewSlideInterval = TimeSpan.FromSeconds(7);
+    /// <summary>Pace of the live image-blink (buffer cycle) while a render is stalled.</summary>
+    private static readonly TimeSpan BlinkInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Renders a Vision image (PNG bytes) inside the HAL eye's orb — the cornea becomes the crystal
@@ -1141,39 +1124,42 @@ public partial class OverlayWindow : Window
         _pupilHashes.Clear();
         _fillerIndex = 0;
         _fillerBeatIndex = 0;
-        _lastTopicCycleUtc = DateTime.MinValue;
+        _lastFillerAdvanceUtc = DateTime.MinValue;
         _lastPupilUpdateUtc = DateTime.MinValue;
     }
 
     /// <summary>
-    /// When fresh renders have stalled past the normal cadence (conversation gone quiet, or a run of
-    /// RAI-blocked beats), the pupil stops freezing on one image and instead walks the whole timeline as
-    /// a chronological recap — cycling the TOPIC (diagram) and its scene together, not just the image.
-    /// If there aren't yet two beats, it falls back to cycling recent images alone. A genuinely fresh
-    /// render resets the stall clock and pauses the cycle; manual review (Live pill showing) holds it.
+    /// Fills gaps when a render stalls, differently by mode: in LIVE it cycles only the recent IMAGE
+    /// buffer (the organic "blink through the buildup") and leaves the mind-map on the current topic —
+    /// a live topic changes only when a genuinely new beat arrives. In REVIEW (Live pill showing) it
+    /// auto-advances the whole timeline as a synchronized topic + scene slideshow.
     /// </summary>
     private void OnPupilFillerTick(object? sender, EventArgs e)
     {
         if (!_visionOpen) return;
-        if (LivePill.Visibility == Visibility.Visible) return;              // manual review — hold on the chosen beat
-        if (DateTime.UtcNow - _lastPupilUpdateUtc < FillerIdle) return;     // fresh enough — hold the current scene
 
-        // Idle recap: step through whole beats (topic + scene) at a calmer cadence than the image cycle.
-        if (_visionBeats.Count >= 2)
+        var now = DateTime.UtcNow;
+
+        // REVIEW: walk the whole timeline as a synchronized topic + scene slideshow.
+        if (LivePill.Visibility == Visibility.Visible)
         {
-            if (DateTime.UtcNow - _lastTopicCycleUtc < TopicCycleInterval) return;
-            _lastTopicCycleUtc = DateTime.UtcNow;
+            if (_visionBeats.Count < 2 || now - _lastFillerAdvanceUtc < ReviewSlideInterval) return;
+            _lastFillerAdvanceUtc = now;
             _fillerBeatIndex = (_fillerBeatIndex + 1) % _visionBeats.Count;
             var beat = _visionBeats[_fillerBeatIndex];
             SetVisionDiagram(beat.Diagram);
-            ShowPupilFromPath(beat.ScenePath, holdClock: false);           // walk the scene from disk; keep the cycle going
+            ShowPupilFromPath(beat.ScenePath, holdClock: true);
             return;
         }
 
-        // Fallback (only one beat's worth of topic): cycle recent images alone.
-        if (_pupilBuffer.Count < 2) return;
-        _fillerIndex = (_fillerIndex + 1) % _pupilBuffer.Count;
-        TransitionPupil(_pupilBuffer[_fillerIndex]);   // don't reset the stall clock — keep cycling until a real render lands
+        // LIVE: on a stall/null, blink through recent IMAGES only — keep the current topic put.
+        if (now - _lastPupilUpdateUtc >= FillerIdle && _pupilBuffer.Count >= 2
+            && now - _lastFillerAdvanceUtc >= BlinkInterval)
+        {
+            _lastFillerAdvanceUtc = now;
+            _fillerIndex = (_fillerIndex + 1) % _pupilBuffer.Count;
+            TransitionPupil(_pupilBuffer[_fillerIndex]);
+        }
     }
 
     /// <summary>
@@ -1445,7 +1431,7 @@ public partial class OverlayWindow : Window
         HistoryRail.Children.Add(BuildHistoryCard(beat, scene));
         HistoryRailPanel.Visibility = Visibility.Visible;
         HistoryScroll.ScrollToBottom();
-        _fillerBeatIndex = _visionBeats.Count - 1;   // idle recap resumes from the newest, wrapping to the start
+        _fillerBeatIndex = _visionBeats.Count - 1;   // a new live beat is the newest; the review slideshow starts from here
     }
 
     /// <summary>Builds a clickable timeline card: a small scene thumbnail (or accent block) + the beat title.</summary>
@@ -1519,6 +1505,8 @@ public partial class OverlayWindow : Window
         SetVisionDiagram(beat.Diagram);
         ShowPupilFromPath(beat.ScenePath, holdClock: true);
         LivePill.Visibility = Visibility.Visible;
+        _fillerBeatIndex = Math.Max(0, _visionBeats.IndexOf(beat));   // slideshow resumes from the chosen beat
+        _lastFillerAdvanceUtc = DateTime.UtcNow;                      // dwell on it before auto-advancing
         VisionReviewRequested?.Invoke();
     }
 
@@ -1601,7 +1589,7 @@ public partial class OverlayWindow : Window
         HistoryRailPanel.Visibility = Visibility.Collapsed;
         LivePill.Visibility = Visibility.Collapsed;
         _fillerBeatIndex = 0;
-        _lastTopicCycleUtc = DateTime.MinValue;
+        _lastFillerAdvanceUtc = DateTime.MinValue;
         if (_visionCacheDir is not null)
         {
             try { if (Directory.Exists(_visionCacheDir)) Directory.Delete(_visionCacheDir, true); } catch { /* best effort */ }
