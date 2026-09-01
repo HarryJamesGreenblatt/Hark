@@ -238,6 +238,9 @@ public partial class OverlayWindow : Window
         // Copy whatever the window currently shows — captions (per scope) or the recap (per style).
         CopyButton.Click += (_, _) => CopyView();
 
+        // Save a full self-contained report (transcript + summary + vision slideshow) to disk.
+        SaveButton.Click += (_, _) => SaveReport();
+
         UpdateModeButtons();
         UpdateScopeButtons();
         UpdateStyleButtons();
@@ -1035,6 +1038,10 @@ public partial class OverlayWindow : Window
     private DateTime _lastPupilUpdateUtc = DateTime.MinValue;
     /// <summary>Index into <see cref="_pupilBuffer"/> for the filler cycle.</summary>
     private int _fillerIndex;
+    /// <summary>Index into <see cref="_visionBeats"/> for the idle topic (whole-beat) recap cycle.</summary>
+    private int _fillerBeatIndex;
+    /// <summary>Wall-clock of the last idle topic advance, to pace the recap slower than the image cycle.</summary>
+    private DateTime _lastTopicCycleUtc = DateTime.MinValue;
     /// <summary>Drives the pupil filler cycle while the Vision page is open.</summary>
     private DispatcherTimer? _fillerTimer;
 
@@ -1044,6 +1051,8 @@ public partial class OverlayWindow : Window
     private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(5);
     /// <summary>Only cycle once the pupil has been static past the normal render cadence (i.e. renders are stalling).</summary>
     private static readonly TimeSpan FillerIdle = TimeSpan.FromSeconds(16);
+    /// <summary>Minimum dwell on each topic during the idle recap cycle (calmer than the image cadence).</summary>
+    private static readonly TimeSpan TopicCycleInterval = TimeSpan.FromSeconds(8);
 
     /// <summary>
     /// Renders a Vision image (PNG bytes) inside the HAL eye's orb — the cornea becomes the crystal
@@ -1130,18 +1139,38 @@ public partial class OverlayWindow : Window
         _pupilBuffer.Clear();
         _pupilHashes.Clear();
         _fillerIndex = 0;
+        _fillerBeatIndex = 0;
+        _lastTopicCycleUtc = DateTime.MinValue;
         _lastPupilUpdateUtc = DateTime.MinValue;
     }
 
     /// <summary>
-    /// When fresh renders have stalled past the normal cadence (e.g. a run of RAI-blocked beats), cycle
-    /// the pupil through recent scenes so it stays alive instead of freezing on one image. A genuinely
-    /// fresh render resets the stall clock and pauses the cycle.
+    /// When fresh renders have stalled past the normal cadence (conversation gone quiet, or a run of
+    /// RAI-blocked beats), the pupil stops freezing on one image and instead walks the whole timeline as
+    /// a chronological recap — cycling the TOPIC (diagram) and its scene together, not just the image.
+    /// If there aren't yet two beats, it falls back to cycling recent images alone. A genuinely fresh
+    /// render resets the stall clock and pauses the cycle; manual review (Live pill showing) holds it.
     /// </summary>
     private void OnPupilFillerTick(object? sender, EventArgs e)
     {
-        if (!_visionOpen || _pupilBuffer.Count < 2) return;
-        if (DateTime.UtcNow - _lastPupilUpdateUtc < FillerIdle) return;   // fresh enough — hold the current scene
+        if (!_visionOpen) return;
+        if (LivePill.Visibility == Visibility.Visible) return;              // manual review — hold on the chosen beat
+        if (DateTime.UtcNow - _lastPupilUpdateUtc < FillerIdle) return;     // fresh enough — hold the current scene
+
+        // Idle recap: step through whole beats (topic + scene) at a calmer cadence than the image cycle.
+        if (_visionBeats.Count >= 2)
+        {
+            if (DateTime.UtcNow - _lastTopicCycleUtc < TopicCycleInterval) return;
+            _lastTopicCycleUtc = DateTime.UtcNow;
+            _fillerBeatIndex = (_fillerBeatIndex + 1) % _visionBeats.Count;
+            var beat = _visionBeats[_fillerBeatIndex];
+            SetVisionDiagram(beat.Diagram);
+            ShowPupilFromPath(beat.ScenePath, holdClock: false);           // walk the scene from disk; keep the cycle going
+            return;
+        }
+
+        // Fallback (only one beat's worth of topic): cycle recent images alone.
+        if (_pupilBuffer.Count < 2) return;
         _fillerIndex = (_fillerIndex + 1) % _pupilBuffer.Count;
         TransitionPupil(_pupilBuffer[_fillerIndex]);   // don't reset the stall clock — keep cycling until a real render lands
     }
@@ -1385,44 +1414,51 @@ public partial class OverlayWindow : Window
 
     // ── Vision timeline (history rail) ──
 
-    /// <summary>A past Vision beat kept for the timeline rail: its diagram + optional scene bytes.</summary>
-    private sealed record VisionBeat(InfographicConcept Diagram, byte[]? Scene);
+    /// <summary>A past Vision beat kept for the timeline rail: its diagram + on-disk scene path.</summary>
+    private sealed record VisionBeat(InfographicConcept Diagram, string? ScenePath);
     private readonly List<VisionBeat> _visionBeats = new();
-    private const int VisionHistoryMax = 12;
+    /// <summary>Bounds the rail's UI-element count (scenes live on disk, so this no longer bounds RAM).</summary>
+    private const int VisionHistoryMax = 60;
+
+    /// <summary>Per-run temp folder that full-res scene PNGs are spilled to, so RAM stays flat with session length.</summary>
+    private string? _visionCacheDir;
+    private int _sceneSeq;
 
     /// <summary>Raised when the user opens a past beat for review (host should pause the live loop).</summary>
     public event Action? VisionReviewRequested;
     /// <summary>Raised when the user returns to the live present (host should resume the loop).</summary>
     public event Action? VisionLiveRequested;
 
-    /// <summary>Records a completed beat (its diagram + optional scene) as a card in the timeline rail.</summary>
+    /// <summary>Records a completed beat as a rail card, spilling its scene image to disk (thumbnail kept in RAM).</summary>
     public void AddVisionBeat(InfographicConcept diagram, byte[]? scene)
     {
         if (diagram is null) return;
-        var beat = new VisionBeat(diagram, scene);
+        var beat = new VisionBeat(diagram, scene is not null ? WriteSceneToCache(scene) : null);
         _visionBeats.Add(beat);
         while (_visionBeats.Count > VisionHistoryMax && HistoryRail.Children.Count > 0)
         {
+            TryDeleteCache(_visionBeats[0].ScenePath);   // reclaim the dropped beat's disk file
             _visionBeats.RemoveAt(0);
             HistoryRail.Children.RemoveAt(0);
         }
-        HistoryRail.Children.Add(BuildHistoryCard(beat));
+        HistoryRail.Children.Add(BuildHistoryCard(beat, scene));
         HistoryRailPanel.Visibility = Visibility.Visible;
         HistoryScroll.ScrollToBottom();
+        _fillerBeatIndex = _visionBeats.Count - 1;   // idle recap resumes from the newest, wrapping to the start
     }
 
-    /// <summary>Builds a clickable timeline card: a scene thumbnail (or accent block) + the beat title.</summary>
-    private FrameworkElement BuildHistoryCard(VisionBeat beat)
+    /// <summary>Builds a clickable timeline card: a small scene thumbnail (or accent block) + the beat title.</summary>
+    private FrameworkElement BuildHistoryCard(VisionBeat beat, byte[]? sceneBytes)
     {
         FrameworkElement thumb;
-        if (beat.Scene is not null)
+        if (sceneBytes is not null)
         {
             var bmp = new BitmapImage();
-            using (var ms = new MemoryStream(beat.Scene))
+            using (var ms = new MemoryStream(sceneBytes))
             {
                 bmp.BeginInit();
                 bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.DecodePixelWidth = 148;
+                bmp.DecodePixelWidth = 148;   // thumbnail only — the full image stays on disk
                 bmp.StreamSource = ms;
                 bmp.EndInit();
             }
@@ -1476,11 +1512,11 @@ public partial class OverlayWindow : Window
         return card;
     }
 
-    /// <summary>Enters review: shows a past beat's diagram + scene and reveals the Live button.</summary>
+    /// <summary>Enters review: shows a past beat's diagram + scene (decoded from disk) and reveals the Live button.</summary>
     private void ShowHistoryBeat(VisionBeat beat)
     {
         SetVisionDiagram(beat.Diagram);
-        if (beat.Scene is not null) ShowPupilBytes(beat.Scene);
+        ShowPupilFromPath(beat.ScenePath, holdClock: true);
         LivePill.Visibility = Visibility.Visible;
         VisionReviewRequested?.Invoke();
     }
@@ -1493,35 +1529,84 @@ public partial class OverlayWindow : Window
         {
             var latest = _visionBeats[^1];
             SetVisionDiagram(latest.Diagram);
-            if (latest.Scene is not null) ShowPupilBytes(latest.Scene);
+            ShowPupilFromPath(latest.ScenePath, holdClock: true);
         }
         VisionLiveRequested?.Invoke();
     }
 
-    /// <summary>Displays image bytes in the pupil WITHOUT touching the filler ring buffer (review display).</summary>
-    private void ShowPupilBytes(byte[] png)
+    /// <summary>Decodes a scene PNG from disk into the pupil. <paramref name="holdClock"/> stalls the idle cycle (review); otherwise the recap keeps walking.</summary>
+    private void ShowPupilFromPath(string? path, bool holdClock)
     {
-        StopScrying();
-        var bmp = new BitmapImage();
-        using (var ms = new MemoryStream(png))
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+        BitmapImage bmp;
+        try
         {
+            bmp = new BitmapImage();
+            using var fs = File.OpenRead(path);
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.StreamSource = ms;
+            bmp.StreamSource = fs;
             bmp.EndInit();
+            bmp.Freeze();
         }
-        bmp.Freeze();
-        _lastPupilUpdateUtc = DateTime.UtcNow;   // suppress the filler cycle while reviewing
+        catch { return; }
+        StopScrying();
+        if (holdClock) _lastPupilUpdateUtc = DateTime.UtcNow;   // review holds; idle recap keeps cycling
         TransitionPupil(bmp);
     }
 
-    /// <summary>Clears the timeline history + rail (on session reset).</summary>
+    /// <summary>Writes a full-res scene PNG to the per-run disk cache; returns its path (null on failure).</summary>
+    private string? WriteSceneToCache(byte[] png)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(CacheDir(), $"scene-{_sceneSeq++:D5}.png");
+            File.WriteAllBytes(path, png);
+            return path;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Lazily creates the per-run scene cache dir, sweeping orphaned dirs left by dead runs.</summary>
+    private string CacheDir()
+    {
+        if (_visionCacheDir is null)
+        {
+            var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Hark");
+            try
+            {
+                if (Directory.Exists(root))
+                    foreach (var d in Directory.GetDirectories(root, "vision-*"))
+                        try { Directory.Delete(d, true); } catch { /* another run may hold it */ }
+            }
+            catch { /* best effort */ }
+            _visionCacheDir = System.IO.Path.Combine(root, "vision-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_visionCacheDir);
+        }
+        return _visionCacheDir;
+    }
+
+    private static void TryDeleteCache(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* best effort */ }
+    }
+
+    /// <summary>Clears the timeline history + rail and deletes the on-disk scene cache (on session reset).</summary>
     private void ClearVisionHistory()
     {
         _visionBeats.Clear();
         HistoryRail.Children.Clear();
         HistoryRailPanel.Visibility = Visibility.Collapsed;
         LivePill.Visibility = Visibility.Collapsed;
+        _fillerBeatIndex = 0;
+        _lastTopicCycleUtc = DateTime.MinValue;
+        if (_visionCacheDir is not null)
+        {
+            try { if (Directory.Exists(_visionCacheDir)) Directory.Delete(_visionCacheDir, true); } catch { /* best effort */ }
+            _visionCacheDir = null;
+            _sceneSeq = 0;
+        }
     }
 
     /// <summary>
@@ -1716,6 +1801,171 @@ public partial class OverlayWindow : Window
 
         return sb.ToString().TrimEnd();
     }
+
+    /// <summary>Remembers the folder of the last saved report, so the picker reopens there.</summary>
+    private string? _lastReportDir;
+
+    /// <summary>
+    /// Builds a full self-contained HTML report — transcript, the Conversation and Speakers recaps, and
+    /// the vision slideshow (each beat's diagram nodes + its scene image embedded as base64) — and asks
+    /// the user where to save it. Self-contained, so it persists past the temp scene cache (cleared on toggle).
+    /// </summary>
+    private async void SaveReport()
+    {
+        var html = BuildReportHtml();
+        if (string.IsNullOrWhiteSpace(html)) return;   // nothing captured yet
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save Hark report",
+            FileName = $"Hark-{DateTime.Now:yyyyMMdd-HHmmss}.html",
+            DefaultExt = ".html",
+            Filter = "Web page (*.html)|*.html|All files (*.*)|*.*",
+            AddExtension = true,
+            OverwritePrompt = true,
+            InitialDirectory = _lastReportDir
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dialog.ShowDialog(this) != true) return;   // user cancelled the picker
+
+        try { await File.WriteAllTextAsync(dialog.FileName, html); }
+        catch { return; }   // disk/permission hiccup — skip feedback rather than crash
+        _lastReportDir = System.IO.Path.GetDirectoryName(dialog.FileName);
+
+        SaveButton.Content = "\uE73E";   // checkmark
+        SaveButton.ToolTip = "Saved";
+        await Task.Delay(1400);
+        SaveButton.Content = "\uE74E";   // back to the save glyph
+        SaveButton.ToolTip = "Save a full report (transcript, summary, vision)";
+    }
+
+    /// <summary>Builds the self-contained HTML report; returns empty when there is nothing worth saving.</summary>
+    private string BuildReportHtml()
+    {
+        var transcript = FullText();
+        bool hasRecap = _lastRecap is not null;
+        bool hasSpeakers = _lastSpeakerRecap is { Speakers.Count: > 0 };
+        bool hasVision = _visionBeats.Count > 0;
+        if (string.IsNullOrWhiteSpace(transcript) && !hasRecap && !hasSpeakers && !hasVision)
+            return string.Empty;
+
+        var stamp = HtmlEscape(DateTime.Now.ToString("f"));
+        var sb = new StringBuilder();
+        sb.AppendLine("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
+        sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+        sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title><style>");
+        sb.AppendLine("body{font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;background:#0B0D10;color:#DEE3E8;margin:0;padding:32px;line-height:1.5}");
+        sb.AppendLine("h1{font-size:22px;margin:0 0 4px}.sub{color:#8A8F96;font-size:13px;margin-bottom:28px}");
+        sb.AppendLine("h2{font-size:16px;color:#C8CDD4;border-bottom:1px solid #23272E;padding-bottom:6px;margin-top:36px}");
+        sb.AppendLine("h3{font-size:14px;margin:18px 0 6px}");
+        sb.AppendLine("pre{white-space:pre-wrap;word-wrap:break-word;background:#111418;border:1px solid #1E232A;border-radius:8px;padding:14px;font-family:inherit;font-size:13px}");
+        sb.AppendLine("ul{margin:6px 0}li{margin:3px 0}p{margin:6px 0}");
+        sb.AppendLine(".beat{background:#111418;border:1px solid #1E232A;border-radius:10px;padding:16px;margin:16px 0}");
+        sb.AppendLine(".beat img{max-width:360px;width:100%;border-radius:8px;margin-top:10px;display:block}");
+        sb.AppendLine(".chips{margin:6px 0}.chip{display:inline-block;border-radius:12px;padding:3px 10px;margin:3px 6px 3px 0;font-size:12px;font-weight:600;color:#fff}");
+        sb.AppendLine(".detail{color:#9AA0A6;font-size:12px;margin:2px 0 8px 2px}");
+        sb.AppendLine("</style></head><body>");
+        sb.Append("<h1>Hark session report</h1><div class=\"sub\">").Append(stamp).AppendLine("</div>");
+
+        if (!string.IsNullOrWhiteSpace(transcript))
+            sb.Append("<h2>Transcript</h2><pre>").Append(HtmlEscape(transcript)).AppendLine("</pre>");
+        if (hasRecap) AppendRecapHtml(sb, _lastRecap!);
+        if (hasSpeakers) AppendSpeakersHtml(sb, _lastSpeakerRecap!);
+        if (hasVision) AppendVisionHtml(sb);
+
+        sb.AppendLine("</body></html>");
+        return sb.ToString();
+    }
+
+    /// <summary>Appends the Conversation recap (overview, topics, follow-ups) as HTML.</summary>
+    private static void AppendRecapHtml(StringBuilder sb, MeetingRecap recap)
+    {
+        sb.AppendLine("<h2>Conversation summary</h2>");
+        if (!string.IsNullOrWhiteSpace(recap.Overview))
+            sb.Append("<p>").Append(HtmlEscape(recap.Overview.Trim())).AppendLine("</p>");
+        foreach (var t in recap.Topics)
+        {
+            sb.Append("<h3>").Append(HtmlEscape(t.Title?.Trim())).AppendLine("</h3>");
+            if (!string.IsNullOrWhiteSpace(t.Summary)) sb.Append("<p>").Append(HtmlEscape(t.Summary.Trim())).AppendLine("</p>");
+            if (t.Details.Count > 0)
+            {
+                sb.AppendLine("<ul>");
+                foreach (var d in t.Details) sb.Append("<li>").Append(HtmlEscape(d?.Trim())).AppendLine("</li>");
+                sb.AppendLine("</ul>");
+            }
+        }
+        if (recap.FollowUps.Count > 0)
+        {
+            sb.AppendLine("<h3>Follow-up tasks</h3><ul>");
+            foreach (var f in recap.FollowUps)
+            {
+                sb.Append("<li>").Append(HtmlEscape(f.Task?.Trim()));
+                if (!string.IsNullOrWhiteSpace(f.Owner)) sb.Append(" \u2014 ").Append(HtmlEscape(f.Owner.Trim()));
+                sb.AppendLine("</li>");
+            }
+            sb.AppendLine("</ul>");
+        }
+    }
+
+    /// <summary>Appends the Speakers recap (one heading + points per speaker) as HTML.</summary>
+    private static void AppendSpeakersHtml(StringBuilder sb, SpeakerRecap recap)
+    {
+        sb.AppendLine("<h2>Speakers</h2>");
+        foreach (var s in recap.Speakers)
+        {
+            sb.Append("<h3>").Append(HtmlEscape(s.Speaker?.Trim())).AppendLine("</h3>");
+            if (!string.IsNullOrWhiteSpace(s.Summary)) sb.Append("<p>").Append(HtmlEscape(s.Summary.Trim())).AppendLine("</p>");
+            if (s.Points.Count > 0)
+            {
+                sb.AppendLine("<ul>");
+                foreach (var p in s.Points) sb.Append("<li>").Append(HtmlEscape(p?.Trim())).AppendLine("</li>");
+                sb.AppendLine("</ul>");
+            }
+        }
+    }
+
+    /// <summary>Appends the vision slideshow — each beat's title, colour-coded nodes + details, and its scene image (base64).</summary>
+    private void AppendVisionHtml(StringBuilder sb)
+    {
+        sb.AppendLine("<h2>Vision slideshow</h2>");
+        int n = 1;
+        foreach (var beat in _visionBeats)
+        {
+            sb.AppendLine("<div class=\"beat\">");
+            sb.Append("<h3>").Append(n++).Append(". ").Append(HtmlEscape(beat.Diagram.Title?.Trim())).AppendLine("</h3>");
+            var nodes = beat.Diagram.Nodes;
+            if (nodes is { Count: > 0 })
+            {
+                sb.AppendLine("<div class=\"chips\">");
+                foreach (var node in nodes)
+                {
+                    var c = DiagramColor(node.Color);
+                    sb.Append("<span class=\"chip\" style=\"background:#").Append($"{c.R:X2}{c.G:X2}{c.B:X2}")
+                      .Append("\">").Append(HtmlEscape(node.Label?.Trim())).AppendLine("</span>");
+                }
+                sb.AppendLine("</div>");
+                foreach (var node in nodes)
+                    if (!string.IsNullOrWhiteSpace(node.Detail))
+                        sb.Append("<div class=\"detail\"><b>").Append(HtmlEscape(node.Label?.Trim()))
+                          .Append(":</b> ").Append(HtmlEscape(node.Detail.Trim())).AppendLine("</div>");
+            }
+            var dataUri = SceneDataUri(beat.ScenePath);
+            if (dataUri is not null) sb.Append("<img alt=\"scene\" src=\"").Append(dataUri).AppendLine("\">");
+            sb.AppendLine("</div>");
+        }
+    }
+
+    /// <summary>Reads a scene PNG from disk and returns it as a base64 data URI (null if missing/unreadable).</summary>
+    private static string? SceneDataUri(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+        try { return "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path)); }
+        catch { return null; }
+    }
+
+    /// <summary>XML/HTML-escapes a string for safe insertion as element text or an attribute value.</summary>
+    private static string HtmlEscape(string? s) =>
+        System.Security.SecurityElement.Escape(s ?? string.Empty) ?? string.Empty;
 
     /// <summary>Docks the window as a full working-area-width bar flush at the top of the screen.</summary>
     private void PositionAsTopBar()

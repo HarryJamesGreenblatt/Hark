@@ -372,6 +372,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <!-- HAL-9000-style eye: silver frame, black socket, glowing red cornea (recording),
@@ -452,9 +453,32 @@
                         </Button.Template>
                     </Button>
 
+                    <!-- Save button: writes a full self-contained report (transcript + summary + the
+                     vision slideshow) to Documents\Hark\Reports, persisting past the temp cache. -->
+                    <Button Grid.Column="4" x:Name="SaveButton"
+                        Width="22" Height="22" Margin="10,0,0,0" Padding="0"
+                        FontFamily="Segoe MDL2 Assets" FontSize="12"
+                        Content="&#xE74E;"
+                        Foreground="#9AA0A6" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand"
+                        ToolTip="Save a full report (transcript, summary, vision)">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="bg" Property="Background" Value="#2A2D31" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
                     <!-- Mic toggle: mixes the local microphone — your own voice — into the captioned
                      stream. Lit = on. State/glyph set in code-behind. -->
-                    <Button Grid.Column="4" x:Name="MicButton"
+                    <Button Grid.Column="5" x:Name="MicButton"
                         Width="22" Height="22" Margin="10,0,0,0" Padding="0"
                         FontFamily="Segoe MDL2 Assets" FontSize="13"
                         Content="&#xE720;"
@@ -476,7 +500,7 @@
                     </Button>
 
                     <!-- Close button (✕): exits HARK. Red hover mirrors native window chrome. -->
-                    <Button Grid.Column="5" x:Name="CloseButton"
+                    <Button Grid.Column="6" x:Name="CloseButton"
                         Width="22" Height="22" Margin="10,0,0,0" Padding="0"
                         Content="✕" FontSize="11"
                         Foreground="#C8CCD0" Background="Transparent"
