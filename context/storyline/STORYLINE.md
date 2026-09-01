@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-08-31 (end of Episode 29. Field-testing refinements + a method course-correction: a caption **toggle now fully resets Vision** (pupil ring buffer + diagram), a speaker **rename now refreshes the recap's task owners**, and — after reading the **FLUX.2 API** first-party instead of guessing — the moderation dial **`safety_tolerance` is set to its max (5)**. Key research: Foundry provides **no built-in content filter for FLUX**, FLUX has **no style "modes"** (only model variants), and the fairy-tale block may be a separate **Microsoft prompt block-list** — so that fix is an **open test**. Prior arc (EP27–28): scene-oatmeal cured to the anchored evocative scene; the installer rewritten in **WPF** with in-app **Azure provisioning** (released **v1.0.3**). See [`EP29`](./EP29-field-refinements-and-reading-the-flux-api.md))._
+_Last updated: 2026-09-01 (end of Episode 30. Vision grew a **timeline rail** — click a past beat to review it, then a **Live** pill returns to the present; its scenes now **spill to disk** (`%TEMP%\Hark\vision-<guid>`) so RAM stays flat over long sessions (thumbnails only; history cap 12→60 now bounds UI elements, not RAM); the idle pupil filler walks whole beats as a **topic recap** during a lull. A new **Save** button aggregates every view **plus the vision slideshow** into a report, refactored into a pluggable **`SessionReport` + `IReportWriter`** model behind a **file picker** — **HTML + Markdown** today, with **PDF (WebView2) / PPTX + DOCX (Open XML)** as the planned first-party stack. A recap timing-gate remediation was **rolled back**: the real open front is the **null-scene gap** (an **image fallback** when a FLUX render fails), not cadence. See [`EP30`](./EP30-vision-timeline-disk-backed-scenes-and-multi-format-save.md))._
 
 - **Status:** CLI MVP + desktop overlay working **and now at 1.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -48,7 +48,11 @@ _Last updated: 2026-08-31 (end of Episode 29. Field-testing refinements + a meth
   wandering-hub / garbled-text / opaque-square failures of generating diagrams), freeing the generative
   model for the imagery it's actually good at. The render tier is **provider-agnostic** (a `VisionRenderer`
   that drives either the OpenAI `ImageClient` **or** the raw-HTTP **Black Forest Labs** route); **FLUX.2-pro
-  is the effective default** (dev user-secrets), gpt-image remains selectable by config.
+  is the effective default** (dev user-secrets), gpt-image remains selectable by config. Every conjured beat
+  is kept on a **timeline rail** (EP30) — click a past beat to **review** it (the loop pauses), a **Live**
+  pill returns to the present; scenes are **spilled to a per-run temp dir** (thumbnails-only in RAM). A
+  header **Save** button exports the whole session (transcript + both recaps + the vision slideshow) via a
+  pluggable **`SessionReport` / `IReportWriter`** registry behind a file picker (**HTML + Markdown** today).
 - **Pipeline engines (`Hark.Core`):**
   - Capture: `LoopbackCaptureService` (system playback / far side) plus, on the desktop,
     `MicCaptureService` (local mic). `HarkSession(mixMicrophone: …)` mixes the mic into the loopback
@@ -139,6 +143,7 @@ _Last updated: 2026-08-31 (end of Episode 29. Field-testing refinements + a meth
 | 27 | 2026-08-30 | [Cinnamon in the Oatmeal: the Anchored Evocative Scene](./EP27-scene-oatmeal-cured-anchored-evocative-scene.md) | Closed EP26's headline thread. **Freed** the photographic scene from EP22's literal-bias, **over-corrected into drift** (a lighthouse / lone wanderer, unrelated to the talk), then landed the **anchored-but-varied middle**: *the diagram labels the structure; the scene opens a window onto THIS beat's actual subject*, cinematically — the variety comes from the beats differing, not invented metaphors (forbid **both** generic-repeat and unrelated-metaphor). Added a **softened-prompt RAI retry** and an average-hash **filler-buffer dedupe**. Also **synced the pupil blink/crossfade** to the up-stroke (no early pop) and rendered the FLUX scene at **pupil-sized 512²** (from 1024²) with a wider 16-frame buffer. Verified across CENTCOM/others. Commits `448e426..e26aea7`. |
 | 28 | 2026-08-30 | [The WPF Installer & One-Click Azure Provisioning](./EP28-wpf-installer-and-one-click-azure-provisioning.md) | Rewrote the installer in **WPF** (fixing the Surface's squished high-DPI layout; resizable + scrollable, gliding progress) and gave it an in-app **"Provision Azure infrastructure"** facility — runs the same subscription deployment as the pipeline against **embedded, pre-compiled ARM JSON**, requires elevation, and **auto-fits FLUX capacity** to the target sub's quota (`az cognitiveservices usage list`). Reflowed to **config-first, install-LAST** (no more broken partial installs) with provisioning as an optional post-install view; persists to **config.json + user-secrets** for upgrade installs. Debugged a gauntlet: **SxS manifest** corruption (`--` in an XML comment), the az CLI **"content already consumed"** bug (fixed with `--no-wait` + poll `show`, **not** Bicep/model), a **per-sub quota** preflight failure (limit 4 vs requested 10), and a **silent no-render** (installer wasn't writing `HARK_AOAI_IMAGE_PROVIDER=flux-2-pro` → app used the wrong route). Relabeled config fields to **Foundry**. Validated end-to-end on the Surface. Commits `f2487d8..8b7b5bd`, released **v1.0.3**. |
 | 29 | 2026-08-31 | [Field Refinements & Reading the FLUX API (Not Guessing It)](./EP29-field-refinements-and-reading-the-flux-api.md) | Three field-testing fixes plus a course-correction on method. A caption **toggle now fully resets Vision** (`ResetVision()` clears the pupil ring buffer + diagram; `_cachedDiagram` was also being missed), a speaker **rename now refreshes the recap's follow-up-task owners** (invalidate the recap cache so SUMMARY regenerates from the relabeled transcript), and — after the user pushed back on speculation and said to **read the FLUX.2 API without assumptions** — the **content-moderation dial `safety_tolerance` is set to its max (5)** on the FLUX payload (was silently at the default 2). Research (BFL **OpenAPI** + MS Learn): Foundry provides **no built-in content filter for FLUX**, FLUX has **no style "modes"** (only model variants pro/flex/max/klein), and the real block may be a **Microsoft `BingBlockList_Prompt`** layer separate from `safety_tolerance` — so the fairy-tale fix is an **open test**, not a foregone fix. Commit `6e00c77`. |
+| 30 | 2026-09-01 | [The Timeline, Disk-Backed Scenes & a Multi-Format Save](./EP30-vision-timeline-disk-backed-scenes-and-multi-format-save.md) | Polished Vision into a reviewable, saveable feature. A **timeline rail** shows every beat as a clickable card (scene thumbnail + title) — open one to **review**, a **Live** pill returns to the present (the autonomous loop pauses meanwhile). Scenes now **spill to disk** (`%TEMP%\Hark\vision-<guid>`, thumbnails-only in RAM, orphan-swept) so RAM stays flat with session length; the history cap rose **12→60** (now a UI-element bound, not RAM), and the idle pupil filler walks whole beats as a **topic recap** during a lull. A new **Save** button aggregates transcript + both recaps + the **vision slideshow** into a self-contained report, refactored into a pluggable **`SessionReport` + `IReportWriter`** registry (`Hark.App/Reporting/`) behind a **`SaveFileDialog`** — **HTML + Markdown** ship now; the chosen forward stack is **first-party** (**PDF via WebView2**, **PPTX + DOCX via Open XML**, one slide per beat), pandoc considered and dropped. A recap **timing-gate remediation was rolled back** (added startup lag, didn't convince) — the real front is the **null-scene gap** (fill it with an **image fallback**, don't tune cadence). Commits `9b6db29..7eb5e75`. |
 
 ---
 
@@ -146,6 +151,22 @@ _Last updated: 2026-08-31 (end of Episode 29. Field-testing refinements + a meth
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
+- **Null-scene gap in Vision — the live front (Episode 30):** when a beat's FLUX render fails (`FLUX render
+  returned 200 with no image`, or a `content_safety_violation`), the beat is **scene-less**, and the idle
+  recap/pupil shuffles awkwardly around the hole ("herky-jerky, getting stuck"). A **timing-gate
+  remediation** (`_lastBeatUtc`/`RecapIdle`, only recap during a genuine lull) stopped the fight with live
+  generation but added **startup lag** and was **rolled back** — the fix should target the **gap**, not the
+  cadence. Two directions: **(a) fill the space** — hold the previous scene, a generated placeholder, or the
+  native diagram rasterized into the pupil, so no beat is ever empty; **(b) target the error** — retry /
+  soften / the fairy-tale `BingBlockList` thread. Full record:
+  [`EP30`](./EP30-vision-timeline-disk-backed-scenes-and-multi-format-save.md).
+- **Multi-format report export — Phases 2+ (Episode 30):** Save was refactored into a `SessionReport` +
+  `IReportWriter` registry behind a file picker; **HTML + Markdown** ship. Remaining, in order: **PDF**
+  (WebView2 printing the HTML — the first-party PDF route, load a temp file since `NavigateToString` caps at
+  ~2 MB), **PPTX** (Open XML, **beat-per-slide** — the differentiated "deck" mode), **DOCX** (Open XML).
+  Adds two **first-party Microsoft** NuGet deps (`Microsoft.Web.WebView2`, `DocumentFormat.OpenXml`) + the
+  WebView2 Runtime. Pandoc was considered (user trusts it) and **dropped** as unnecessary. Full record:
+  [`EP30`](./EP30-vision-timeline-disk-backed-scenes-and-multi-format-save.md).
 - **Distribution / running on a non-dev machine (Episode 23) — the live front:** 1.0.0/1.0.1 install
   and run, but three things bite on a second machine. (1) **Auth — accepted as run-as-admin (no code).**
   `AzureCliCredential` shells out to `az`; on that machine `az` needs elevation (`WinError 5` otherwise),
