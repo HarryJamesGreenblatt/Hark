@@ -23,6 +23,14 @@ public sealed class DocxReportWriter : IReportWriter
         return Task.CompletedTask;
     }
 
+    // Palette mirrors the HTML report's design language, mapped to a light, printable Word surface.
+    private const string Ink = "1F2430";
+    private const string Dim = "6B7280";
+    private const string Faint = "9AA2AC";
+    private const string Accent = "E23A2E";
+    private const string CardShade = "F6F7F9";
+    private const string CardBorder = "E3E7EC";
+
     private static void Build(SessionReport report, string path)
     {
         using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
@@ -30,101 +38,188 @@ public sealed class DocxReportWriter : IReportWriter
         main.Document = new Document();
         var body = main.Document.AppendChild(new Body());
 
-        Heading(body, report.Title, 1);
-        Para(body, report.Timestamp.ToString("f"), italic: true);
+        // Hero: title + a meta line of counts, mirroring the HTML header.
+        body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "40" }),
+            R(report.Title, color: Ink, bold: true, halfPt: 40)));
+        var facts = new System.Collections.Generic.List<string>();
+        if (report.Speakers is { Speakers.Count: > 0 } sp) facts.Add(Plural(sp.Speakers.Count, "speaker"));
+        if (report.Beats.Count > 0) facts.Add(Plural(report.Beats.Count, "vision beat"));
+        var meta = report.Timestamp.ToString("f");
+        if (facts.Count > 0) meta += "   \u00b7   " + string.Join("   \u00b7   ", facts);
+        body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "200" }),
+            R(meta, color: Dim, halfPt: 20)));
 
-        if (!string.IsNullOrWhiteSpace(report.Transcript))
-        {
-            Heading(body, "Transcript", 2);
-            foreach (var line in report.Transcript.Replace("\r\n", "\n").Split('\n'))
-                Para(body, line);
-        }
+        // Vision leads, then the recaps, then the raw transcript last — matching the HTML/Markdown layout.
+        if (report.Beats.Count > 0) AppendVision(main, body, report.Beats);
         if (report.Recap is not null) AppendRecap(body, report.Recap);
         if (report.Speakers is { Speakers.Count: > 0 }) AppendSpeakers(body, report.Speakers);
-        if (report.Beats.Count > 0) AppendVision(main, body, report);
+        if (!string.IsNullOrWhiteSpace(report.Transcript))
+        {
+            SectionHead(body, "Transcript");
+            foreach (var line in report.Transcript.Replace("\r\n", "\n").Split('\n'))
+                body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "20" }),
+                    R(line, color: Ink, halfPt: 19)));
+        }
 
         main.Document.Save();
     }
 
+    private static void AppendVision(MainDocumentPart main, Body body, System.Collections.Generic.IReadOnlyList<ReportBeat> beats)
+    {
+        SectionHead(body, "Vision");
+        int n = 1, imageId = 1;
+        foreach (var beat in beats)
+            BeatCard(main, body, beat, n++, ref imageId);
+    }
+
+    /// <summary>The beat card: a keep-together table with the mind-map nodes beside the scene image
+    /// (collapsing to a single column when there's no scene). The Word twin of the HTML beat grid.</summary>
+    private static void BeatCard(MainDocumentPart main, Body body, ReportBeat beat, int index, ref int imageId)
+    {
+        bool hasScene = beat.Scene is not null;
+        var grid = hasScene
+            ? new TableGrid(new GridColumn { Width = "5760" }, new GridColumn { Width = "3600" })
+            : new TableGrid(new GridColumn { Width = "9360" });
+
+        var table = new Table(
+            new TableProperties(
+                new TableWidth { Width = "9360", Type = TableWidthUnitValues.Dxa },
+                new TableBorders(
+                    new TopBorder { Val = BorderValues.Single, Size = 4, Color = CardBorder },
+                    new LeftBorder { Val = BorderValues.Single, Size = 4, Color = CardBorder },
+                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = CardBorder },
+                    new RightBorder { Val = BorderValues.Single, Size = 4, Color = CardBorder },
+                    new InsideHorizontalBorder { Val = BorderValues.None },
+                    new InsideVerticalBorder { Val = BorderValues.None }),
+                new TableLayout { Type = TableLayoutValues.Fixed }),
+            grid);
+
+        // Left cell — the numbered title and the coloured node list.
+        var left = new TableCell(new TableCellProperties(
+            new TableCellWidth { Width = hasScene ? "5760" : "9360", Type = TableWidthUnitValues.Dxa },
+            new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = CardShade },
+            new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Top }));
+        left.Append(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "140" }),
+            R(index.ToString(), color: Accent, bold: true, halfPt: 26),
+            R("   " + (beat.Title?.Trim() ?? string.Empty), color: Ink, bold: true, halfPt: 26)));
+        if (beat.Nodes.Count == 0)
+            left.Append(new Paragraph());   // a cell must end with a paragraph
+        foreach (var node in beat.Nodes)
+        {
+            var p = new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "80" }),
+                R("\u25CF  ", color: Strip(ReportPalette.Hex(node.Color)), halfPt: 18),
+                R(node.Label?.Trim() ?? string.Empty, color: Ink, bold: true, halfPt: 20));
+            if (!string.IsNullOrWhiteSpace(node.Detail))
+                p.Append(R("   " + node.Detail.Trim(), color: Dim, halfPt: 19));
+            left.Append(p);
+        }
+
+        var row = new TableRow(new TableRowProperties(new CantSplit()), left);
+
+        if (hasScene)
+        {
+            var right = new TableCell(new TableCellProperties(
+                new TableCellWidth { Width = "3600", Type = TableWidthUnitValues.Dxa },
+                new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = CardShade },
+                new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center }),
+                ImageParagraph(main, beat.Scene!, imageId++, 2160000L));   // ~2.36" wide, keeps aspect
+            row.Append(right);
+        }
+
+        table.Append(row);
+        body.AppendChild(table);
+        body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "160" })));   // spacer between cards
+    }
+
     private static void AppendRecap(Body body, MeetingRecap recap)
     {
-        Heading(body, "Conversation summary", 2);
-        if (!string.IsNullOrWhiteSpace(recap.Overview)) Para(body, recap.Overview.Trim());
+        SectionHead(body, "Conversation summary");
+        if (!string.IsNullOrWhiteSpace(recap.Overview))
+            body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "160" }),
+                R(recap.Overview.Trim(), color: Ink, halfPt: 24)));
         foreach (var t in recap.Topics)
         {
-            Heading(body, t.Title?.Trim(), 3);
-            if (!string.IsNullOrWhiteSpace(t.Summary)) Para(body, t.Summary.Trim());
+            SubHead(body, t.Title?.Trim());
+            if (!string.IsNullOrWhiteSpace(t.Summary))
+                body.AppendChild(new Paragraph(R(t.Summary.Trim(), color: Dim, halfPt: 21)));
             foreach (var d in t.Details) Bullet(body, d?.Trim());
         }
         if (recap.FollowUps.Count > 0)
         {
-            Heading(body, "Follow-up tasks", 3);
+            SubHead(body, "Follow-up tasks");
             foreach (var f in recap.FollowUps)
-                Bullet(body, string.IsNullOrWhiteSpace(f.Owner) ? f.Task?.Trim() : $"{f.Task?.Trim()} \u2014 {f.Owner.Trim()}");
+            {
+                var p = new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "60" }, new Indentation { Left = "360" }),
+                    R("\u2610  ", color: Faint, halfPt: 21),
+                    R(f.Task?.Trim() ?? string.Empty, color: Ink, halfPt: 21));
+                if (!string.IsNullOrWhiteSpace(f.Owner))
+                    p.Append(R("   " + f.Owner.Trim(), color: Accent, bold: true, halfPt: 19));
+                body.AppendChild(p);
+            }
         }
     }
 
     private static void AppendSpeakers(Body body, SpeakerRecap recap)
     {
-        Heading(body, "Speakers", 2);
+        SectionHead(body, "Speakers");
         foreach (var s in recap.Speakers)
         {
-            Heading(body, s.Speaker?.Trim(), 3);
-            if (!string.IsNullOrWhiteSpace(s.Summary)) Para(body, s.Summary.Trim());
+            SubHead(body, s.Speaker?.Trim());
+            if (!string.IsNullOrWhiteSpace(s.Summary))
+                body.AppendChild(new Paragraph(R(s.Summary.Trim(), color: Dim, halfPt: 21)));
             foreach (var p in s.Points) Bullet(body, p?.Trim());
-        }
-    }
-
-    private static void AppendVision(MainDocumentPart main, Body body, SessionReport report)
-    {
-        Heading(body, "Vision slideshow", 2);
-        int n = 1, imageId = 1;
-        foreach (var beat in report.Beats)
-        {
-            Heading(body, $"{n++}. {beat.Title?.Trim()}", 3);
-            foreach (var node in beat.Nodes)
-                Bullet(body, string.IsNullOrWhiteSpace(node.Detail)
-                    ? node.Label?.Trim()
-                    : $"{node.Label?.Trim()} \u2014 {node.Detail.Trim()}");
-            if (beat.Scene is not null) AppendImage(main, body, beat.Scene, imageId++);
         }
     }
 
     // ── low-level Open XML helpers ──
 
-    private static void Heading(Body body, string? text, int level)
+    /// <summary>A styled run; only the requested properties are attached.</summary>
+    private static Run R(string? text, string? color = null, bool bold = false, int? halfPt = null)
     {
-        int halfPt = level switch { 1 => 36, 2 => 28, 3 => 24, _ => 22 };
-        var run = new Run(new Text(text ?? string.Empty) { Space = SpaceProcessingModeValues.Preserve })
-        {
-            RunProperties = new RunProperties(new Bold(), new FontSize { Val = halfPt.ToString() }),
-        };
-        var p = new Paragraph(new ParagraphProperties(new SpacingBetweenLines { Before = "240", After = "80" }), run);
-        body.AppendChild(p);
-    }
-
-    private static void Para(Body body, string? text, bool italic = false)
-    {
+        var rp = new RunProperties();
+        if (bold) rp.Append(new Bold());
+        if (color is not null) rp.Append(new DocumentFormat.OpenXml.Wordprocessing.Color { Val = color });
+        if (halfPt is not null) rp.Append(new FontSize { Val = halfPt.Value.ToString() });
         var run = new Run(new Text(text ?? string.Empty) { Space = SpaceProcessingModeValues.Preserve });
-        if (italic) run.RunProperties = new RunProperties(new Italic());
-        body.AppendChild(new Paragraph(run));
+        if (rp.HasChildren) run.RunProperties = rp;
+        return run;
     }
 
-    private static void Bullet(Body body, string? text)
+    /// <summary>An uppercase, accent-coloured section label with a faint underline rule (the HTML sec-head).</summary>
+    private static void SectionHead(Body body, string label)
     {
-        var run = new Run(new Text("\u2022  " + (text ?? string.Empty)) { Space = SpaceProcessingModeValues.Preserve });
-        body.AppendChild(new Paragraph(new ParagraphProperties(new Indentation { Left = "360" }), run));
+        var pp = new ParagraphProperties(
+            new ParagraphBorders(new BottomBorder { Val = BorderValues.Single, Size = 6, Color = CardBorder, Space = 6 }),
+            new SpacingBetweenLines { Before = "360", After = "160" });
+        var run = new Run(new Text(label) { Space = SpaceProcessingModeValues.Preserve })
+        {
+            RunProperties = new RunProperties(new Bold(), new Caps(), new DocumentFormat.OpenXml.Wordprocessing.Color { Val = Accent },
+                new Spacing { Val = 30 }, new FontSize { Val = "20" }),
+        };
+        body.AppendChild(new Paragraph(pp, run));
     }
 
-    /// <summary>Embeds a PNG as an inline drawing, sized to ~360px wide keeping aspect.</summary>
-    private static void AppendImage(MainDocumentPart main, Body body, byte[] png, int imageId)
+    /// <summary>A topic/speaker sub-heading.</summary>
+    private static void SubHead(Body body, string? text) =>
+        body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { Before = "160", After = "40" }),
+            R(text, color: Ink, bold: true, halfPt: 24)));
+
+    private static void Bullet(Body body, string? text) =>
+        body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "40" }, new Indentation { Left = "360" }),
+            R("\u2022  ", color: Faint, halfPt: 21), R(text, color: Ink, halfPt: 21)));
+
+    private static string Strip(string hex) => hex.StartsWith('#') ? hex[1..] : hex;
+
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    /// <summary>Builds an inline-image paragraph, sized to <paramref name="maxWidthEmu"/> wide keeping aspect.</summary>
+    private static Paragraph ImageParagraph(MainDocumentPart main, byte[] png, int imageId, long maxWidthEmu)
     {
         var imagePart = main.AddImagePart(ImagePartType.Png);
         using (var ms = new MemoryStream(png)) imagePart.FeedData(ms);
         var relId = main.GetIdOfPart(imagePart);
 
         var (w, h) = PngSize(png);
-        const long maxWidthEmu = 360L * 9525L;   // 9525 EMU per pixel at 96 dpi
         long widthEmu = maxWidthEmu;
         long heightEmu = (w > 0 && h > 0) ? maxWidthEmu * h / w : maxWidthEmu;
 
@@ -156,7 +251,7 @@ public sealed class DocxReportWriter : IReportWriter
                 DistanceFromRight = 0U,
             });
 
-        body.AppendChild(new Paragraph(new Run(drawing)));
+        return new Paragraph(new Run(drawing));
     }
 
     /// <summary>Reads a PNG's pixel dimensions from its IHDR header (bytes 16-23, big-endian).</summary>
