@@ -20,8 +20,17 @@ public sealed class MarkdownReportWriter : IReportWriter
     {
         var sb = new StringBuilder();
         sb.Append("# ").AppendLine(report.Title);
-        sb.AppendLine(report.Timestamp.ToString("f")).AppendLine();
+        sb.Append('_').Append(report.Timestamp.ToString("f"));
+        var facts = new List<string>();
+        if (report.Speakers is { Speakers.Count: > 0 } sp) facts.Add(Plural(sp.Speakers.Count, "speaker"));
+        if (report.Beats.Count > 0) facts.Add(Plural(report.Beats.Count, "vision beat"));
+        foreach (var f in facts) sb.Append(" \u00b7 ").Append(f);
+        sb.AppendLine("_").AppendLine();
 
+        // Vision leads, then the recaps, then the raw transcript last — matching the HTML/Word layout.
+        if (report.Beats.Count > 0) AppendVision(sb, report.Beats);
+        if (report.Recap is not null) AppendRecap(sb, report.Recap);
+        if (report.Speakers is { Speakers.Count: > 0 }) AppendSpeakers(sb, report.Speakers);
         if (!string.IsNullOrWhiteSpace(report.Transcript))
         {
             sb.AppendLine("## Transcript").AppendLine();
@@ -29,12 +38,11 @@ public sealed class MarkdownReportWriter : IReportWriter
             sb.AppendLine(report.Transcript.TrimEnd());
             sb.AppendLine("```").AppendLine();
         }
-        if (report.Recap is not null) AppendRecap(sb, report.Recap);
-        if (report.Speakers is { Speakers.Count: > 0 }) AppendSpeakers(sb, report.Speakers);
-        if (report.Beats.Count > 0) AppendVision(sb, report.Beats);
 
         return sb.ToString().TrimEnd() + "\n";
     }
+
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     private static void AppendRecap(StringBuilder sb, MeetingRecap recap)
     {
@@ -74,7 +82,7 @@ public sealed class MarkdownReportWriter : IReportWriter
 
     private static void AppendVision(StringBuilder sb, IReadOnlyList<ReportBeat> beats)
     {
-        sb.AppendLine("## Vision slideshow").AppendLine();
+        sb.AppendLine("## Vision").AppendLine();
         int n = 1;
         foreach (var beat in beats)
         {
