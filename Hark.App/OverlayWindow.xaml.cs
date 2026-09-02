@@ -1598,12 +1598,16 @@ public partial class OverlayWindow : Window
         LivePill.Visibility = Visibility.Collapsed;
         _fillerBeatIndex = 0;
         _lastFillerAdvanceUtc = DateTime.MinValue;
-        if (_visionCacheDir is not null)
-        {
-            try { if (Directory.Exists(_visionCacheDir)) Directory.Delete(_visionCacheDir, true); } catch { /* best effort */ }
-            _visionCacheDir = null;
-            _sceneSeq = 0;
-        }
+        PurgeVisionCache();
+    }
+
+    /// <summary>Deletes this run's on-disk scene cache dir (best-effort, no UI) — safe to call on shutdown.</summary>
+    public void PurgeVisionCache()
+    {
+        if (_visionCacheDir is null) return;
+        try { if (Directory.Exists(_visionCacheDir)) Directory.Delete(_visionCacheDir, true); } catch { /* best effort */ }
+        _visionCacheDir = null;
+        _sceneSeq = 0;
     }
 
     /// <summary>

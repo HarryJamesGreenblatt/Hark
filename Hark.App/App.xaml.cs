@@ -327,6 +327,7 @@ public partial class App : Application
                 await _session.StopAsync(cancellationToken);
                 _overlay?.SetRunning(false);
                 _overlay?.Hide();      // toggle "off" — the bar disappears like native Live Captions
+                _overlay?.ResetVision();   // drop this session's Vision visuals + delete its temp scene cache
 
                 StopNamingLoop();
 
@@ -1013,6 +1014,7 @@ public partial class App : Application
         _micHotkey?.Dispose();
         _visionTimer?.Stop();
         _visionCts?.Cancel();
+        _overlay?.PurgeVisionCache();   // delete this run's temp scene cache so it doesn't linger
         _refineCts?.Cancel();
         try { _session?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* best effort */ }
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }
