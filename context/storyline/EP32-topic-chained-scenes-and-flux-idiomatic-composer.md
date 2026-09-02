@@ -67,14 +67,13 @@ FLUX's native power." Also a temp‑hygiene observation: scene assets were persi
 
 ## ✅ Verification
 All builds green; extracted the 10 embedded scenes from the saved `.md` report to inspect alignment against the
-diagram titles (the transcript‑level topic match was confirmed directly). Chain + composer compile together and
-were pushed (`dd4e844`, `2a1dc3a`); the pupil alpha/fade (`3681b5d`) and temp hygiene (`98e6990`) shipped first.
-The image‑alignment *improvement* awaits a live A/B read.
+diagram titles (the transcript‑level topic match was confirmed directly). Chain + composer were then **validated
+live** — the user judged it *"solid enough to push"* — and shipped (`dd4e844`, `2a1dc3a`); the pupil alpha/fade
+(`3681b5d`) and temp hygiene (`98e6990`) shipped first.
 
 ## 🔓 Open threads
-- **Live A/B of the chain + FLUX composer** — do the scenes now visibly illustrate the diagram's titled topic,
-  and do the FLUX‑idiomatic prompts read cleaner? Tune if not.
-- **Phase 2 — FLUX JSON structured prompt.** Emit the `VisualConcept` as FLUX JSON (BFL "maximum control"), and
-  optionally add camera/lens specificity. FLUX‑specific → needs a provider split (gpt‑image keeps prose). Do only
-  if the natural‑language composer isn't tight enough.
+- **Phase 2 — FLUX JSON structured prompt (TABLED).** The chain + FLUX‑idiomatic composer were validated live and
+  pushed, so JSON is a *possible future*, not a pending front: emit the `VisualConcept` as **FLUX JSON** (BFL
+  "maximum control"; schema maps ~1:1) + optional **camera/lens** specificity. FLUX‑specific → needs a provider
+  split (gpt‑image keeps prose). Revisit only if alignment ever needs more.
 - Carried: the **native on‑topic pupil fill** (EP31), the **fairy‑tale content‑filter** test (EP29).
