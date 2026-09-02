@@ -1822,6 +1822,7 @@ public partial class OverlayWindow : Window
     {
         new MarkdownReportWriter(),
         new DocxReportWriter(),
+        new PptxReportWriter(),
         new HtmlReportWriter(),
     };
 

@@ -47,6 +47,23 @@ public class ReportWriterTests
         finally { if (File.Exists(path)) File.Delete(path); }
     }
 
+    [Fact]
+    public async Task Pptx_is_structurally_valid_with_embedded_image()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"hark-test-{Guid.NewGuid():N}.pptx");
+        try
+        {
+            await new PptxReportWriter().WriteAsync(SampleReport(), path);
+            Assert.True(new FileInfo(path).Length > 0, "the .pptx should not be empty");
+
+            using var doc = PresentationDocument.Open(path, false);
+            var errors = new OpenXmlValidator().Validate(doc).ToList();
+            Assert.True(errors.Count == 0,
+                "OpenXML validation errors:\n" + string.Join("\n", errors.Select(e => e.Description)));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
     [Theory]
     [InlineData(".md")]
     [InlineData(".html")]
