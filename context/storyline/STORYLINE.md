@@ -14,9 +14,9 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-09-02 (end of Episode 35. Shipped the **PowerPoint (.pptx)** writer — the flagship export — as an editorial, cinematic **dark** deck: a hero title slide (first scene full-bleed under a scrim), one slide per vision beat with the scene in a **full-bleed cover panel that alternates sides** beat to beat, a **kicker / title / accent-rule** hierarchy, **stacked node details** (label with its detail hanging-indented beneath), and a subtle **`HARK` + `NN / NN`** footer; the Save picker now offers **Markdown · Word · PowerPoint · Web page**. Solved a PowerPoint **"repair"** prompt the OpenXML validator doesn't catch (missing slide-layout→master back-relationship + the standard presentation parts). An image **seam-blend / framed-photo** experiment was tried and **reverted** as a regression — the full-bleed cover design is banked at **`847e873`** as the restore point. **Next front:** **PDF via WebView2** on the styled HTML (last export); a cleaner image-edge treatment remains optional. See [`EP35`](./EP35-pptx-flagship-deck.md))._
+_Last updated: 2026-09-02 (end of Episode 36. Added the final export format — **PDF** (WebView2 printing the styled HTML) — completing the set (**Markdown · Word · PowerPoint · PDF · Web page**), all sharing one **beat-card layout language**; polished a few report details (scene vertically centered; the transcript prints open in PDF but stays collapsed on the web page) and reordered the **deck** so **Summary + Speakers precede the vision beats** (docs/web/PDF keep Vision leading). Updated the **README**, memory, and storyline, then cut **HARK 2.0.0** — a tag-driven release of the signed `Hark-Setup.exe`. See [`EP36`](./EP36-pdf-export-and-2.0.0-release.md))._
 
-- **Status:** CLI MVP + desktop overlay working **and now at 1.0.0** — published to the public
+- **Status:** CLI MVP + desktop overlay working **and now at 2.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
   single **`Hark-Setup.exe`** (self-contained, embeds a signed MSIX). The overlay is a
   **multi-speaker** experience:
@@ -28,7 +28,9 @@ _Last updated: 2026-09-02 (end of Episode 35. Shipped the **PowerPoint (.pptx)**
   buffered audio globally and rebuilds the conversation, fixing streaming diarization's host/guest
   crossups. The bar docks as a **full-width top bar** whose **height fits its content** (collapsible
   recap sections; a captions **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive HAL-9000
-  status eye**.
+  status eye**. A header **Save** button exports the whole session as a **multi-format report**
+  (**Markdown · Word · PowerPoint · PDF · Web page**) — every format sharing one **beat-card layout
+  language**, with a cinematic editorial **PowerPoint** deck.
 - **Branch:** `main` · working tree clean.
 - **Apps:** `Hark.Cli` (terminal) and `Hark.App` (WPF tray overlay) drive the shared
   `Hark.Core/HarkSession`. `Hark.App`: starts hidden; `Ctrl+Win+H` toggles the bar; header has a
@@ -149,6 +151,7 @@ _Last updated: 2026-09-02 (end of Episode 35. Shipped the **PowerPoint (.pptx)**
 | 33 | 2026-09-01 | [Word Export & Testing the Source (the OpenXML DOCX Writer)](./EP33-word-export-and-testing-the-source.md) | Multi-format export Phase 2, MD→HTML→**Word** (PPTX saved for last). Added **`DocxReportWriter`** via the **Open XML SDK**: transcript + both recaps + the vision slideshow with each scene **embedded inline** (PNG IHDR parsed for EMU sizing), dodging the project's WPF `Color`/`Size` aliases; registered so the picker offers **Markdown · Word · Web page** (`DocumentFormat.OpenXml` 3.5.1). After the user pushed back on a fragile reflection harness (*"the smoke test was broken… lets just test the source"*), added a real **`Hark.Tests` xUnit project** (in `Hark.slnx`): 3 tests — the `.docx` **opens + validates with 0 Open XML errors** (embedded PNG), MD/HTML carry the content + base64 scene — `dotnet test` **3 passed**. **Deferred:** report **formatting** (all types dump plainly; Word images land on the next page, not beside their beat). Commit `6c43c45`. |
 | 34 | 2026-09-02 | [The Report Layout & Vision QoL (HTML as the Design Source)](./EP34-report-layout-and-vision-qol.md) | Closed EP33's report-formatting thread. Designed a report **layout language in HTML** — a small design system (HAL-eye hero, styled section heads, four reusable **cards**: topic, speaker, **beat**, transcript) — then carried the **beat card** (colour-coded mind-map nodes **beside** the scene image, kept together) verbatim into **Markdown** and **Word**. **Vision now leads** (then Conversation summary, Speakers, Transcript). In **Word** the beat is a **keep-together two-column table** (`CantSplit`) on a light printable surface — **fixing the images-land-on-the-next-page bug** — after untangling the WPF-`Color` ambiguity and Open XML's **strict child-ordering** (`OpenXmlValidator` 0 errors). Also fixed that **recaps were missing** from saves (lazily set by the SUMMARY view → a new `ReportRecapsRequested` event generates both scopes on demand). Two **Vision QoL** touches: **save-progress feedback** (busy button + off-UI-thread write) and the review slideshow **holding while a mind-map pill is hovered**. Validated live (USMC/Beatles/Rock) + `dotnet test` **3 passed**. Commits `b015174..8b370b8`. |
 | 35 | 2026-09-02 | [The Flagship Deck (PowerPoint Export & Its Design Polish)](./EP35-pptx-flagship-deck.md) | Shipped the flagship **PowerPoint (.pptx)** writer as an editorial, cinematic **dark** deck: a **hero title slide** (first scene full-bleed under a scrim), one slide per beat with the scene in a **full-bleed cover panel that alternates sides** beat to beat, a **kicker / title / accent-rule** hierarchy, **stacked node details** (label with detail hanging-indented beneath, applied to beats + recap/speakers), and a subtle **`HARK` + `NN / NN`** footer; picker now offers **Markdown · Word · PowerPoint · Web page**. Solved a PowerPoint **"repair"** prompt the validator misses — the missing **slide-layout→master back-relationship** + the standard **Presentation/View/TableStyles** parts. A **seam-blend then framed-photo** image experiment was **reverted** as a regression (harsh over light image regions); the full-bleed cover design is banked at **`847e873`**. `Pptx_is_structurally_valid` (0 errors); `dotnet test` **4 passed**. Commits `38b96f3`, `847e873`. |
+| 36 | 2026-09-02 | [PDF Export & the 2.0.0 Release](./EP36-pdf-export-and-2.0.0-release.md) | Added the final export — **PDF** via **WebView2** `PrintToPdfAsync` on the styled HTML (loading a **temp file**, since `NavigateToString` caps ~2 MB with embedded scenes) — completing the set (**Markdown · Word · PowerPoint · PDF · Web page**). Polished report details: the beat scene is **vertically centered** beside its nodes in HTML+PDF, and the HTML builder gained a **`transcriptOpen`** option the **PDF** enables (a print can't expand a `<details>`) while the **web page** stays collapsed. Reordered the **deck only** so **Conversation summary + Speakers precede the vision beats** (docs/web/PDF keep Vision leading). Updated the **README** (timeline + Save, the export formats, OpenXML/WebView2 deps), memory, and storyline, then cut **HARK 2.0.0** — the tag-driven release publishing the signed `Hark-Setup.exe`. `dotnet test` **4 passed**. Commits `c0619eb`, `8fb484e`, tag `v2.0.0`. |
 
 ---
 
@@ -156,12 +159,14 @@ _Last updated: 2026-09-02 (end of Episode 35. Shipped the **PowerPoint (.pptx)**
 
 These are unresolved at the end of the latest episode — natural starting points for the next one.
 
-- **Multi-format export — PPTX shipped, PDF remains (Episode 35):** the flagship **PowerPoint** deck is done —
-  a cinematic dark deck with a hero title slide, alternating full-bleed cover panels, a kicker/title/rule
-  hierarchy, stacked node details, and a wordmark/page footer (banked at `847e873`). The Save picker now offers
-  **Markdown · Word · PowerPoint · Web page**. **Remaining:** **PDF via WebView2** on the styled HTML (the last
-  export). **Optional/open:** a cleaner image-edge treatment that also works over **light** image regions (the
-  seam-blend/framed-photo attempt was reverted). Full record: [`EP35`](./EP35-pptx-flagship-deck.md).
+- **Multi-format export — COMPLETE (Episode 36):** all five formats ship — **Markdown · Word · PowerPoint ·
+  PDF · Web page** — sharing one **beat-card layout language**. **PDF** renders via **WebView2**
+  `PrintToPdfAsync` on the styled HTML (temp file, not `NavigateToString`); the beat scene is vertically
+  centered, and the transcript prints **open** in PDF but stays collapsed on the web page. The **PowerPoint**
+  deck is the cinematic treatment (hero title slide, alternating full-bleed cover panels, recaps before the
+  beats). Shipped in **HARK 2.0.0** (`v2.0.0`). **Optional/open:** a cleaner image-edge treatment for the deck
+  over **light** image regions (the seam-blend/framed-photo attempt was reverted; restore point `847e873`).
+  Full record: [`EP36`](./EP36-pdf-export-and-2.0.0-release.md).
 - **Report formatting — RESOLVED (Episode 34):** the reports no longer dump plainly. A **layout language** was
   designed in **HTML** (a small design system + four reusable cards) and the **beat card** — colour-coded
   mind-map nodes **beside** the scene image, kept together — was carried verbatim into **Markdown** and **Word**;
