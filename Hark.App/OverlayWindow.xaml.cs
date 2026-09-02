@@ -1015,6 +1015,8 @@ public partial class OverlayWindow : Window
     private int _fillerBeatIndex;
     /// <summary>Wall-clock of the last filler advance (a review slide, or a live image-blink), pacing each.</summary>
     private DateTime _lastFillerAdvanceUtc = DateTime.MinValue;
+    /// <summary>True while a diagram pill is hovered — holds the review slideshow so the user can read a detail.</summary>
+    private bool _pillHovered;
     /// <summary>Drives the pupil filler cycle while the Vision page is open.</summary>
     private DispatcherTimer? _fillerTimer;
 
@@ -1136,6 +1138,7 @@ public partial class OverlayWindow : Window
         // REVIEW: walk the whole timeline as a synchronized topic + scene slideshow.
         if (LivePill.Visibility == Visibility.Visible)
         {
+            if (_pillHovered) return;   // reading a pill's detail — hold this topic, don't auto-advance
             if (_visionBeats.Count < 2 || now - _lastFillerAdvanceUtc < ReviewSlideInterval) return;
             _lastFillerAdvanceUtc = now;
             _fillerBeatIndex = (_fillerBeatIndex + 1) % _visionBeats.Count;
@@ -1274,7 +1277,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Builds one radial mind-map visual filling the diagram layer; nodes are laid out on load / resize.</summary>
-    private static FrameworkElement BuildDiagram(InfographicConcept concept)
+    private FrameworkElement BuildDiagram(InfographicConcept concept)
     {
         var nodes = (concept.Nodes ?? [])
             .Where(n => !string.IsNullOrWhiteSpace(n.Label))
@@ -1307,9 +1310,10 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Positions the connector ring, lines, and node pills around the centre of the canvas.</summary>
-    private static void LayoutDiagramNodes(Canvas canvas, IReadOnlyList<InfographicNode> nodes)
+    private void LayoutDiagramNodes(Canvas canvas, IReadOnlyList<InfographicNode> nodes)
     {
         canvas.Children.Clear();
+        _pillHovered = false;   // pills are recreated here; any prior hover state is stale
         double w = canvas.ActualWidth, h = canvas.ActualHeight;
         if (w < 20 || h < 20 || nodes.Count == 0) return;
 
@@ -1375,7 +1379,7 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>Wires a hover popup to a node pill, revealing its detail on a HAL-styled bubble.</summary>
-    private static void AttachDetailPopup(Canvas canvas, Border pill, string detail, Color accent, bool aboveCentre)
+    private void AttachDetailPopup(Canvas canvas, Border pill, string detail, Color accent, bool aboveCentre)
     {
         var popup = new System.Windows.Controls.Primitives.Popup
         {
@@ -1408,8 +1412,9 @@ public partial class OverlayWindow : Window
         };
 
         pill.Cursor = System.Windows.Input.Cursors.Hand;
-        pill.MouseEnter += (_, _) => popup.IsOpen = true;
-        pill.MouseLeave += (_, _) => popup.IsOpen = false;
+        // Hovering a pill holds the review slideshow so the user can read the detail without the topic changing.
+        pill.MouseEnter += (_, _) => { popup.IsOpen = true; _pillHovered = true; _lastFillerAdvanceUtc = DateTime.UtcNow; };
+        pill.MouseLeave += (_, _) => { popup.IsOpen = false; _pillHovered = false; _lastFillerAdvanceUtc = DateTime.UtcNow; };
         canvas.Children.Add(popup);
     }
 
@@ -1841,37 +1846,48 @@ public partial class OverlayWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;   // user cancelled the picker
 
-        // Ensure the recaps exist even if the user never opened SUMMARY — the host generates them on demand.
-        if (ReportRecapsRequested is { } fetch && !string.IsNullOrWhiteSpace(transcript))
-        {
-            SaveButton.IsEnabled = false;
-            SaveButton.ToolTip = "Generating summary…";
-            try
-            {
-                var (conversation, speakers) = await fetch();
-                if (conversation is not null) _lastRecap = conversation;
-                if (speakers is not null) _lastSpeakerRecap = speakers;
-            }
-            catch { /* keep whatever recaps we already have */ }
-            finally { SaveButton.IsEnabled = true; }
-        }
-
-        var report = BuildSessionReport();
-        if (report is null) return;
-
         var ext = System.IO.Path.GetExtension(dialog.FileName);
         var writer = _reportWriters.FirstOrDefault(w => string.Equals(w.Extension, ext, StringComparison.OrdinalIgnoreCase))
                      ?? _reportWriters[Math.Clamp(dialog.FilterIndex - 1, 0, _reportWriters.Count - 1)];
 
-        try { await writer.WriteAsync(report, dialog.FileName); }
-        catch { return; }   // disk/permission hiccup — skip feedback rather than crash
-        _lastReportDir = System.IO.Path.GetDirectoryName(dialog.FileName);
+        // Progress feedback for the whole save — generating the recaps and writing (with embedded scenes)
+        // can take a few seconds, so show a busy state and only confirm once the file is on disk.
+        SaveButton.IsEnabled = false;
+        SaveButton.Content = "\uE895";   // sync glyph
+        SaveButton.ToolTip = "Saving\u2026";
+        try
+        {
+            // Ensure the recaps exist even if the user never opened SUMMARY — the host generates them on demand.
+            if (ReportRecapsRequested is { } fetch && !string.IsNullOrWhiteSpace(transcript))
+            {
+                SaveButton.ToolTip = "Generating summary\u2026";
+                try
+                {
+                    var (conversation, speakers) = await fetch();
+                    if (conversation is not null) _lastRecap = conversation;
+                    if (speakers is not null) _lastSpeakerRecap = speakers;
+                }
+                catch { /* keep whatever recaps we already have */ }
+            }
 
-        SaveButton.Content = "\uE73E";   // checkmark
-        SaveButton.ToolTip = "Saved";
-        await Task.Delay(1400);
-        SaveButton.Content = "\uE74E";   // back to the save glyph
-        SaveButton.ToolTip = "Save a full report (transcript, summary, vision)";
+            var report = BuildSessionReport();
+            if (report is null) return;   // finally restores the button
+
+            SaveButton.ToolTip = "Saving\u2026";
+            await Task.Run(() => writer.WriteAsync(report, dialog.FileName));   // off the UI thread
+            _lastReportDir = System.IO.Path.GetDirectoryName(dialog.FileName);
+
+            SaveButton.Content = "\uE73E";   // checkmark
+            SaveButton.ToolTip = "Saved";
+            await Task.Delay(1400);
+        }
+        catch { /* disk/permission hiccup — fall through and reset the button */ }
+        finally
+        {
+            SaveButton.IsEnabled = true;
+            SaveButton.Content = "\uE74E";   // back to the save glyph
+            SaveButton.ToolTip = "Save a full report (transcript, summary, vision)";
+        }
     }
 
     /// <summary>Snapshots the current session into a format-agnostic report; null when there's nothing worth saving.</summary>
