@@ -1015,6 +1015,8 @@ public partial class OverlayWindow : Window
     private const int PupilBufferMax = 16;
     /// <summary>Average-hash Hamming distance at or below which two scenes count as near-identical (skip buffering).</summary>
     private const int PupilDupDistance = 6;
+    /// <summary>Resting opacity of the pupil scene so the red cornea glow bleeds through — the image reads as suspended in the ball's ether.</summary>
+    private const double PupilSceneOpacity = 0.85;
     private static readonly TimeSpan FillerTick = TimeSpan.FromSeconds(2);
     /// <summary>Only cycle once the pupil has been static past the normal render cadence (i.e. renders are stalling).</summary>
     private static readonly TimeSpan FillerIdle = TimeSpan.FromSeconds(16);
@@ -1085,7 +1087,7 @@ public partial class OverlayWindow : Window
             VisionOrbImage.BeginAnimation(OpacityProperty, null);
             VisionOrbImage.Opacity = 0;
             VisionOrbImage.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(420))));
+                new DoubleAnimation(0, PupilSceneOpacity, new Duration(TimeSpan.FromMilliseconds(420))));
 
             VisionLidScale.BeginAnimation(ScaleTransform.ScaleYProperty, up);
         };
@@ -1206,7 +1208,7 @@ public partial class OverlayWindow : Window
     public void FadePupilToEye()
     {
         if (VisionOrb.Visibility != Visibility.Visible || VisionOrb.Opacity < 0.01) return;
-        var fade = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(550)))
+        var fade = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(1100)))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
         };
