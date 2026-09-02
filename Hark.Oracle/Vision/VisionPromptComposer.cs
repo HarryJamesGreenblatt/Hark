@@ -4,53 +4,51 @@ namespace Hark.Oracle.Vision;
 
 /// <summary>
 /// Render — the realisation tier of <c>Oracle.Vision</c>: composes a <see cref="VisualConcept"/> into a
-/// well-formed image-generation prompt (deterministic, no model call). The analog of sequitur's
-/// <c>build_poster_prompt</c> — it asks for one coherent <em>scene of the world</em>, layering the
-/// aesthetic, stance, motifs, composition intent, and palette onto the central concept, and closes by
-/// insisting on one coherent photographic scene (not a symbol collage, diagram, text, or interface).
+/// FLUX-idiomatic image prompt (deterministic, no model call). Follows BFL's guidance: front-load the
+/// SUBJECT, then style, then context (word order matters), keep it ~40-80 words, and state everything
+/// POSITIVELY — FLUX.2 has no negative prompts, so "not X" only biases toward X.
 /// </summary>
 public static class VisionPromptComposer
 {
-    /// <summary>Composes a visual concept into a still-image prompt.</summary>
+    /// <summary>Composes a visual concept into a FLUX-idiomatic image prompt (front-loaded, positive-only).</summary>
     /// <param name="concept">The art director's contribution.</param>
     /// <returns>The image-generation prompt.</returns>
     public static string Compose(VisualConcept concept)
     {
         ArgumentNullException.ThrowIfNull(concept);
 
+        // Subject first (the concept sentence), then scene elements, style, context — word order matters to
+        // FLUX. Everything positive: the coherence/setting asks replace the old "not a collage / not on
+        // black" negatives (which FLUX can't negate and would bias toward).
         var sb = new StringBuilder();
-        sb.Append("A single evocative image that captures ").Append(Clean(concept.Concept)).Append('.');
+        sb.Append(Capitalize(Clean(concept.Concept))).Append('.');
+
+        if (concept.Motifs is { Count: > 0 })
+            sb.Append(' ').Append(Capitalize(string.Join(", ", concept.Motifs))).Append('.');
 
         if (!string.IsNullOrWhiteSpace(concept.Aesthetic))
             sb.Append(" Rendered as ").Append(Clean(concept.Aesthetic)).Append('.');
 
-        sb.Append(concept.Stance == ConceptStance.Contrast
-            ? " The image contrasts the feeling — a deliberate visual irony."
-            : " The image underscores the feeling.");
-
-        if (concept.Motifs is { Count: > 0 })
-            sb.Append(" Elements in the scene: ").Append(string.Join(", ", concept.Motifs)).Append('.');
-
         if (!string.IsNullOrWhiteSpace(concept.Composition))
-            sb.Append(" Composition: ").Append(Clean(concept.Composition)).Append('.');
-        sb.Append(" One clear focal point and strong contrast, set in a real, specific place with real ")
-          .Append("light — never an isolated object floating on an empty black background.");
+            sb.Append(' ').Append(Capitalize(Clean(concept.Composition))).Append('.');
+
+        sb.Append(" Cinematic natural light, one clear focal point, a single coherent scene set in a full, real environment.");
 
         if (!string.IsNullOrWhiteSpace(concept.Palette))
-            sb.Append(" Palette: ").Append(Clean(concept.Palette)).Append('.');
+            sb.Append(' ').Append(Capitalize(Clean(concept.Palette))).Append(" palette.");
 
         if (!string.IsNullOrWhiteSpace(concept.Theme))
-            sb.Append(" Mood: ").Append(Clean(concept.Theme)).Append('.');
-
-        // Keep it one coherent real scene — no symbol-collage / UI / text (which read as incoherent).
-        sb.Append(" Render it as one coherent, real photographic scene — not a collage of symbols, a ")
-          .Append("diagram, text, or a screen or interface.");
+            sb.Append(' ').Append(Capitalize(Clean(concept.Theme))).Append(" mood.");
 
         return sb.ToString();
     }
 
     /// <summary>Trims a trailing period/space so composed clauses join cleanly.</summary>
     private static string Clean(string s) => s.TrimEnd('.', ' ');
+
+    /// <summary>Upper-cases the first character so each composed clause reads as a sentence.</summary>
+    private static string Capitalize(string s) =>
+        string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     /// <summary>
     /// A gentler, more abstract variant of the prompt — dropping literal motifs for pure mood, palette,
@@ -63,19 +61,19 @@ public static class VisionPromptComposer
     {
         ArgumentNullException.ThrowIfNull(concept);
 
+        // Softened retry, still POSITIVE-only: "serene and wholesome" replaces "nothing graphic/violent"
+        // (which would bias FLUX toward it), and "a single coherent scene" replaces the collage negative.
         var sb = new StringBuilder();
-        sb.Append("An abstract, atmospheric image evoking ")
+        sb.Append("An abstract, atmospheric scene evoking ")
           .Append(Clean(string.IsNullOrWhiteSpace(concept.Theme) ? concept.Concept : concept.Theme))
           .Append('.');
 
         if (!string.IsNullOrWhiteSpace(concept.Aesthetic))
             sb.Append(" Rendered as ").Append(Clean(concept.Aesthetic)).Append('.');
         if (!string.IsNullOrWhiteSpace(concept.Palette))
-            sb.Append(" Palette: ").Append(Clean(concept.Palette)).Append('.');
+            sb.Append(' ').Append(Capitalize(Clean(concept.Palette))).Append(" palette.");
 
-        sb.Append(" A calm, symbolic, non-literal mood piece — soft light and natural forms, nothing ")
-          .Append("graphic, violent, or otherwise sensitive. One coherent scene, not a collage of symbols, ")
-          .Append("a diagram, text, or an interface.");
+        sb.Append(" A calm, gentle, symbolic mood piece — soft light, natural forms, serene and wholesome, a single coherent scene.");
 
         return sb.ToString();
     }
