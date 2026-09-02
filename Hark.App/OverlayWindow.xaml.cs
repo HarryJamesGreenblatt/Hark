@@ -1824,6 +1824,7 @@ public partial class OverlayWindow : Window
         new DocxReportWriter(),
         new PptxReportWriter(),
         new HtmlReportWriter(),
+        new PdfReportWriter(),
     };
 
     /// <summary>

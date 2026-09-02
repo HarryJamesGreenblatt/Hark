@@ -14,9 +14,13 @@ public sealed class HtmlReportWriter : IReportWriter
     public string FilterName => "Web page";
 
     public Task WriteAsync(SessionReport report, string path) =>
-        File.WriteAllTextAsync(path, Build(report));
+        File.WriteAllTextAsync(path, Build(report, transcriptOpen: false));
 
-    private static string Build(SessionReport report)
+    /// <summary>Renders the report HTML as a string; <paramref name="transcriptOpen"/> expands the transcript
+    /// (used by the PDF export, where a collapsed <c>&lt;details&gt;</c> can't be opened).</summary>
+    internal static string Render(SessionReport report, bool transcriptOpen) => Build(report, transcriptOpen);
+
+    private static string Build(SessionReport report, bool transcriptOpen)
     {
         var stamp = Esc(report.Timestamp.ToString("f"));
         var sb = new StringBuilder();
@@ -41,7 +45,7 @@ public sealed class HtmlReportWriter : IReportWriter
         if (report.Beats.Count > 0) AppendVision(sb, report);
         if (report.Recap is not null) AppendRecap(sb, report.Recap);
         if (report.Speakers is { Speakers.Count: > 0 }) AppendSpeakers(sb, report.Speakers);
-        if (!string.IsNullOrWhiteSpace(report.Transcript)) AppendTranscript(sb, report.Transcript);
+        if (!string.IsNullOrWhiteSpace(report.Transcript)) AppendTranscript(sb, report.Transcript, transcriptOpen);
 
         sb.AppendLine("</main></body></html>");
         return sb.ToString();
@@ -146,11 +150,12 @@ public sealed class HtmlReportWriter : IReportWriter
         sb.AppendLine("</section>");
     }
 
-    private static void AppendTranscript(StringBuilder sb, string transcript)
+    private static void AppendTranscript(StringBuilder sb, string transcript, bool open)
     {
         sb.AppendLine("<section>");
         SectionHead(sb, "Transcript");
-        sb.Append("<details class=\"transcript\"><summary>Full transcript</summary><pre>")
+        sb.Append("<details class=\"transcript\"").Append(open ? " open" : string.Empty)
+          .Append("><summary>Full transcript</summary><pre>")
           .Append(Esc(transcript.TrimEnd())).AppendLine("</pre></details>");
         sb.AppendLine("</section>");
     }
@@ -208,7 +213,7 @@ public sealed class HtmlReportWriter : IReportWriter
     .node-dot{width:9px;height:9px;border-radius:50%;flex:none;align-self:center}
     .node-label{font-weight:640;font-size:14px}
     .node-detail{color:var(--dim);font-size:13.5px}
-    .beat-figure{margin:0}
+    .beat-figure{margin:0;align-self:center}
     .beat-figure img{width:100%;display:block;border-radius:var(--r-sm);border:1px solid var(--border)}
     .transcript summary{cursor:pointer;color:var(--dim);font-size:13px;user-select:none;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm)}
     .transcript[open] summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
