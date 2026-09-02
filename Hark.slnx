@@ -5,4 +5,5 @@
   <Project Path="Hark.Installer/Hark.Installer.csproj" />
   <Project Path="Hark.Oracle/Hark.Oracle.csproj" />
   <Project Path="Hark.Oracle.Spike/Hark.Oracle.Spike.csproj" />
+  <Project Path="Hark.Tests/Hark.Tests.csproj" />
 </Solution>

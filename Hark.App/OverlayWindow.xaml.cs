@@ -1810,6 +1810,7 @@ public partial class OverlayWindow : Window
     private readonly IReadOnlyList<IReportWriter> _reportWriters = new IReportWriter[]
     {
         new MarkdownReportWriter(),
+        new DocxReportWriter(),
         new HtmlReportWriter(),
     };
 
