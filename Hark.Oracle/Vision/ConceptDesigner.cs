@@ -51,6 +51,7 @@ public sealed class ConceptDesigner
     public async Task<VisualConcept?> DesignAsync(
         string transcriptWindow,
         string? previousVision = null,
+        string? topicAnchor = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(transcriptWindow)) return null;
@@ -62,6 +63,11 @@ public sealed class ConceptDesigner
               "moved to a new operation, place, era, or person, move the scene to it; if it lingers on the same " +
               "subject, show a different facet or moment of THAT subject from a fresh angle. Never simply repeat " +
               "the image on screen, and never wander to a scene unconnected to what is being discussed.";
+
+        if (!string.IsNullOrWhiteSpace(topicAnchor))
+            user += $"\n\nThis beat's focus, named by its diagram, is \"{topicAnchor}\". Make the image " +
+                    "specifically and recognisably ABOUT that topic — the diagram names it, your scene " +
+                    "illustrates it — not a tangential detail of the window.";
 
         var messages = new ChatMessage[]
         {

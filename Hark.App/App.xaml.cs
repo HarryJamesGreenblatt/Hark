@@ -922,56 +922,53 @@ public partial class App : Application
             _cachedVisionRevision = revision;
             _lastVisionRenderIndex = count;             // next beat is windowed from here forward
 
-            // Both classes conjure IN PARALLEL from the same window: the native diagram (fast — the
-            // backdrop, drawn instantly) and the generative scene (slower — the pupil image). Each
-            // lands independently, so the diagram appears first and the pupil fills when its render is done.
-            var diagramTask = _vision.ConjureDiagramAsync(window, cts.Token);
-            var sceneTask = _vision.ConjureAsync(window, _shownVisionConcept, null, cts.Token);
-
-            _overlay.BeginVisionConjuring();   // scrying sheen on the eye while the pupil scene renders
+            _overlay.BeginVisionConjuring();
 
             InfographicConcept? beatDiagram = null;   // captured for the timeline once both land
             byte[]? beatScene = null;
 
-            async Task ShowDiagramAsync()
+            // Chain, don't race: the diagram (fast, native) lands first and NAMES this beat's topic; the
+            // scene (slow, generative) is then conjured ANCHORED to that title, so the image illustrates the
+            // same subject the mind-map shows instead of an independent read of the window.
+            var diagram = await _vision.ConjureDiagramAsync(window, cts.Token);
+            if (!cts.IsCancellationRequested && diagram is not null)
             {
-                var diagram = await diagramTask;
-                if (cts.IsCancellationRequested || diagram is null) return;
                 _cachedDiagram = diagram;
                 beatDiagram = diagram;
                 _overlay.SetVisionDiagram(diagram);
-                _overlay.FadePupilToEye();   // topic shifted — rest on the red glow until the new scene lands
+                _overlay.FadePupilToEye();   // topic shifted — rest on the red glow until the anchored scene lands
             }
 
-            async Task ShowSceneAsync()
+            try
             {
-                try
+                var result = await _vision.ConjureAsync(
+                    window, _shownVisionConcept, topicAnchor: diagram?.Title, cancellationToken: cts.Token);
+                if (cts.IsCancellationRequested)
                 {
-                    var result = await sceneTask;
-                    if (cts.IsCancellationRequested) return;
-                    if (result?.Image is null)
-                    {
-                        _overlay.FadePupilToEye();   // no image this beat — stay on the red glow
-                        return;
-                    }
+                    // Superseded/closed — expected.
+                }
+                else if (result?.Image is null)
+                {
+                    _overlay.FadePupilToEye();   // no image this beat — stay on the red glow
+                }
+                else
+                {
                     _cachedVisionImage = result.Image;
                     beatScene = result.Image;
                     _shownVisionConcept = result.Concept.Concept;   // remember what we showed, to differ next
                     _overlay.SetVisionImage(result.Image);
                 }
-                catch (OperationCanceledException)
-                {
-                    // Superseded/closed — expected.
-                }
-                catch (Exception)
-                {
-                    // A render error (e.g. a FLUX 200-with-no-image or content refusal) yields no image;
-                    // stay on the red glow until a later beat's scene lands.
-                    if (!cts.IsCancellationRequested) _overlay.FadePupilToEye();
-                }
             }
-
-            await Task.WhenAll(ShowDiagramAsync(), ShowSceneAsync());
+            catch (OperationCanceledException)
+            {
+                // Superseded/closed — expected.
+            }
+            catch (Exception)
+            {
+                // A render error (e.g. a FLUX 200-with-no-image or content refusal) yields no image;
+                // stay on the red glow until a later beat's scene lands.
+                if (!cts.IsCancellationRequested) _overlay.FadePupilToEye();
+            }
 
             // Record the completed beat in the timeline rail (skip a superseded one).
             if (!cts.IsCancellationRequested && beatDiagram is not null)

@@ -48,7 +48,7 @@ public sealed class VisionService
     /// <param name="transcriptWindow">Recent dialogue, one line per finalized segment.</param>
     /// <param name="cancellationToken">Cancels the in-flight request.</param>
     public Task<VisionResult?> ConjureAsync(string transcriptWindow, CancellationToken cancellationToken = default)
-        => ConjureAsync(transcriptWindow, previousVision: null, onConcept: null, cancellationToken);
+        => ConjureAsync(transcriptWindow, previousVision: null, onConcept: null, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Conjures a concept and, when a renderer is configured, the image. <paramref name="previousVision"/>
@@ -65,9 +65,10 @@ public sealed class VisionService
         string transcriptWindow,
         string? previousVision,
         Action<VisualConcept>? onConcept = null,
+        string? topicAnchor = null,
         CancellationToken cancellationToken = default)
     {
-        var concept = await _designer.DesignAsync(transcriptWindow, previousVision, cancellationToken).ConfigureAwait(false);
+        var concept = await _designer.DesignAsync(transcriptWindow, previousVision, topicAnchor, cancellationToken).ConfigureAwait(false);
         if (concept is null) return null;
 
         onConcept?.Invoke(concept);   // surface the fast concept before the slow render
