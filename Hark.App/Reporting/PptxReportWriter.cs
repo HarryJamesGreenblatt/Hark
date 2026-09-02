@@ -76,13 +76,15 @@ public sealed class PptxReportWriter : IReportWriter
         foreach (var b in report.Beats) if (b.Scene is not null) { hero = b.Scene; break; }
 
         var slides = new List<SlidePart> { TitleSlide(presentationPart, layoutPart, report, hero) };
-        int beatNo = 1, page = 2;
-        foreach (var beat in report.Beats)
-            slides.Add(BeatSlide(presentationPart, layoutPart, beat, beatNo++, page++, total));
+        int page = 2;
+        // In the deck, the recaps set the scene before the vision beats (unlike the doc formats, where Vision leads).
         if (report.Recap is not null)
             slides.Add(RecapSlide(presentationPart, layoutPart, report.Recap, page++, total));
         if (report.Speakers is { Speakers.Count: > 0 })
             slides.Add(SpeakersSlide(presentationPart, layoutPart, report.Speakers, page++, total));
+        int beatNo = 1;
+        foreach (var beat in report.Beats)
+            slides.Add(BeatSlide(presentationPart, layoutPart, beat, beatNo++, page++, total));
 
         var slideIdList = new SlideIdList();
         uint sid = 256U;
