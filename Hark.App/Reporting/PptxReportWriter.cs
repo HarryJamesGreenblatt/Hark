@@ -19,10 +19,13 @@ public sealed class PptxReportWriter : IReportWriter
     public string Extension => ".pptx";
     public string FilterName => "PowerPoint";
 
-    // 16:9 slide, and the palette (dark deck so the scenes pop; mirrors the app/HTML accent language).
+    // 16:9 slide; the palette (dark deck so the scenes pop; mirrors the app/HTML accent language).
     private const long SlideW = 12192000L, SlideH = 6858000L;
-    private const long Margin = 548640L;                         // ~0.6"
-    private const string Bg = "0B0D10", Ink = "E6EAEF", Dim = "9AA2AC", Accent = "E24A3A";
+    private const long Margin = 640080L;                          // ~0.67"
+    private const long PanelW = 5030000L;                         // full-bleed scene panel on the right
+    private const long PanelX = SlideW - PanelW;
+    private const long Gutter = 460000L;
+    private const string Bg = "0B0D10", Ink = "E6EAEF", Dim = "9AA2AC", Accent = "E24A3A", Faint = "5A626C";
 
     public Task WriteAsync(SessionReport report, string path)
     {
@@ -65,29 +68,22 @@ public sealed class PptxReportWriter : IReportWriter
             },
             new SlideLayoutIdList(new SlideLayoutId { Id = 2147483649U, RelationshipId = masterPart.GetIdOfPart(layoutPart) }));
 
-        var slides = new List<SlidePart>();
+        int total = 1 + report.Beats.Count
+            + (report.Recap is not null ? 1 : 0)
+            + (report.Speakers is { Speakers.Count: > 0 } ? 1 : 0);
 
-        // Title slide.
-        slides.Add(NewSlide(presentationPart, layoutPart,
-            TextShape(2, "title", Margin, 2360000L, SlideW - 2 * Margin, 1300000L,
-                Center(Para(Run(report.Title, Ink, bold: true, sz: 4000)))),
-            TextShape(3, "meta", Margin, 3720000L, SlideW - 2 * Margin, 700000L,
-                Center(Para(Run(MetaLine(report), Dim, sz: 1800))))));
+        byte[]? hero = null;
+        foreach (var b in report.Beats) if (b.Scene is not null) { hero = b.Scene; break; }
 
-        // One slide per beat — the beat card as a slide.
-        int n = 1;
+        var slides = new List<SlidePart> { TitleSlide(presentationPart, layoutPart, report, hero) };
+        int beatNo = 1, page = 2;
         foreach (var beat in report.Beats)
-            slides.Add(BeatSlide(presentationPart, layoutPart, beat, n++));
-
-        // Conversation summary.
+            slides.Add(BeatSlide(presentationPart, layoutPart, beat, beatNo++, page++, total));
         if (report.Recap is not null)
-            slides.Add(RecapSlide(presentationPart, layoutPart, report.Recap));
-
-        // Speakers.
+            slides.Add(RecapSlide(presentationPart, layoutPart, report.Recap, page++, total));
         if (report.Speakers is { Speakers.Count: > 0 })
-            slides.Add(SpeakersSlide(presentationPart, layoutPart, report.Speakers));
+            slides.Add(SpeakersSlide(presentationPart, layoutPart, report.Speakers, page++, total));
 
-        // Presentation part: master, slide list, sizes.
         var slideIdList = new SlideIdList();
         uint sid = 256U;
         foreach (var sp in slides)
@@ -110,94 +106,111 @@ public sealed class PptxReportWriter : IReportWriter
 
     // ── slides ──
 
-    private static SlidePart BeatSlide(PresentationPart pp, SlideLayoutPart layout, ReportBeat beat, int index)
+    /// <summary>Cinematic hero: the first scene full-bleed under a scrim, with the title set in the lower third.</summary>
+    private static SlidePart TitleSlide(PresentationPart pp, SlideLayoutPart layout, SessionReport report, byte[]? hero)
     {
-        bool hasScene = beat.Scene is not null;
-        const long titleY = 320040L, contentY = 1420000L;
-        long contentBottom = SlideH - Margin;
-        long nodesW = hasScene ? 5720000L : SlideW - 2 * Margin;
-
-        // Numbered title.
-        var title = TextShape(2, "title", Margin, titleY, SlideW - 2 * Margin, 900000L,
-            Para(Run(index.ToString(), Accent, bold: true, sz: 3200),
-                 Run("   " + (beat.Title?.Trim() ?? string.Empty), Ink, bold: true, sz: 3200)));
-
-        // Node list.
-        var nodeParas = new List<D.Paragraph>();
-        foreach (var node in beat.Nodes)
+        var sp = NewSlide(pp, layout);
+        if (hero is not null)
         {
-            var runs = new List<OpenXmlElement>
-            {
-                Run("\u25CF  ", Strip(ReportPalette.Hex(node.Color)), sz: 1600),
-                Run(node.Label?.Trim() ?? string.Empty, Ink, bold: true, sz: 1600),
-            };
-            if (!string.IsNullOrWhiteSpace(node.Detail))
-                runs.Add(Run("   " + node.Detail.Trim(), Dim, sz: 1400));
-            nodeParas.Add(Para(runs.ToArray()));
+            CoverPicture(sp, hero, 0, 0, SlideW, SlideH, 10U);
+            Add(sp, RectShape(11, "scrim", 0, 0, SlideW, SlideH, "000000", 62000));
+            Add(sp, TextShape(2, "eyebrow", Margin, 4160000L, 9000000L, 320000L,
+                P(null, 0, 0, 0, Run("HARK \u00b7 SESSION REPORT", Accent, bold: true, sz: 1300, spc: 240))));
+            Add(sp, TextShape(3, "title", Margin, 4520000L, SlideW - 2 * Margin, 1500000L,
+                P(null, 0, 0, 0, Run(report.Title, Ink, bold: true, sz: 4400))));
+            Add(sp, TextShape(4, "meta", Margin, 6060000L, SlideW - 2 * Margin, 500000L,
+                P(null, 0, 0, 0, Run(MetaLine(report), Dim, sz: 1500))));
         }
-        if (nodeParas.Count == 0) nodeParas.Add(Para(Run(string.Empty, Ink, sz: 1600)));
-        var nodes = TextShape(3, "nodes", Margin, contentY, nodesW, contentBottom - contentY, nodeParas.ToArray());
-
-        var shapes = new List<OpenXmlElement> { title, nodes };
-        if (hasScene)
+        else
         {
-            long boxX = Margin + nodesW + 360000L;
-            long boxW = SlideW - Margin - boxX;
-            long boxH = contentBottom - contentY;
-            var slidePart = NewSlide(pp, layout, shapes.ToArray());
-            AppendPicture(slidePart, beat.Scene!, boxX, contentY, boxW, boxH);
-            return slidePart;
+            Add(sp, TextShape(2, "eyebrow", Margin, 2560000L, SlideW - 2 * Margin, 320000L,
+                P(D.TextAlignmentTypeValues.Center, 0, 0, 0, Run("HARK \u00b7 SESSION REPORT", Accent, bold: true, sz: 1300, spc: 240))));
+            Add(sp, TextShape(3, "title", Margin, 2920000L, SlideW - 2 * Margin, 1400000L,
+                P(D.TextAlignmentTypeValues.Center, 0, 0, 0, Run(report.Title, Ink, bold: true, sz: 4400))));
+            Add(sp, TextShape(4, "meta", Margin, 4360000L, SlideW - 2 * Margin, 500000L,
+                P(D.TextAlignmentTypeValues.Center, 0, 0, 0, Run(MetaLine(report), Dim, sz: 1500))));
         }
-        return NewSlide(pp, layout, shapes.ToArray());
+        return sp;
     }
 
-    private static SlidePart RecapSlide(PresentationPart pp, SlideLayoutPart layout, MeetingRecap recap)
+    private static SlidePart BeatSlide(PresentationPart pp, SlideLayoutPart layout, ReportBeat beat, int beatNo, int page, int total)
+    {
+        bool hasScene = beat.Scene is not null;
+        bool imageLeft = hasScene && beatNo % 2 == 0;   // alternate the scene side for editorial rhythm
+        var sp = NewSlide(pp, layout);
+
+        long textX = !hasScene ? Margin : (imageLeft ? PanelW + Gutter : Margin);
+        long textW = !hasScene ? 9400000L : PanelX - Gutter - Margin;
+        if (hasScene) CoverPicture(sp, beat.Scene!, imageLeft ? 0 : PanelX, 0, PanelW, SlideH, 10U);
+
+        Add(sp, TextShape(2, "kicker", textX, 540000L, textW, 300000L,
+            P(null, 0, 0, 0, Run($"VISION \u00b7 BEAT {beatNo:00}", Accent, bold: true, sz: 1200, spc: 220))));
+        Add(sp, TextShape(3, "title", textX, 880000L, textW, 1480000L,
+            P(null, 0, 0, 0, Run(beat.Title?.Trim() ?? string.Empty, Ink, bold: true, sz: 3000))));
+        Add(sp, RectShape(4, "rule", textX, 2500000L, 520000L, 40000L, Accent));
+
+        var nodeParas = new List<D.Paragraph>();
+        foreach (var node in beat.Nodes)
+            nodeParas.Add(NodePara(Strip(ReportPalette.Hex(node.Color)), node.Label?.Trim() ?? string.Empty, node.Detail, 9));
+        if (nodeParas.Count == 0) nodeParas.Add(P(null, 0, 0, 0, Run(string.Empty, Ink, sz: 1600)));
+        Add(sp, TextShape(5, "nodes", textX, 2760000L, textW, SlideH - 2760000L - 560000L, nodeParas.ToArray()));
+
+        Footer(sp, page, total, textX, textX + textW);
+        return sp;
+    }
+
+    private static SlidePart RecapSlide(PresentationPart pp, SlideLayoutPart layout, MeetingRecap recap, int page, int total)
     {
         var body = new List<D.Paragraph>();
         if (!string.IsNullOrWhiteSpace(recap.Overview))
-            body.Add(SpaceAfter(Para(Run(recap.Overview.Trim(), Ink, sz: 1800)), 1400));
+            body.Add(P(null, 0, 0, 14, Run(recap.Overview.Trim(), Ink, sz: 1700)));
         foreach (var t in recap.Topics)
-        {
-            var runs = new List<OpenXmlElement> { Run("\u25CF  ", Accent, sz: 1600), Run(t.Title?.Trim() ?? string.Empty, Ink, bold: true, sz: 1600) };
-            if (!string.IsNullOrWhiteSpace(t.Summary)) runs.Add(Run("   " + t.Summary.Trim(), Dim, sz: 1400));
-            body.Add(Para(runs.ToArray()));
-        }
-        return SectionSlide(pp, layout, "Conversation summary", body);
+            body.Add(NodePara(Accent, t.Title?.Trim() ?? string.Empty, t.Summary, 10));
+        return SectionSlide(pp, layout, "Topics", "Conversation summary", body, page, total);
     }
 
-    private static SlidePart SpeakersSlide(PresentationPart pp, SlideLayoutPart layout, SpeakerRecap recap)
+    private static SlidePart SpeakersSlide(PresentationPart pp, SlideLayoutPart layout, SpeakerRecap recap, int page, int total)
     {
         var body = new List<D.Paragraph>();
         foreach (var s in recap.Speakers)
-        {
-            var runs = new List<OpenXmlElement> { Run("\u25CF  ", Accent, sz: 1600), Run(s.Speaker?.Trim() ?? string.Empty, Ink, bold: true, sz: 1600) };
-            if (!string.IsNullOrWhiteSpace(s.Summary)) runs.Add(Run("   " + s.Summary.Trim(), Dim, sz: 1400));
-            body.Add(Para(runs.ToArray()));
-        }
-        return SectionSlide(pp, layout, "Speakers", body);
+            body.Add(NodePara(Accent, s.Speaker?.Trim() ?? string.Empty, s.Summary, 10));
+        return SectionSlide(pp, layout, "People", "Speakers", body, page, total);
     }
 
-    private static SlidePart SectionSlide(PresentationPart pp, SlideLayoutPart layout, string heading, List<D.Paragraph> body) =>
-        NewSlide(pp, layout,
-            TextShape(2, "heading", Margin, 320040L, SlideW - 2 * Margin, 900000L,
-                Para(Run(heading, Accent, bold: true, sz: 2800))),
-            TextShape(3, "body", Margin, 1420000L, SlideW - 2 * Margin, SlideH - 1420000L - Margin, body.ToArray()));
+    private static SlidePart SectionSlide(PresentationPart pp, SlideLayoutPart layout, string kicker, string heading, List<D.Paragraph> body, int page, int total)
+    {
+        var sp = NewSlide(pp, layout);
+        Add(sp, TextShape(2, "kicker", Margin, 540000L, 9400000L, 300000L,
+            P(null, 0, 0, 0, Run(kicker.ToUpperInvariant(), Accent, bold: true, sz: 1200, spc: 220))));
+        Add(sp, TextShape(3, "heading", Margin, 880000L, 9400000L, 1000000L,
+            P(null, 0, 0, 0, Run(heading, Ink, bold: true, sz: 3000))));
+        Add(sp, RectShape(4, "rule", Margin, 1980000L, 520000L, 40000L, Accent));
+        Add(sp, TextShape(5, "body", Margin, 2260000L, 10200000L, SlideH - 2260000L - 560000L, body.ToArray()));
+        Footer(sp, page, total, Margin, SlideW - Margin);
+        return sp;
+    }
 
     // ── low-level builders ──
 
-    private static SlidePart NewSlide(PresentationPart pp, SlideLayoutPart layout, params OpenXmlElement[] shapes)
+    private static SlidePart NewSlide(PresentationPart pp, SlideLayoutPart layout)
     {
         var slidePart = pp.AddNewPart<SlidePart>();
-        var tree = new P.ShapeTree(
-            new P.NonVisualGroupShapeProperties(
-                new P.NonVisualDrawingProperties { Id = 1U, Name = string.Empty },
-                new P.NonVisualGroupShapeDrawingProperties(),
-                new P.ApplicationNonVisualDrawingProperties()),
-            new P.GroupShapeProperties(new D.TransformGroup()));
-        foreach (var s in shapes) tree.Append(s);
-        slidePart.Slide = new Slide(new CommonSlideData(tree));
+        slidePart.Slide = new Slide(new CommonSlideData(EmptyTree()));
         slidePart.AddPart(layout);
         return slidePart;
+    }
+
+    private static void Add(SlidePart slidePart, OpenXmlElement shape) =>
+        slidePart.Slide?.CommonSlideData?.ShapeTree?.Append(shape);
+
+    /// <summary>A small footer: the HARK wordmark (at <paramref name="leftX"/>) and the page number (right-aligned at <paramref name="rightX"/>).</summary>
+    private static void Footer(SlidePart sp, int page, int total, long leftX, long rightX)
+    {
+        const long fy = SlideH - 470000L;
+        Add(sp, TextShape(6, "wm", leftX, fy, 3000000L, 300000L,
+            P(null, 0, 0, 0, Run("HARK", Faint, sz: 1000, spc: 300))));
+        Add(sp, TextShape(7, "pg", rightX - 3000000L, fy, 3000000L, 300000L,
+            P(D.TextAlignmentTypeValues.Right, 0, 0, 0, Run($"{page:00} / {total:00}", Faint, sz: 1000, spc: 150))));
     }
 
     private static P.Shape TextShape(uint id, string name, long x, long y, long cx, long cy, params D.Paragraph[] paragraphs)
@@ -217,54 +230,90 @@ public sealed class PptxReportWriter : IReportWriter
             body);
     }
 
-    private static void AppendPicture(SlidePart slidePart, byte[] png, long x, long y, long maxCx, long maxCy)
+    /// <summary>A filled rectangle (accent rule or scrim); <paramref name="alpha"/> is 0–100000 (100000 = opaque).</summary>
+    private static P.Shape RectShape(uint id, string name, long x, long y, long cx, long cy, string hex, int? alpha = null)
+    {
+        var clr = new D.RgbColorModelHex { Val = hex };
+        if (alpha is int a) clr.Append(new D.Alpha { Val = a });
+        return new P.Shape(
+            new P.NonVisualShapeProperties(
+                new P.NonVisualDrawingProperties { Id = id, Name = name },
+                new P.NonVisualShapeDrawingProperties(new D.ShapeLocks { NoGrouping = true }),
+                new P.ApplicationNonVisualDrawingProperties()),
+            new P.ShapeProperties(
+                new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = cx, Cy = cy }),
+                new D.PresetGeometry(new D.AdjustValueList()) { Preset = D.ShapeTypeValues.Rectangle },
+                new D.SolidFill(clr),
+                new D.Outline(new D.NoFill())),
+            new P.TextBody(new D.BodyProperties(), new D.ListStyle(), new D.Paragraph()));
+    }
+
+    /// <summary>Places a PNG to fill the box edge-to-edge, centre-cropped (cover), via a source rectangle.</summary>
+    private static void CoverPicture(SlidePart slidePart, byte[] png, long x, long y, long cx, long cy, uint id)
     {
         var imagePart = slidePart.AddImagePart(ImagePartType.Png);
         using (var ms = new MemoryStream(png)) imagePart.FeedData(ms);
         var relId = slidePart.GetIdOfPart(imagePart);
 
         var (w, h) = PngSize(png);
-        long cx = maxCx, cy = (w > 0 && h > 0) ? maxCx * h / w : maxCx;
-        if (cy > maxCy) { cy = maxCy; cx = (w > 0 && h > 0) ? maxCy * w / h : maxCy; }
-        long ox = x + (maxCx - cx) / 2, oy = y + (maxCy - cy) / 2;   // centre in the box
+        int l = 0, t = 0, r = 0, b = 0;
+        if (w > 0 && h > 0)
+        {
+            double ai = (double)w / h, ap = (double)cx / cy;
+            if (ai > ap) { int c = (int)((1 - ap / ai) / 2 * 100000); l = c; r = c; }        // crop sides
+            else if (ai < ap) { int c = (int)((1 - ai / ap) / 2 * 100000); t = c; b = c; }   // crop top/bottom
+        }
+        var blipFill = new P.BlipFill(new D.Blip { Embed = relId });
+        if ((l | t | r | b) != 0) blipFill.Append(new D.SourceRectangle { Left = l, Top = t, Right = r, Bottom = b });
+        blipFill.Append(new D.Stretch(new D.FillRectangle()));
 
-        var pic = new P.Picture(
+        Add(slidePart, new P.Picture(
             new P.NonVisualPictureProperties(
-                new P.NonVisualDrawingProperties { Id = 10U, Name = "scene" },
+                new P.NonVisualDrawingProperties { Id = id, Name = "scene" },
                 new P.NonVisualPictureDrawingProperties(new D.PictureLocks { NoChangeAspect = true }),
                 new P.ApplicationNonVisualDrawingProperties()),
-            new P.BlipFill(new D.Blip { Embed = relId }, new D.Stretch(new D.FillRectangle())),
+            blipFill,
             new P.ShapeProperties(
-                new D.Transform2D(new D.Offset { X = ox, Y = oy }, new D.Extents { Cx = cx, Cy = cy }),
-                new D.PresetGeometry(new D.AdjustValueList()) { Preset = D.ShapeTypeValues.Rectangle }));
-
-        slidePart.Slide?.CommonSlideData?.ShapeTree?.Append(pic);
+                new D.Transform2D(new D.Offset { X = x, Y = y }, new D.Extents { Cx = cx, Cy = cy }),
+                new D.PresetGeometry(new D.AdjustValueList()) { Preset = D.ShapeTypeValues.Rectangle })));
     }
 
-    private static D.Paragraph Para(params OpenXmlElement[] runs)
+    /// <summary>A node/topic line: a coloured dot + bold label, with the detail on the next line under the label.</summary>
+    private static D.Paragraph NodePara(string dotColor, string label, string? detail, int spaceAfterPts)
     {
-        var p = new D.Paragraph(new D.ParagraphProperties(new D.NoBullet()));
-        foreach (var r in runs) p.Append(r);
-        return p;
+        var runs = new List<OpenXmlElement>
+        {
+            Run("\u25CF  ", dotColor, sz: 1500),
+            Run(label, Ink, bold: true, sz: 1600),
+        };
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            runs.Add(new D.Break());
+            runs.Add(Run(detail!.Trim(), Dim, sz: 1400));
+        }
+        return P(null, 250000L, -250000L, spaceAfterPts, runs.ToArray());
     }
 
-    private static D.Paragraph Center(D.Paragraph p)
+    private static D.Paragraph P(D.TextAlignmentTypeValues? align, long marL, long indent, int spaceAfterPts, params OpenXmlElement[] runs)
     {
-        p.ParagraphProperties ??= new D.ParagraphProperties();
-        p.ParagraphProperties.Alignment = D.TextAlignmentTypeValues.Center;
-        return p;
+        var pPr = new D.ParagraphProperties();
+        if (marL != 0) pPr.LeftMargin = (int)marL;
+        if (indent != 0) pPr.Indent = (int)indent;
+        if (align is { } a) pPr.Alignment = a;
+        if (spaceAfterPts > 0) pPr.Append(new D.SpaceAfter(new D.SpacingPoints { Val = spaceAfterPts * 100 }));
+        pPr.Append(new D.NoBullet());
+        var para = new D.Paragraph(pPr);
+        foreach (var run in runs) para.Append(run);
+        return para;
     }
 
-    private static D.Paragraph SpaceAfter(D.Paragraph p, int points)
+    private static D.Run Run(string? text, string colorHex, bool bold = false, int sz = 1600, int spc = 0)
     {
-        p.ParagraphProperties ??= new D.ParagraphProperties();
-        p.ParagraphProperties.PrependChild(new D.SpaceAfter(new D.SpacingPoints { Val = points * 100 }));
-        return p;
+        var rp = new D.RunProperties(new D.SolidFill(new D.RgbColorModelHex { Val = colorHex }))
+        { Bold = bold, FontSize = sz, Language = "en-US" };
+        if (spc != 0) rp.Spacing = spc;
+        return new D.Run(rp, new D.Text(text ?? string.Empty));
     }
-
-    private static D.Run Run(string? text, string colorHex, bool bold = false, int sz = 1600) =>
-        new(new D.RunProperties(new D.SolidFill(new D.RgbColorModelHex { Val = colorHex })) { Bold = bold, FontSize = sz, Language = "en-US" },
-            new D.Text(text ?? string.Empty));
 
     private static P.ShapeTree EmptyTree() => new(
         new P.NonVisualGroupShapeProperties(
