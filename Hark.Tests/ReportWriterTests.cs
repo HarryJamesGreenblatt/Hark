@@ -2,6 +2,7 @@ using System.IO;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using Hark.App.Reporting;
+using Hark.Core.Summarization;
 using Hark.Oracle.Vision;
 using Xunit;
 

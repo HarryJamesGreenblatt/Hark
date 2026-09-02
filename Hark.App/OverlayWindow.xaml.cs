@@ -167,6 +167,12 @@ public partial class OverlayWindow : Window
     /// </summary>
     public event Action<SummaryStyle>? SummaryRequested;
 
+    /// <summary>
+    /// Raised by Save to obtain both recaps for the report, generating them if the user never opened
+    /// SUMMARY. The host returns cached results when fresh; returns nulls when summaries aren't available.
+    /// </summary>
+    public event Func<Task<(MeetingRecap? Conversation, SpeakerRecap? Speakers)>>? ReportRecapsRequested;
+
     /// <summary>Raised when the user toggles the mic; the argument is the requested on/off state.</summary>
     public event Action<bool>? MicToggleRequested;
 
@@ -1820,8 +1826,8 @@ public partial class OverlayWindow : Window
     /// </summary>
     private async void SaveReport()
     {
-        var report = BuildSessionReport();
-        if (report is null) return;   // nothing captured yet
+        var transcript = FullText();
+        if (string.IsNullOrWhiteSpace(transcript) && _visionBeats.Count == 0) return;   // nothing captured yet
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
@@ -1834,6 +1840,24 @@ public partial class OverlayWindow : Window
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
         };
         if (dialog.ShowDialog(this) != true) return;   // user cancelled the picker
+
+        // Ensure the recaps exist even if the user never opened SUMMARY — the host generates them on demand.
+        if (ReportRecapsRequested is { } fetch && !string.IsNullOrWhiteSpace(transcript))
+        {
+            SaveButton.IsEnabled = false;
+            SaveButton.ToolTip = "Generating summary…";
+            try
+            {
+                var (conversation, speakers) = await fetch();
+                if (conversation is not null) _lastRecap = conversation;
+                if (speakers is not null) _lastSpeakerRecap = speakers;
+            }
+            catch { /* keep whatever recaps we already have */ }
+            finally { SaveButton.IsEnabled = true; }
+        }
+
+        var report = BuildSessionReport();
+        if (report is null) return;
 
         var ext = System.IO.Path.GetExtension(dialog.FileName);
         var writer = _reportWriters.FirstOrDefault(w => string.Equals(w.Extension, ext, StringComparison.OrdinalIgnoreCase))

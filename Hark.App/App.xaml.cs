@@ -211,6 +211,7 @@ public partial class App : Application
         _overlay.SpeakerSelected += OpenSpeakerWindow;
         _overlay.SpeakerRenameRequested += OnSpeakerRenameRequested;
         _overlay.SummaryRequested += OnSummaryRequested;
+        _overlay.ReportRecapsRequested += OnReportRecapsRequested;
         _overlay.VisionReviewRequested += () => _visionReviewing = true;
         _overlay.VisionLiveRequested += () => _visionReviewing = false;
         _overlay.MicToggleRequested += OnMicToggleRequested;
@@ -799,6 +800,37 @@ public partial class App : Application
         {
             _overlay.SetSummaryText($"Couldn't generate recap: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Supplies both recaps for a saved report, generating them on demand when the user never opened
+    /// SUMMARY. Reuses the caches when they're current; returns (null, null) when summaries aren't
+    /// configured or there's nothing to summarize. Runs independently of the SUMMARY view's own cache.
+    /// </summary>
+    private async Task<(MeetingRecap? Conversation, SpeakerRecap? Speakers)> OnReportRecapsRequested()
+    {
+        if (string.IsNullOrWhiteSpace(_aoaiEndpoint) || string.IsNullOrWhiteSpace(_aoaiDeployment)
+            || _store.All.Count == 0)
+            return (_cachedRecap, _cachedSpeakerRecap);
+
+        int revision = _store.Revision;
+        var conversation = _cachedRevision == revision ? _cachedRecap : null;
+        var speakers = _cachedRevision == revision ? _cachedSpeakerRecap : null;
+        if (conversation is not null && speakers is not null) return (conversation, speakers);
+
+        var transcript = string.Join(
+            Environment.NewLine,
+            _store.All.Select(entry => $"{entry.Speaker}: {entry.Text}"));
+
+        _summarizer ??= new AzureOpenAiSummarizer(_aoaiEndpoint!, _aoaiDeployment!, new AzureCliCredential());
+
+        conversation ??= await _summarizer.SummarizeConversationAsync(transcript, CancellationToken.None);
+        speakers ??= await _summarizer.SummarizeSpeakersAsync(transcript, CancellationToken.None);
+
+        _cachedRecap = conversation;
+        _cachedSpeakerRecap = speakers;
+        _cachedRevision = revision;
+        return (conversation, speakers);
     }
 
     /// <summary>

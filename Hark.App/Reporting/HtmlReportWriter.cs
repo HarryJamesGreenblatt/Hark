@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,37 +22,43 @@ public sealed class HtmlReportWriter : IReportWriter
         var sb = new StringBuilder();
         sb.AppendLine("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-        sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title><style>");
-        sb.AppendLine("body{font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;background:#0B0D10;color:#DEE3E8;margin:0;padding:32px;line-height:1.5}");
-        sb.AppendLine("h1{font-size:22px;margin:0 0 4px}.sub{color:#8A8F96;font-size:13px;margin-bottom:28px}");
-        sb.AppendLine("h2{font-size:16px;color:#C8CDD4;border-bottom:1px solid #23272E;padding-bottom:6px;margin-top:36px}");
-        sb.AppendLine("h3{font-size:14px;margin:18px 0 6px}");
-        sb.AppendLine("pre{white-space:pre-wrap;word-wrap:break-word;background:#111418;border:1px solid #1E232A;border-radius:8px;padding:14px;font-family:inherit;font-size:13px}");
-        sb.AppendLine("ul{margin:6px 0}li{margin:3px 0}p{margin:6px 0}");
-        sb.AppendLine(".beat{background:#111418;border:1px solid #1E232A;border-radius:10px;padding:16px;margin:16px 0}");
-        sb.AppendLine(".beat img{max-width:360px;width:100%;border-radius:8px;margin-top:10px;display:block}");
-        sb.AppendLine(".chips{margin:6px 0}.chip{display:inline-block;border-radius:12px;padding:3px 10px;margin:3px 6px 3px 0;font-size:12px;font-weight:600;color:#fff}");
-        sb.AppendLine(".detail{color:#9AA0A6;font-size:12px;margin:2px 0 8px 2px}");
-        sb.AppendLine("</style></head><body>");
-        sb.Append("<h1>").Append(Esc(report.Title)).Append("</h1><div class=\"sub\">").Append(stamp).AppendLine("</div>");
+        sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title>");
+        sb.Append("<style>").Append(Css).AppendLine("</style></head><body><main class=\"wrap\">");
 
-        if (!string.IsNullOrWhiteSpace(report.Transcript))
-            sb.Append("<h2>Transcript</h2><pre>").Append(Esc(report.Transcript)).AppendLine("</pre>");
+        // Hero — a HAL-eye mark, the "session report" eyebrow, the title, and a meta line of counts.
+        sb.AppendLine("<header class=\"hero\">");
+        sb.AppendLine("<div class=\"eye\" aria-hidden=\"true\"></div>");
+        sb.AppendLine("<div class=\"hero-text\"><div class=\"brand\">HARK \u00b7 session report</div>");
+        sb.Append("<h1>").Append(Esc(report.Title)).AppendLine("</h1>");
+        sb.Append("<div class=\"meta\">").Append(stamp);
+        var facts = new List<string>();
+        if (report.Speakers is { Speakers.Count: > 0 } sp) facts.Add(Plural(sp.Speakers.Count, "speaker"));
+        if (report.Beats.Count > 0) facts.Add(Plural(report.Beats.Count, "vision beat"));
+        foreach (var f in facts) sb.Append(" <span class=\"sep\">\u00b7</span> ").Append(Esc(f));
+        sb.AppendLine("</div></div></header>");
+
+        // Vision leads — it's the flagship. Then the recap, the speakers, and the raw transcript last.
+        if (report.Beats.Count > 0) AppendVision(sb, report);
         if (report.Recap is not null) AppendRecap(sb, report.Recap);
         if (report.Speakers is { Speakers.Count: > 0 }) AppendSpeakers(sb, report.Speakers);
-        if (report.Beats.Count > 0) AppendVision(sb, report);
+        if (!string.IsNullOrWhiteSpace(report.Transcript)) AppendTranscript(sb, report.Transcript);
 
-        sb.AppendLine("</body></html>");
+        sb.AppendLine("</main></body></html>");
         return sb.ToString();
     }
 
+    private static void SectionHead(StringBuilder sb, string label) =>
+        sb.Append("<div class=\"sec-head\"><span class=\"tick\"></span><h2>").Append(Esc(label)).AppendLine("</h2></div>");
+
     private static void AppendRecap(StringBuilder sb, MeetingRecap recap)
     {
-        sb.AppendLine("<h2>Conversation summary</h2>");
+        sb.AppendLine("<section>");
+        SectionHead(sb, "Conversation summary");
         if (!string.IsNullOrWhiteSpace(recap.Overview))
-            sb.Append("<p>").Append(Esc(recap.Overview.Trim())).AppendLine("</p>");
+            sb.Append("<p class=\"lead\">").Append(Esc(recap.Overview.Trim())).AppendLine("</p>");
         foreach (var t in recap.Topics)
         {
+            sb.AppendLine("<article class=\"topic\">");
             sb.Append("<h3>").Append(Esc(t.Title?.Trim())).AppendLine("</h3>");
             if (!string.IsNullOrWhiteSpace(t.Summary)) sb.Append("<p>").Append(Esc(t.Summary.Trim())).AppendLine("</p>");
             if (t.Details.Count > 0)
@@ -60,26 +67,34 @@ public sealed class HtmlReportWriter : IReportWriter
                 foreach (var d in t.Details) sb.Append("<li>").Append(Esc(d?.Trim())).AppendLine("</li>");
                 sb.AppendLine("</ul>");
             }
+            sb.AppendLine("</article>");
         }
         if (recap.FollowUps.Count > 0)
         {
-            sb.AppendLine("<h3>Follow-up tasks</h3><ul>");
+            sb.AppendLine("<h3 class=\"followups-h\">Follow-up tasks</h3><ul class=\"tasks\">");
             foreach (var f in recap.FollowUps)
             {
-                sb.Append("<li>").Append(Esc(f.Task?.Trim()));
-                if (!string.IsNullOrWhiteSpace(f.Owner)) sb.Append(" \u2014 ").Append(Esc(f.Owner.Trim()));
-                sb.AppendLine("</li>");
+                sb.Append("<li><span class=\"box\"></span><span>").Append(Esc(f.Task?.Trim()));
+                if (!string.IsNullOrWhiteSpace(f.Owner))
+                    sb.Append(" <span class=\"owner\">").Append(Esc(f.Owner.Trim())).Append("</span>");
+                sb.AppendLine("</span></li>");
             }
             sb.AppendLine("</ul>");
         }
+        sb.AppendLine("</section>");
     }
 
     private static void AppendSpeakers(StringBuilder sb, SpeakerRecap recap)
     {
-        sb.AppendLine("<h2>Speakers</h2>");
+        sb.AppendLine("<section>");
+        SectionHead(sb, "Speakers");
         foreach (var s in recap.Speakers)
         {
-            sb.Append("<h3>").Append(Esc(s.Speaker?.Trim())).AppendLine("</h3>");
+            var name = s.Speaker?.Trim() ?? string.Empty;
+            sb.AppendLine("<article class=\"speaker\">");
+            sb.Append("<div class=\"avatar\">").Append(Esc(Initials(name))).AppendLine("</div>");
+            sb.AppendLine("<div class=\"speaker-body\">");
+            sb.Append("<h3>").Append(Esc(name)).AppendLine("</h3>");
             if (!string.IsNullOrWhiteSpace(s.Summary)) sb.Append("<p>").Append(Esc(s.Summary.Trim())).AppendLine("</p>");
             if (s.Points.Count > 0)
             {
@@ -87,35 +102,120 @@ public sealed class HtmlReportWriter : IReportWriter
                 foreach (var p in s.Points) sb.Append("<li>").Append(Esc(p?.Trim())).AppendLine("</li>");
                 sb.AppendLine("</ul>");
             }
+            sb.AppendLine("</div></article>");
         }
+        sb.AppendLine("</section>");
     }
 
+    // The vision "beat card" — the reusable layout primitive: the mind-map (title + coloured nodes) on the
+    // left, its scene image beside it on the right, kept together. This is the shape the DOCX/PPTX writers mirror.
     private static void AppendVision(StringBuilder sb, SessionReport report)
     {
-        sb.AppendLine("<h2>Vision slideshow</h2>");
+        sb.AppendLine("<section>");
+        SectionHead(sb, "Vision");
         int n = 1;
         foreach (var beat in report.Beats)
         {
-            sb.AppendLine("<div class=\"beat\">");
-            sb.Append("<h3>").Append(n++).Append(". ").Append(Esc(beat.Title?.Trim())).AppendLine("</h3>");
+            var hasScene = beat.Scene is not null;
+            sb.Append("<article class=\"beat").Append(hasScene ? string.Empty : " no-scene").AppendLine("\">");
+
+            sb.AppendLine("<div class=\"beat-main\">");
+            sb.Append("<h3 class=\"beat-title\"><span class=\"beat-num\">").Append(n++).Append("</span>")
+              .Append(Esc(beat.Title?.Trim())).AppendLine("</h3>");
             if (beat.Nodes.Count > 0)
             {
-                sb.AppendLine("<div class=\"chips\">");
+                sb.AppendLine("<ul class=\"nodes\">");
                 foreach (var node in beat.Nodes)
-                    sb.Append("<span class=\"chip\" style=\"background:").Append(ReportPalette.Hex(node.Color))
-                      .Append("\">").Append(Esc(node.Label?.Trim())).AppendLine("</span>");
-                sb.AppendLine("</div>");
-                foreach (var node in beat.Nodes)
+                {
+                    sb.Append("<li><span class=\"node-dot\" style=\"background:").Append(ReportPalette.Hex(node.Color))
+                      .Append("\"></span><span class=\"node-label\">").Append(Esc(node.Label?.Trim())).Append("</span>");
                     if (!string.IsNullOrWhiteSpace(node.Detail))
-                        sb.Append("<div class=\"detail\"><b>").Append(Esc(node.Label?.Trim()))
-                          .Append(":</b> ").Append(Esc(node.Detail.Trim())).AppendLine("</div>");
+                        sb.Append("<span class=\"node-detail\">").Append(Esc(node.Detail.Trim())).Append("</span>");
+                    sb.AppendLine("</li>");
+                }
+                sb.AppendLine("</ul>");
             }
-            if (beat.Scene is not null)
-                sb.Append("<img alt=\"scene\" src=\"data:image/png;base64,")
-                  .Append(Convert.ToBase64String(beat.Scene)).AppendLine("\">");
             sb.AppendLine("</div>");
+
+            if (hasScene)
+                sb.Append("<figure class=\"beat-figure\"><img alt=\"scene\" src=\"data:image/png;base64,")
+                  .Append(Convert.ToBase64String(beat.Scene!)).AppendLine("\"></figure>");
+
+            sb.AppendLine("</article>");
         }
+        sb.AppendLine("</section>");
     }
+
+    private static void AppendTranscript(StringBuilder sb, string transcript)
+    {
+        sb.AppendLine("<section>");
+        SectionHead(sb, "Transcript");
+        sb.Append("<details class=\"transcript\"><summary>Full transcript</summary><pre>")
+          .Append(Esc(transcript.TrimEnd())).AppendLine("</pre></details>");
+        sb.AppendLine("</section>");
+    }
+
+    private static string Plural(int count, string noun) =>
+        count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    /// <summary>Up to two initials for a speaker avatar (first + last token).</summary>
+    private static string Initials(string name)
+    {
+        var parts = name.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+        return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+
+    private const string Css = """
+    :root{--bg:#0B0D10;--surface:#12151A;--surface-2:#181C22;--border:#252C36;--text:#E6EAEF;--dim:#9AA2AC;--faint:#697079;--accent:#FF4B3E;--r:14px;--r-sm:10px;--measure:900px}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI Variable','Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;background-image:radial-gradient(1200px 520px at 50% -240px,rgba(255,75,62,.07),transparent 70%)}
+    ::selection{background:rgba(255,75,62,.32)}
+    .wrap{max-width:var(--measure);margin:0 auto;padding:56px 28px 110px}
+    .hero{display:flex;align-items:center;gap:18px;padding-bottom:26px;border-bottom:1px solid var(--border)}
+    .eye{width:38px;height:38px;border-radius:50%;flex:none;background:radial-gradient(circle at 50% 38%,#FF7A6B 0%,#F0362A 42%,#6E0E08 100%);box-shadow:0 0 22px rgba(255,70,55,.5),inset 0 0 6px rgba(0,0,0,.45)}
+    .brand{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+    h1{font-size:27px;line-height:1.2;margin:0;font-weight:650;letter-spacing:-.01em}
+    .meta{color:var(--dim);font-size:13px;margin-top:8px}
+    .meta .sep{color:var(--faint);margin:0 3px}
+    section{margin:48px 0}
+    .sec-head{display:flex;align-items:center;gap:10px;margin:0 0 20px}
+    .sec-head .tick{width:22px;height:2px;border-radius:2px;background:var(--accent)}
+    .sec-head h2{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:0;font-weight:600}
+    h3{font-size:15px;margin:0 0 6px;font-weight:640}
+    p{margin:6px 0}
+    .lead{font-size:16px;color:#CFD5DC;margin:0 0 22px;max-width:70ch}
+    ul{margin:8px 0;padding-left:18px}li{margin:4px 0}
+    .topic{background:var(--surface);border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:var(--r-sm);padding:14px 18px;margin:12px 0;break-inside:avoid}
+    .topic h3{margin-bottom:4px}
+    .followups-h{margin:28px 0 10px}
+    ul.tasks{list-style:none;padding:0;margin:8px 0}
+    ul.tasks li{display:flex;align-items:flex-start;gap:11px;margin:8px 0}
+    ul.tasks .box{width:15px;height:15px;border:1.5px solid var(--faint);border-radius:4px;flex:none;margin-top:3px}
+    ul.tasks .owner{color:var(--accent);font-size:12.5px;font-weight:600;margin-left:5px;white-space:nowrap}
+    .speaker{display:flex;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin:12px 0;break-inside:avoid}
+    .avatar{width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#3B82F6,#A855F7)}
+    .speaker-body{min-width:0}
+    .speaker h3{margin-bottom:3px}
+    .beat{display:grid;grid-template-columns:1fr minmax(210px,300px);gap:26px;align-items:start;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin:16px 0;break-inside:avoid}
+    .beat.no-scene{grid-template-columns:1fr}
+    .beat-main{min-width:0}
+    .beat-title{display:flex;align-items:center;gap:11px;font-size:16px;margin:0 0 12px}
+    .beat-num{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--dim);background:var(--surface-2);border:1px solid var(--border);font-variant-numeric:tabular-nums}
+    ul.nodes{list-style:none;padding:0;margin:0}
+    ul.nodes li{display:flex;align-items:baseline;gap:9px;margin:8px 0;flex-wrap:wrap}
+    .node-dot{width:9px;height:9px;border-radius:50%;flex:none;align-self:center}
+    .node-label{font-weight:640;font-size:14px}
+    .node-detail{color:var(--dim);font-size:13.5px}
+    .beat-figure{margin:0}
+    .beat-figure img{width:100%;display:block;border-radius:var(--r-sm);border:1px solid var(--border)}
+    .transcript summary{cursor:pointer;color:var(--dim);font-size:13px;user-select:none;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm)}
+    .transcript[open] summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
+    .transcript pre{white-space:pre-wrap;word-wrap:break-word;background:var(--surface);border:1px solid var(--border);border-top:0;border-radius:0 0 var(--r-sm) var(--r-sm);padding:16px;font-family:inherit;font-size:13px;color:var(--dim);margin:0;max-height:480px;overflow:auto}
+    @media(max-width:620px){.beat{grid-template-columns:1fr}.wrap{padding:40px 18px 80px}}
+    @media print{.beat,.topic,.speaker{break-inside:avoid}}
+    """;
 
     /// <summary>XML/HTML-escapes a string for safe insertion as element text or an attribute value.</summary>
     private static string Esc(string? s) =>
