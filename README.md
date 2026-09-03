@@ -6,7 +6,7 @@ A developer-grade, scriptable speech-to-text pipeline that captures **system pla
 Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via
 **Azure AI Speech**, emitting clean text to stdout plus optional rolling text, JSON Lines, and SRT
 outputs. The desktop overlay adds real-time **speaker diarization**, per-speaker pages, an AI **recap**,
-a sound-reactive **"crystal ball" Vision**, and a one-click **multi-format session report** (Markdown,
+a sound-reactive **"Oracle"** with an **image generating Vision Mode**, and a one-click **multi-format session report** (Markdown,
 Word, PowerPoint, PDF, or web) — and can optionally mix in your **local microphone** so a
 headset user's own voice is captioned alongside the far side.
 
