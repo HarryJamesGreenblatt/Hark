@@ -4,7 +4,7 @@ using NAudio.Wave.SampleProviders;
 namespace Hark.Core.Audio;
 
 /// <summary>
-/// Adapt — converts the captured audio into the format the recognizer requires.
+/// Hear — converts the captured audio into the format the recognizer requires.
 /// WASAPI loopback typically delivers 48 kHz stereo 32-bit float; Azure Speech expects
 /// 16 kHz mono 16-bit PCM. This stage downmixes to mono, resamples to 16 kHz, and quantizes to 16-bit.
 /// </summary>

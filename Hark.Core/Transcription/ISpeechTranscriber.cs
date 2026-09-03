@@ -1,7 +1,7 @@
 namespace Hark.Core.Transcription;
 
 /// <summary>
-/// Recognize — the engine swap point. Accepts 16 kHz mono 16-bit PCM and raises
+/// Hear — the engine swap point. Accepts 16 kHz mono 16-bit PCM and raises
 /// recognition events. Implementations may be cloud-backed (Azure Speech) or local (Whisper),
 /// without the rest of the pipeline needing to change.
 /// </summary>

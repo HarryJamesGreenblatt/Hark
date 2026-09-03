@@ -7,7 +7,7 @@ using Microsoft.CognitiveServices.Speech.Transcription;
 namespace Hark.Core.Transcription;
 
 /// <summary>
-/// Recognize (Azure, diarized) — continuous conversation transcription that additionally
+/// Hear (Azure, diarized) — continuous conversation transcription that additionally
 /// attributes each utterance to an anonymous, session-scoped speaker (<c>Guest-1</c>, <c>Guest-2</c>, …)
 /// from a single-channel audio stream. Uses <see cref="ConversationTranscriber"/> under keyless
 /// Microsoft Entra ID authentication, mirroring <see cref="AzureSpeechTranscriber"/>.

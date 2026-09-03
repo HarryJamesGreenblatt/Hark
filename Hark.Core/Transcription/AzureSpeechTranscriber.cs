@@ -6,7 +6,7 @@ using Microsoft.CognitiveServices.Speech.Audio;
 namespace Hark.Core.Transcription;
 
 /// <summary>
-/// Recognize (Azure) — continuous speech-to-text via the Azure AI Speech service.
+/// Hear (Azure) — continuous speech-to-text via the Azure AI Speech service.
 /// Uses keyless Microsoft Entra ID authentication (<see cref="DefaultAzureCredential"/>), so no
 /// keys live in code or config; the signed-in identity must hold the "Cognitive Services Speech User"
 /// role on the target resource. Audio is streamed over a persistent websocket for low-latency interim results.

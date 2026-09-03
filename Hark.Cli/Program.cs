@@ -4,7 +4,7 @@ using Hark.Core;
 using Hark.Core.Output;
 using Microsoft.Extensions.Configuration;
 
-// HARK — Hear. Adapt. Recognize. Keep.
+// HARK — Hear. Adapt. Render. Keep.
 // Captures system playback audio (WASAPI loopback) and streams it to Azure AI Speech for
 // near-real-time transcription, fanning results out to stdout and optional files.
 
@@ -46,13 +46,13 @@ if (options.JsonPath is not null) sinks.Add(new JsonSink(options.JsonPath));
 if (options.SrtPath is not null) sinks.Add(new SrtSink(options.SrtPath));
 await using var sink = new CompositeSink(sinks.ToArray());
 
-// The shared pipeline (Hear → Adapt → Recognize → Keep).
+// The shared pipeline — the Hear movement (capture → PCM → Azure Speech) fanned to Keep (sinks).
 // Use the Azure CLI sign-in (az login) explicitly rather than DefaultAzureCredential, so HARK
 // authenticates as the identity that holds the 'Cognitive Services Speech User' role on the
 // resource — independent of any Visual Studio / IDE sign-in used for other work.
 await using var session = new HarkSession(
     region, resourceId, options.Language, new AzureCliCredential(), sink);
-session.Error += msg => Console.Error.WriteLine($"[Recognize] {msg}");
+session.Error += msg => Console.Error.WriteLine($"[Hear] {msg}");
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -163,7 +163,7 @@ internal sealed class CliOptions
     {
         Console.WriteLine(
             """
-            HARK — Hear. Adapt. Recognize. Keep.
+            HARK — Hear. Adapt. Render. Keep.
             Transcribe system playback audio in near real time via Azure AI Speech.
 
             USAGE:

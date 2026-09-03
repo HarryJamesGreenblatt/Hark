@@ -15,7 +15,7 @@
     <DisplayName>HARK</DisplayName>
     <PublisherDisplayName>Harry Greenblatt</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
-    <Description>Hear. Adapt. Recognize. Keep. — a tray-resident live captions overlay powered by Azure AI Speech.</Description>
+    <Description>Hear. Adapt. Render. Keep. — a tray-resident live captions overlay powered by Azure AI Speech.</Description>
   </Properties>
 
   <Dependencies>
@@ -36,7 +36,7 @@
                  uap10:TrustLevel="mediumIL">
       <uap:VisualElements
         DisplayName="HARK"
-        Description="Hear. Adapt. Recognize. Keep. — live captions overlay"
+        Description="Hear. Adapt. Render. Keep. — live captions overlay"
         BackgroundColor="#0C0C0C"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

@@ -7,11 +7,11 @@ using Hark.Core.Transcription;
 namespace Hark.Core;
 
 /// <summary>
-/// The reusable HARK pipeline: wires Hear (loopback capture) → Adapt (PCM conversion) →
-/// Recognize (Azure Speech) → Keep (sinks) behind a simple start/stop lifecycle.
+/// The reusable HARK pipeline: the Hear movement — loopback capture → PCM conversion → Azure Speech —
+/// fanned to the Keep movement (sinks), behind a simple start/stop lifecycle.
 /// <para>
-/// Both the CLI and the desktop app drive this same session, so the capture/convert/recognize
-/// orchestration lives in one place. Recognition results are re-surfaced as <see cref="Interim"/>
+/// Both the CLI and the desktop app drive this same session, so the capture/convert/transcribe
+/// orchestration lives in one place. Transcription results are re-surfaced as <see cref="Interim"/>
 /// and <see cref="Final"/> events (in addition to any sinks) so a host UI can render them directly.
 /// </para>
 /// </summary>

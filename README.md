@@ -1,6 +1,6 @@
 # HARK
 
-**Hear. Adapt. Recognize. Keep.**
+**Hear. Adapt. Render. Keep.**
 
 A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on
 Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via
@@ -58,25 +58,30 @@ Programs** like any packaged app. You still need an Azure **Speech** resource (o
 
 ## How it works
 
+HARK's four movements — **Hear · Adapt · Render · Keep**:
+
 ```
-┌──────────────┐  48k stereo float  ┌──────────────┐  16k mono PCM  ┌───────────────────┐  segments  ┌──────────────┐
-│     Hear     │ ─────────────────► │    Adapt     │ ─────────────► │     Recognize     │ ─────────► │     Keep     │
-│ WASAPI loop  │   DataAvailable    │ resample +   │  PushStream    │ Azure Speech      │  Interim/  │ stdout · txt │
-│ (+ local mic)│                    │ downmix +16b │                │ continuous reco   │  Final     │ json · srt   │
-└──────────────┘                    └──────────────┘                └───────────────────┘            └──────────────┘
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│     Hear     │──►│    Adapt     │──►│    Render    │──►│     Keep     │
+│ capture +    │   │ diarize ·    │   │ the Vision   │   │ save + the   │
+│ transcribe   │   │ refine · name│   │ crystal ball │   │ multi-format │
+│ (live caps)  │   │ · summarize  │   │ (HAL eye)    │   │ report       │
+└──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
 ```
 
-| Stage | Type | Responsibility |
+| Movement | Components | Responsibility |
 |---|---|---|
-| **Hear** | `Capture/LoopbackCaptureService` (+ `MicCaptureService`) | Taps the default render endpoint via WASAPI loopback; the desktop app can also mix in the local mic (opt-in), so a headset user's own voice is captioned too |
-| **Adapt** | `Audio/PcmConverter` | Downmix → resample to 16 kHz mono → 16-bit PCM (loopback + mic mixed in the float domain) |
-| **Recognize** | `Transcription/AzureSpeechTranscriber` · `ConversationDiarizingTranscriber` | Streams PCM to Azure Speech; raises `Interim`/`Final`; diarized mode attributes lines to `Guest-N` |
-| **Keep** | `Output/*Sink` | Fans results to stdout, rolling text, JSON Lines, SRT, and the overlay |
+| **Hear** | `Capture/LoopbackCaptureService` (+ `MicCaptureService`) · `Audio/PcmConverter` · `Transcription/AzureSpeechTranscriber` | Taps the default render endpoint via WASAPI loopback (+ optional local mic), downmixes/resamples to 16 kHz mono PCM, and streams it to Azure Speech → live captions |
+| **Adapt** | `ConversationDiarizingTranscriber` · `FastTranscriptionRefiner` · `SemanticDiarizationRefiner` · `SpeakerNamingRefiner` · `Summarization/AzureOpenAiSummarizer` | Attributes lines to `Guest-N`, re-diarizes offline on Stop, names voices from context, and distils the Conversation/Speaker recaps |
+| **Render** | `Hark.Oracle.Vision` (`ConceptDesigner` · `InfographicDesigner` · `VisionRenderer`) | Conjures the dual-layer "crystal ball" — a native WPF mind-map behind the HAL eye + a FLUX scene in the pupil — beat by beat |
+| **Keep** | `Output/*Sink` · `Hark.App/Reporting` | Fans live results to stdout · text · JSON Lines · SRT · the overlay, and exports the whole session as a **Markdown · Word · PowerPoint · PDF · Web** report |
 
-`ISpeechTranscriber` is an explicit **swap point**: the Azure engine is the default, and a
-local/offline transcriber can drop in without touching the rest of the pipeline. The solution is three
-projects over a shared core: **`Hark.Cli`** (terminal), **`Hark.App`** (WPF tray overlay), and
-**`Hark.Oracle`** (the AI recap + Vision tiers), all driving **`Hark.Core/HarkSession`**.
+Inside **Hear**, the dataflow is `48k stereo float → (downmix + resample + 16-bit) → 16k mono PCM →
+Azure Speech → Interim/Final segments`. `ISpeechTranscriber` is an explicit **swap point**: the Azure
+engine is the default, and a local/offline transcriber can drop in without touching the rest of the
+pipeline. The solution is three projects over a shared core: **`Hark.Cli`** (terminal — Hear + Keep),
+**`Hark.App`** (WPF tray overlay — all four movements), and **`Hark.Oracle`** (the AI recap + Vision
+tiers — Adapt + Render), all driving **`Hark.Core/HarkSession`**.
 
 ## Prerequisites
 
