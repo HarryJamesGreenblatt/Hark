@@ -42,7 +42,20 @@ items together since they all live around `Hark.App/Reporting/` and the `Session
 - `dotnet build Hark.slnx` → **0 errors**; `dotnet test` → **4 passed** (the DOCX/PPTX validators now cover
   the embedded icon, and the MD/HTML tests still find the base64 payloads).
 
-## 🔓 Open threads
+## � Follow-on fixes (same session)
+- **Mic mixing reset on session clear — `809805c`.** A manual mid-session mic-on **persisted** across an
+  overlay toggle off→on (the user expected a toggled-off session to reset). `_mixMic` was only seeded from
+  `HARK_MIX_MIC` at startup and mutated by the toggle — nothing reset it. **Fix:** kept the configured default
+  in a new `_configuredMixMic`, and `App.ResetConversation()` (the "clear everything" method that runs on
+  toggle-on) now returns `_mixMic` to it and refreshes the mic button. Each fresh session starts from the
+  configured default again.
+- **Title & recap caching confirmed (no change needed).** All five writers render `SessionReport.Title`
+  (no per-format hardcoded title; `"Hark session report"` is only the shared fallback). The title rides the
+  **revision-keyed recap cache** (`OnReportRecapsRequested` reuses `_cachedRecap` when `_store.Revision` is
+  unchanged), so saving multiple formats back-to-back makes **no extra AOAI calls and yields an identical
+  title** (no naming drift). It only regenerates when captions actually change between saves.
+
+## �🔓 Open threads
 - **HARK 2.1.0 — 5 of the original 6 done** (rebrand · Oracle naming · title · PDF light · icon). Remaining:
   the **installer pre-UAC delay** (measure first, then splash + startup tuning) and the **organic eye-motion**
   research spike. Live-validation to-do: confirm the icon renders in each format on a real save (tests cover
