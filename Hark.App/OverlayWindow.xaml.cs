@@ -926,8 +926,19 @@ public partial class OverlayWindow : Window
         double jx = PinkStep(ref _pnX1, ref _pnX2, ref _pnX3, dt) * jitterAmp;
         double jy = PinkStep(ref _pnY1, ref _pnY2, ref _pnY3, dt) * jitterAmp;
 
-        GazeTranslate.X = Math.Clamp(_gazeX + jx, -GazeMaxOffset, GazeMaxOffset);
-        GazeTranslate.Y = Math.Clamp(_gazeY + jy, -GazeMaxOffset, GazeMaxOffset);
+        double fx = Math.Clamp(_gazeX + jx, -GazeMaxOffset, GazeMaxOffset);
+        double fy = Math.Clamp(_gazeY + jy, -GazeMaxOffset, GazeMaxOffset);
+        GazeTranslate.X = fx;
+        GazeTranslate.Y = fy;
+
+        // Intra-pupil parallax: the bright pale-gold core (the HAL-like "pupil point") leads the red disc,
+        // shifting further in the gaze direction so the gaze reads as aimed from the point — while staying
+        // part of the same unit. The offset (relative to the disc's OWN centre) is pupilLead·offsetPx, so at
+        // the ±30 px travel the core sits ~22 px off-centre in the ⌀204 px cornea — clearly ahead of the disc.
+        const double pupilLead = 0.75 / 204.0;
+        double ox = 0.5 + fx * pupilLead, oy = 0.5 + fy * pupilLead;
+        OracleCorneaGradientBig.Center = new System.Windows.Point(ox, oy);
+        OracleCorneaGradientBig.GradientOrigin = new System.Windows.Point(ox, oy);
     }
 
     /// <summary>
@@ -990,6 +1001,7 @@ public partial class OverlayWindow : Window
         _fixHold = 1.0; _lookAt = null;
         _pnX1 = _pnX2 = _pnX3 = _pnY1 = _pnY2 = _pnY3 = 0;
         GazeTranslate.X = GazeTranslate.Y = 0;
+        OracleCorneaGradientBig.Center = OracleCorneaGradientBig.GradientOrigin = new System.Windows.Point(0.5, 0.5);
     }
 
     /// <summary>Tracks the cursor over the Vision canvas as a gaze look-at target (offset from the eye centre).</summary>

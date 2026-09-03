@@ -266,6 +266,36 @@ Per compositor frame (`OnRendering`, already running with `dt`), only while the 
   ambient + look-at isn't lively enough.
 - **Blink coupling** (Hark already has a pupil blink) — real blinks often accompany large gaze shifts.
 
+### 4.5 What actually shipped (post-live-tuning)
+The delivered build (`OverlayWindow`, `EyeGazeGroup` + `UpdateGaze`) refined the §4.3 proposal against several
+live looks:
+
+- **What moves:** cornea + pupil (`VisionOrb`) + scrying sheen translate as a unit via `GazeTranslate`; the
+  silver frame + socket stay fixed; the gloss is left out (structural parallax). `GazeMaxOffset = 30 px`,
+  `GazePxPerDeg = 1.2`.
+- **No socket clip after all.** The cornea's `OracleGlowBig` drop-shadow bloom extends well past the socket,
+  so a clip hard-cut the glow. The ≤30 px **offset clamp** already keeps the 102 px cornea ≥22 px inside the
+  154 px socket, so escape is impossible without a clip. *(Corrects §4.2 cue 1.)*
+- **Two interaction modes, not "cursor always follows":**
+  - **Pill hover only** → smooth pursuit toward the cursor, tuned *quick* (~0.18 s time constant, to match the
+    jitter's liveliness) with a *gentle* excursion (gain 0.09, capped ±22 px so the iris doesn't strain to the
+    rim). Gated on the existing `_pillHovered`.
+  - **Ambient** → **sound-reactive, not autonomous.** The Eyes-Alive mutual/away *timer was removed* (it read
+    as "constant" motion the user rejected). Instead: a gentle center-pull return, **audio-gated** small
+    glances (fire only when `level > 0.15`; cadence scales with loudness), and 1/f pink-noise jitter whose
+    amplitude tracks level (`0.15 + 1.3·level`) — near-still in a quiet room, organically jittery on speech.
+    Saccade *mechanics* (min-jerk, main-sequence duration, undershoot + corrective) are retained; they're just
+    triggered by sound rather than a clock.
+- **Intra-pupil parallax (a cue beyond the literature, user-driven).** The cornea's radial gradient has a
+  bright pale-gold core (the HAL-9000 "pupil point"). Rather than let it ride rigidly with the disc, its
+  `Center`/`GradientOrigin` are shifted an **extra ~0.75·offset** in the gaze direction each frame, so the
+  point **leads** the disc — the gaze reads as *aimed from the point* while staying one unit. This is a 2D
+  stand-in for the depth parallax between a real pupil and the surrounding iris, and it does a lot of the work
+  §4.2's foreshortening was meant to do. (Lead strength is one constant, `pupilLead`; ~0.30 was invisible,
+  0.75 reads clearly.)
+- **Foreshortening (§4.2 cue 2) not needed so far** — the intra-pupil parallax gave enough "sphere" feel that
+  the `GazeForeshorten` scale is still identity. Kept in the XAML as a ready hook if wanted later.
+
 ---
 
 ## 5. What the research corrects vs. the reverted first attempt

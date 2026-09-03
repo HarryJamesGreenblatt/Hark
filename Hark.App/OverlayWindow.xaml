@@ -738,7 +738,7 @@
                         </Grid.RenderTransform>
                     <Ellipse x:Name="OracleCorneaBig" Margin="78" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
-                            <RadialGradientBrush>
+                            <RadialGradientBrush x:Name="OracleCorneaGradientBig">
                                 <GradientStop Color="#FFD2C2" Offset="0" />
                                 <GradientStop Color="#FF1E10" Offset="0.42" />
                                 <GradientStop Color="#4A0000" Offset="1" />
