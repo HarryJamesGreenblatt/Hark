@@ -1,0 +1,4 @@
+# Python cache + temporary inspection stills from the thumbnail generators
+__pycache__/
+_chk_*.png
+_b_*.png
