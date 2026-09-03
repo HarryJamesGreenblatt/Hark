@@ -723,6 +723,19 @@
                         </Ellipse.Fill>
                     </Ellipse>
                     <Ellipse Margin="26" Fill="#0A0A0B" />
+                    <!-- Iris assembly (cornea + pupil + scrying sheen) that gazes as a UNIT within the socket:
+                         a 2D pupil-offset look-at (the silver frame + black socket stay fixed, which is what
+                         reads as "an eye looking"). The offset is clamped so the cornea never reaches the
+                         socket rim; the gloss is deliberately left OUTSIDE this group so it stays put as a
+                         reflection on the outer dome (parallax). GazeForeshorten squashes the iris along the
+                         gaze direction (the circle-on-a-sphere cue); both transforms are driven from code. -->
+                    <Grid x:Name="EyeGazeGroup" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="GazeForeshorten" ScaleX="1" ScaleY="1" />
+                                <TranslateTransform x:Name="GazeTranslate" X="0" Y="0" />
+                            </TransformGroup>
+                        </Grid.RenderTransform>
                     <Ellipse x:Name="OracleCorneaBig" Margin="78" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <RadialGradientBrush>
@@ -788,6 +801,7 @@
                             <RotateTransform x:Name="ScryingRotate" Angle="0" />
                         </Ellipse.RenderTransform>
                     </Ellipse>
+                    </Grid>
                     <!-- Glass dome reflection: a small top-only highlight. It drifts a few pixels
                          (a slow Lissajous, shivered by the treble band) to read as light playing off
                          the glass at slightly changing angles rather than a painted-on gleam. -->

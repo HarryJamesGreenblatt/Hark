@@ -141,6 +141,32 @@ public partial class OverlayWindow : Window
     /// <summary>Timestamp of the previous compositor frame, for dt-based easing.</summary>
     private TimeSpan _lastRenderTime;
 
+    // --- Gaze (Vision eye look-at): a 2D iris-offset saccade/fixation model grounded in the eye-movement
+    // literature (Eyes Alive, Lee & Badler 2002; min-jerk saccades on the main sequence; 1/f fixation
+    // jitter). See context/research/eye-motion-gaze.md.
+    /// <summary>Largest iris offset (px) the gaze may reach; clamped well inside the socket so the cornea can't escape.</summary>
+    private const double GazeMaxOffset = 30.0;
+    /// <summary>Pixels per degree, mapping the deg-based saccade model onto the eye's ~±25° offset range.</summary>
+    private const double GazePxPerDeg = 1.2;
+    /// <summary>Random source for the statistical saccade/fixation model.</summary>
+    private readonly Random _gazeRng = new();
+    /// <summary>Current iris offset (px) — the gaze position before pink-noise jitter.</summary>
+    private double _gazeX, _gazeY;
+    /// <summary>The in-progress saccade's start and (undershot) landing offsets (px).</summary>
+    private double _sacFromX, _sacFromY, _sacToX, _sacToY;
+    /// <summary>The saccade's TRUE target before undershoot, so a large one can fire a corrective secondary.</summary>
+    private double _sacTrueX, _sacTrueY;
+    /// <summary>Elapsed / total saccade time (s); <see cref="_sacDur"/> &lt;= 0 means fixating, not saccading.</summary>
+    private double _sacT, _sacDur;
+    /// <summary>Whether the landing saccade should fire a corrective secondary (large undershoots only).</summary>
+    private bool _sacCorrect;
+    /// <summary>Seconds left holding the current fixation before the next ambient glance.</summary>
+    private double _fixHold;
+    /// <summary>Cursor offset (px from the eye centre) while the pointer is over the canvas; used only on pill hover.</summary>
+    private System.Windows.Point? _lookAt;
+    /// <summary>Octave states for the 1/f (pink) fixation jitter, per axis.</summary>
+    private double _pnX1, _pnX2, _pnX3, _pnY1, _pnY2, _pnY3;
+
     #endregion
 
     #region Properties
@@ -210,6 +236,11 @@ public partial class OverlayWindow : Window
         OracleEye.MouseLeftButtonDown += (_, e) => e.Handled = true;
         OracleEye.MouseLeftButtonUp += OnOracleEyeReleased;
         OracleEyeBig.MouseLeftButtonUp += (_, _) => { if (!_visionAnimating) CloseVision(); };
+
+        // Gaze look-at: while inspecting a mind-map pill the big eye follows the cursor slowly (smooth
+        // pursuit); otherwise it is only audio-reactive (organic jitter + occasional glances when stimulated).
+        VisionCanvas.MouseMove += OnVisionCanvasMouseMove;
+        VisionCanvas.MouseLeave += (_, _) => _lookAt = null;
 
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
@@ -725,6 +756,8 @@ public partial class OverlayWindow : Window
         _frameDt = dt;
         _glossPhase += dt;
 
+        if (_visionOpen) UpdateGaze(dt);
+
         ApplyEye(_eyeLevel);
     }
 
@@ -818,6 +851,158 @@ public partial class OverlayWindow : Window
         VisionGlossTranslate.Y = Math.Cos(_glossPhase * 0.43) * _glossAmp * 0.6;
     }
 
+    /// <summary>
+    /// Drives the Vision eye's gaze — a 2D iris offset orthogonal to the dilation (bass) and shimmer
+    /// (treble) channels — in two modes. **Pill hover:** the iris follows the pointer with a slow, deliberate
+    /// smooth pursuit (looking at whatever mind-map node you're inspecting). **Otherwise (ambient):** it is
+    /// sound-reactive, not constant — it eases back to the primary position and only makes small ballistic
+    /// glances when there's speech energy to steer it, with a 1/f (pink) micro-jitter whose amplitude tracks
+    /// stimulation, so a quiet room is nearly still while active speech makes it jitter organically. Saccade
+    /// mechanics (min-jerk trajectory, main-sequence duration, undershoot) follow the eye-movement literature
+    /// (context/research/eye-motion-gaze.md).
+    /// </summary>
+    /// <param name="dt">Frame delta time (s).</param>
+    private void UpdateGaze(double dt)
+    {
+        // Advance any in-progress saccade along the min-jerk position profile (smootherstep 6u⁵−15u⁴+10u³).
+        if (_sacDur > 0)
+        {
+            _sacT += dt;
+            double u = Math.Min(1.0, _sacT / _sacDur);
+            double sp = u * u * u * (u * (u * 6 - 15) + 10);
+            _gazeX = _sacFromX + (_sacToX - _sacFromX) * sp;
+            _gazeY = _sacFromY + (_sacToY - _sacFromY) * sp;
+            if (u >= 1.0)
+            {
+                _sacDur = 0;
+                if (_sacCorrect)
+                {
+                    _sacCorrect = false;
+                    BeginSaccade(_sacTrueX, _sacTrueY, correctable: false);   // corrective secondary
+                }
+            }
+        }
+
+        if (_pillHovered && _lookAt is System.Windows.Point look)
+        {
+            // Pill hover → gaze toward the cursor. A quick-but-smooth follow (matching the jitter's
+            // liveliness), and a gentler excursion cap so the iris turns toward the pill without
+            // straining to the socket rim (which reads as an unnatural stretch).
+            double tx = Math.Clamp(look.X * 0.09, -22, 22);
+            double ty = Math.Clamp(look.Y * 0.09, -22, 22);
+            double follow = 1.0 - Math.Exp(-dt / 0.18);   // ~0.18 s — lively like the jitter, still smooth
+            _gazeX += (tx - _gazeX) * follow;
+            _gazeY += (ty - _gazeY) * follow;
+            _sacDur = 0;            // the pointer leads; cancel any ambient glance
+            _fixHold = 0.4;
+        }
+        else if (_sacDur <= 0)
+        {
+            // Ambient: sound-reactive, NOT constant. Ease back to the primary position and only glance when
+            // there's stimulation to steer it — calm when quiet, organically active when there's speech.
+            double stim = _running ? _eyeLevel : 0.0;
+
+            // Gentle return to centre (weaker while stimulated so a glance can linger a touch).
+            double pull = (1.0 - Math.Exp(-dt / 1.2)) * (1.0 - 0.6 * stim);
+            _gazeX += (0 - _gazeX) * pull;
+            _gazeY += (0 - _gazeY) * pull;
+
+            // Audio-gated glances: the budget drains faster the louder it is, and only fires with enough
+            // stimulation, so a quiet room barely moves while active speech scatters little glances.
+            _fixHold -= dt * (0.25 + 2.5 * stim);
+            if (stim > 0.15 && _fixHold <= 0)
+            {
+                double aDeg = Math.Min(SampleSaccadeMagnitudeDeg(), GazeMaxOffset / GazePxPerDeg) * (0.35 + 0.65 * stim);
+                double dir = SampleSaccadeDirection();
+                double mag = aDeg * GazePxPerDeg;
+                BeginSaccade(Math.Cos(dir) * mag, Math.Sin(dir) * mag, correctable: false);
+                _fixHold = 0.8 + _gazeRng.NextDouble() * 1.4;   // budget until the next possible glance
+            }
+        }
+
+        // 1/f (pink) micro-jitter, amplitude driven by stimulation: near-still when quiet, organic when
+        // stimulated (calmer mid-saccade so the ballistic move stays clean).
+        double jitterAmp = (_sacDur > 0 ? 0.25 : 1.0) * (0.15 + 1.3 * (_running ? _eyeLevel : 0.0));
+        double jx = PinkStep(ref _pnX1, ref _pnX2, ref _pnX3, dt) * jitterAmp;
+        double jy = PinkStep(ref _pnY1, ref _pnY2, ref _pnY3, dt) * jitterAmp;
+
+        GazeTranslate.X = Math.Clamp(_gazeX + jx, -GazeMaxOffset, GazeMaxOffset);
+        GazeTranslate.Y = Math.Clamp(_gazeY + jy, -GazeMaxOffset, GazeMaxOffset);
+    }
+
+    /// <summary>
+    /// Starts a ballistic saccade from the current offset to (<paramref name="toX"/>,<paramref name="toY"/>)
+    /// with a ~10% undershoot; its DURATION follows the main sequence T=α+βA (the "natural for characters"
+    /// half-speed fit). A large, correctable saccade remembers the true target so a secondary can correct it.
+    /// </summary>
+    private void BeginSaccade(double toX, double toY, bool correctable)
+    {
+        _sacFromX = _gazeX; _sacFromY = _gazeY;
+        _sacTrueX = toX; _sacTrueY = toY;
+        _sacToX = _gazeX + (toX - _gazeX) * 0.9;   // undershoot ~10% (a documented human tendency)
+        _sacToY = _gazeY + (toY - _gazeY) * 0.9;
+        _sacCorrect = correctable;
+
+        double dx = _sacToX - _sacFromX, dy = _sacToY - _sacFromY;
+        double aDeg = Math.Sqrt(dx * dx + dy * dy) / GazePxPerDeg;
+        _sacDur = Math.Max(0.03, (74.42 + 6.08 * aDeg) / 1000.0);   // main sequence α/β (ms → s)
+        _sacT = 0;
+    }
+
+    /// <summary>Draws a saccade magnitude (degrees) from Eyes Alive's fitted exponential (mean ≈ 6.9°; 90% &lt; 15°).</summary>
+    private double SampleSaccadeMagnitudeDeg() => -6.9 * Math.Log(1.0 - _gazeRng.NextDouble());
+
+    /// <summary>Direction bins (radians, screen space y-down) with Eyes Alive's Table 1 weights.</summary>
+    private static readonly (double AngleRad, double Weight)[] GazeDirs =
+    {
+        (0.0,             15.54),   // right
+        (-Math.PI / 4,     6.46),   // up-right
+        (-Math.PI / 2,    17.69),   // up
+        (-3 * Math.PI / 4, 7.44),   // up-left
+        (Math.PI,         16.80),   // left
+        (3 * Math.PI / 4,  7.89),   // down-left
+        (Math.PI / 2,     20.38),   // down
+        (Math.PI / 4,      7.79),   // down-right
+    };
+
+    /// <summary>Draws a saccade direction (radians) from Eyes Alive's 8-bin distribution (axes ~2× diagonals), jittered within the bin.</summary>
+    private double SampleSaccadeDirection()
+    {
+        double total = 0; foreach (var d in GazeDirs) total += d.Weight;
+        double r = _gazeRng.NextDouble() * total, acc = 0, ang = 0;
+        foreach (var d in GazeDirs) { acc += d.Weight; if (r <= acc) { ang = d.AngleRad; break; } }
+        return ang + (_gazeRng.NextDouble() - 0.5) * (Math.PI / 4);   // ±22.5° within the bin
+    }
+
+    /// <summary>Advances a 3-octave 1/f (pink) noise (leaky-integrated white noise) and returns a px sample.</summary>
+    private double PinkStep(ref double o1, ref double o2, ref double o3, double dt)
+    {
+        o1 += ((_gazeRng.NextDouble() * 2 - 1) - o1) * (1.0 - Math.Exp(-dt / 0.05));
+        o2 += ((_gazeRng.NextDouble() * 2 - 1) - o2) * (1.0 - Math.Exp(-dt / 0.20));
+        o3 += ((_gazeRng.NextDouble() * 2 - 1) - o3) * (1.0 - Math.Exp(-dt / 0.80));
+        return o1 * 0.5 + o2 * 0.9 + o3 * 1.4;   // low freqs weighted higher (1/f); ~±1.5 px
+    }
+
+    /// <summary>Recentres the gaze (called when the Vision page opens) so it starts on the primary position.</summary>
+    private void ResetGaze()
+    {
+        _gazeX = _gazeY = 0; _sacDur = 0; _sacT = 0; _sacCorrect = false;
+        _fixHold = 1.0; _lookAt = null;
+        _pnX1 = _pnX2 = _pnX3 = _pnY1 = _pnY2 = _pnY3 = 0;
+        GazeTranslate.X = GazeTranslate.Y = 0;
+    }
+
+    /// <summary>Tracks the cursor over the Vision canvas as a gaze look-at target (offset from the eye centre).</summary>
+    /// <param name="sender">Unused.</param>
+    /// <param name="e">The mouse-move event arguments.</param>
+    private void OnVisionCanvasMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_visionOpen) { _lookAt = null; return; }
+        var p = e.GetPosition(OracleEyeBig);
+        _lookAt = new System.Windows.Point(
+            p.X - OracleEyeBig.ActualWidth / 2, p.Y - OracleEyeBig.ActualHeight / 2);
+    }
+
     /// <summary>Opens the Vision page when the bar's Oracle eye is released (ignored mid-transition).</summary>
     /// <param name="sender">Unused.</param>
     /// <param name="e">The mouse button event arguments.</param>
@@ -837,6 +1022,7 @@ public partial class OverlayWindow : Window
         if (_visionOpen) return;
         _visionOpen = true;
         _visionAnimating = true;
+        ResetGaze();
         StartPupilFiller();
 
         Height = SystemParameters.WorkArea.Height;
