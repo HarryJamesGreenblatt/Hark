@@ -13,6 +13,8 @@ a sound-reactive **"Oracle"** with an **image generating Vision Mode**, and a on
 Word, PowerPoint, PDF, or web) — and can optionally mix in your **local microphone** so a
 headset user's own voice is captioned alongside the far side.
 
+![HARK — the captions overlay in action, with the Oracle's eye, speaker pill, and live caption](assets/images/HARK%20Banner.png)
+
 It exists to replace accessibility-only tooling (Live Captions, Voice Typing) with something **owned,
 automatable, and agent-friendly**.
 
