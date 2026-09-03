@@ -78,6 +78,9 @@ public partial class App : Application
     /// </summary>
     private bool _mixMic;
 
+    /// <summary>The configured mic-mixing default (from HARK_MIX_MIC); a session reset returns <see cref="_mixMic"/> to this.</summary>
+    private bool _configuredMixMic;
+
     /// <summary>Guards <see cref="ToggleAsync(CancellationToken)"/> against re-entrancy while starting or stopping.</summary>
     private bool _busy;
 
@@ -201,8 +204,9 @@ public partial class App : Application
 
         // Mic mixing is off by default; only an explicit 1/true opts in.
         var mixMic = config["HARK_MIX_MIC"];
-        _mixMic = string.Equals(mixMic, "1", StringComparison.OrdinalIgnoreCase)
+        _configuredMixMic = string.Equals(mixMic, "1", StringComparison.OrdinalIgnoreCase)
                || string.Equals(mixMic, "true", StringComparison.OrdinalIgnoreCase);
+        _mixMic = _configuredMixMic;
 
         // Like native Live Captions, the bar stays hidden until captions are toggled on.
         _overlay = new OverlayWindow();
@@ -710,6 +714,11 @@ public partial class App : Application
         _lastVisionRenderIndex = 0;
         _shownVisionConcept = null;
         _overlay?.ResetVision();
+
+        // Return mic mixing to the configured default — a manual mid-session toggle shouldn't persist
+        // across a full stop/clear (the user expects a toggled-off session to reset).
+        _mixMic = _configuredMixMic;
+        _overlay?.SetMicEnabled(_mixMic);
     }
 
     /// <summary>
