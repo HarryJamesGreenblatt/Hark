@@ -708,18 +708,25 @@ public partial class OverlayWindow : Window
     public void SetAudioLevel(double level) => _audioTarget = Shape(level, 11.0, 0.02);
 
     /// <summary>
-    /// Publishes the latest banded audio levels (overall / bass / treble, raw RMS 0..1). The render
-    /// loop eases each with its own time constant so the eye's core, its dilating pupil, and its
-    /// shimmering highlight react to different facets of the sound independently.
+    /// Publishes the latest banded audio levels for BOTH sources — system (loopback) and mic — as separate
+    /// reactivity paths, and drives the eye from whichever is stronger AFTER its own gain. The mic path is
+    /// deliberately much hotter because mic speech is far quieter in absolute RMS than system playback, so a
+    /// headset-only user (no system audio) still lights the eye fully — without boosting the mic INPUT (which
+    /// would add noise). Each path keeps its own noise-floor gate, so the extra mic gain doesn't glow on hiss.
     /// </summary>
-    /// <param name="level">Overall broadband RMS (drives the core brightness/pulse).</param>
-    /// <param name="bass">Low-band RMS (drives the pupil's dilation).</param>
-    /// <param name="treble">High-band RMS (drives the highlight's shimmer).</param>
-    public void SetAudioFeatures(double level, double bass, double treble)
+    /// <param name="level">System broadband RMS.</param>
+    /// <param name="bass">System low-band RMS.</param>
+    /// <param name="treble">System high-band RMS.</param>
+    /// <param name="micLevel">Mic broadband RMS (0 when the mic isn't mixed).</param>
+    /// <param name="micBass">Mic low-band RMS.</param>
+    /// <param name="micTreble">Mic high-band RMS.</param>
+    public void SetAudioFeatures(double level, double bass, double treble,
+                                 double micLevel, double micBass, double micTreble)
     {
-        _audioTarget = Shape(level, 11.0, 0.02);
-        _bassTarget = Shape(bass, 22.0, 0.010);
-        _trebleTarget = Shape(treble, 26.0, 0.006);
+        // System path keeps the original tuned-for-playback sensitivity; the mic path is ~2.4x hotter.
+        _audioTarget = Math.Max(Shape(level, 11.0, 0.02), Shape(micLevel, 26.0, 0.012));
+        _bassTarget = Math.Max(Shape(bass, 22.0, 0.010), Shape(micBass, 48.0, 0.008));
+        _trebleTarget = Math.Max(Shape(treble, 26.0, 0.006), Shape(micTreble, 54.0, 0.005));
     }
 
     /// <summary>

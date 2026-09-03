@@ -396,7 +396,9 @@ public partial class App : Application
     /// <summary>Marshals the banded capture levels onto the UI to drive the sound-reactive Oracle's eye.</summary>
     /// <param name="features">The current overall/bass/treble audio levels.</param>
     private void OnAudioFeatures(AudioFeatures features) =>
-        Dispatcher.BeginInvoke(() => _overlay?.SetAudioFeatures(features.Level, features.Bass, features.Treble));
+        Dispatcher.BeginInvoke(() => _overlay?.SetAudioFeatures(
+            features.Level, features.Bass, features.Treble,
+            features.MicLevel, features.MicBass, features.MicTreble));
 
     /// <summary>
     /// Handles the overlay's mic toggle: remembers the choice (so the next session honors it) and,

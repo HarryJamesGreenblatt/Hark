@@ -90,20 +90,17 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>Tick count of the last <see cref="AudioLevel"/> notification, used to throttle to ~20 Hz.</summary>
     private long _lastLevelTick;
 
-    /// <summary>Running sum of squared samples since the last level report, for a windowed RMS.</summary>
-    private double _levelSumSquares;
+    /// <summary>Windowed sum-of-squares accumulators for the SYSTEM (loopback) RMS + its bass/treble split.</summary>
+    private double _sysSumSq, _sysBassSumSq, _sysTrebleSumSq;
 
-    /// <summary>Sum of squared low-pass (bass) samples since the last report — paired with <see cref="_levelSampleCount"/>.</summary>
-    private double _bassSumSquares;
+    /// <summary>Windowed sum-of-squares accumulators for the MICROPHONE RMS + its bass/treble split.</summary>
+    private double _micSumSq, _micBassSumSq, _micTrebleSumSq;
 
-    /// <summary>Sum of squared high-pass (treble) samples since the last report — paired with <see cref="_levelSampleCount"/>.</summary>
-    private double _trebleSumSquares;
+    /// <summary>Per-source one-pole low-pass state (carried across chunks) that splits bass from treble.</summary>
+    private double _sysLowpass, _micLowpass;
 
-    /// <summary>One-pole low-pass filter state, carried across chunks to split bass from treble.</summary>
-    private double _lowpass;
-
-    /// <summary>Sample count accumulated since the last level report, paired with <see cref="_levelSumSquares"/>.</summary>
-    private long _levelSampleCount;
+    /// <summary>Sample counts accumulated since the last report, per source.</summary>
+    private long _sysCount, _micCount;
 
     #endregion
 
@@ -340,6 +337,12 @@ public sealed class HarkSession : IAsyncDisposable
         var samples = _converter?.ConvertToFloat(buffer, bytes);
         if (samples is not { Length: > 0 }) return;
 
+        // Measure the SYSTEM (loopback) energy from these pure loopback samples, on its own reactivity
+        // path (kept separate from the mic so each drives the eye with its own sensitivity).
+        bool report = AudioLevel is not null || AudioFeatures is not null;
+        if (report)
+            Accumulate(samples, ref _sysLowpass, ref _sysSumSq, ref _sysBassSumSq, ref _sysTrebleSumSq, ref _sysCount);
+
         // With the mic active, the mic clocks the stream (a capture endpoint is continuous, whereas
         // loopback stops firing when nothing is playing). Queue loopback for the mic callback to mix.
         if (_micCapture is not null)
@@ -351,10 +354,12 @@ public sealed class HarkSession : IAsyncDisposable
                 while (_loopbackSamples.Count > LoopbackQueueCap)
                     _loopbackSamples.Dequeue();
             }
+            if (report) MaybeReportFeatures();
             return;
         }
 
         Emit(samples);
+        if (report) MaybeReportFeatures();
     }
 
     /// <summary>
@@ -369,6 +374,11 @@ public sealed class HarkSession : IAsyncDisposable
         var samples = _micConverter?.ConvertToFloat(buffer, bytes);
         if (samples is not { Length: > 0 }) return;
 
+        // Measure the MIC energy from the PRE-mix samples, on its own (hotter) reactivity path.
+        bool report = AudioLevel is not null || AudioFeatures is not null;
+        if (report)
+            Accumulate(samples, ref _micLowpass, ref _micSumSq, ref _micBassSumSq, ref _micTrebleSumSq, ref _micCount);
+
         // Mix in queued loopback in the float domain (a single clamp at quantization avoids
         // double-clipping); when nothing is playing the queue is empty and this is a no-op.
         lock (_micLock)
@@ -379,6 +389,7 @@ public sealed class HarkSession : IAsyncDisposable
         }
 
         Emit(samples);
+        if (report) MaybeReportFeatures();
     }
 
     /// <summary>
@@ -392,7 +403,6 @@ public sealed class HarkSession : IAsyncDisposable
         if (pcm.Length == 0) return;
 
         _transcriber?.Write(pcm, pcm.Length);
-        ReportAudioLevel(pcm);
 
         // Buffer for the offline refinement pass, capped to bound memory on long sessions.
         if (_audioBuffer is not null && _audioBuffer.Length < MaxBufferedAudioBytes)
@@ -408,49 +418,48 @@ public sealed class HarkSession : IAsyncDisposable
     public byte[]? GetBufferedAudioPcm() => _audioBuffer is { Length: > 0 } ? _audioBuffer.ToArray() : null;
 
     /// <summary>
-    /// Raises <see cref="AudioLevel"/> and <see cref="AudioFeatures"/> with the normalized RMS
-    /// (0..1) of the converted PCM, throttled to ~20 Hz. Every sample since the last report is
-    /// accumulated so the value is a representative window average, not a snapshot of one arbitrary
-    /// chunk (which flickers). A cheap one-pole low-pass splits the energy into a bass component and
-    /// a treble residual so a consumer can drive independent, band-specific reactions. RMS
-    /// (loudness) is far more dynamic than peak for system audio, which tends to sit near full-scale.
+    /// Accumulates one source's float samples into its windowed RMS + bass/treble sum-of-squares, using a
+    /// per-source one-pole low-pass (~330 Hz) to split the body from the sibilance. Called separately for
+    /// the system (loopback) and the mic so each keeps its own energy window and filter continuity.
     /// </summary>
-    /// <param name="pcm">The converted 16-bit PCM buffer to measure.</param>
-    private void ReportAudioLevel(byte[] pcm)
+    private static void Accumulate(float[] samples, ref double lowpass,
+        ref double sumSq, ref double bassSq, ref double trebleSq, ref long count)
+    {
+        const double lpAlpha = 0.12;   // one-pole ~330 Hz cut at 16 kHz (alpha = 1 - e^(-2π·fc/fs))
+        foreach (float s in samples)
+        {
+            lowpass += lpAlpha * (s - lowpass);
+            double highpass = s - lowpass;
+            sumSq += s * s;
+            bassSq += lowpass * lowpass;
+            trebleSq += highpass * highpass;
+            count++;
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="AudioLevel"/> and <see cref="AudioFeatures"/> at ~20 Hz with the windowed RMS of
+    /// each source (system + mic) as SEPARATE bands, so a consumer can react to the mic and the system
+    /// audio with independent sensitivity. Resets both windows on each report.
+    /// </summary>
+    private void MaybeReportFeatures()
     {
         var levelHandler = AudioLevel;
         var featuresHandler = AudioFeatures;
         if (levelHandler is null && featuresHandler is null) return;
 
-        // One-pole low-pass coefficient for a ~330 Hz cut at 16 kHz (alpha = 1 - e^(-2π·fc/fs)).
-        // Bass = the low-passed body (vowels, kick/sub); treble = the high-pass residual (sibilance).
-        const double lpAlpha = 0.12;
-
-        for (int i = 0; i + 1 < pcm.Length; i += 2)
-        {
-            double sample = (short)(pcm[i] | (pcm[i + 1] << 8)) / 32768.0;
-            _lowpass += lpAlpha * (sample - _lowpass);
-            double highpass = sample - _lowpass;
-
-            _levelSumSquares += sample * sample;
-            _bassSumSquares += _lowpass * _lowpass;
-            _trebleSumSquares += highpass * highpass;
-            _levelSampleCount++;
-        }
-
         long now = Environment.TickCount64;
         if (now - _lastLevelTick < 50) return;
         _lastLevelTick = now;
 
-        double count = _levelSampleCount;
-        double rms = count > 0 ? Math.Sqrt(_levelSumSquares / count) : 0.0;
-        double bass = count > 0 ? Math.Sqrt(_bassSumSquares / count) : 0.0;
-        double treble = count > 0 ? Math.Sqrt(_trebleSumSquares / count) : 0.0;
-        _levelSumSquares = _bassSumSquares = _trebleSumSquares = 0;
-        _levelSampleCount = 0;
+        static double Rms(double sumSq, long n) => n > 0 ? Math.Sqrt(sumSq / n) : 0.0;
+        double sysL = Rms(_sysSumSq, _sysCount), sysB = Rms(_sysBassSumSq, _sysCount), sysT = Rms(_sysTrebleSumSq, _sysCount);
+        double micL = Rms(_micSumSq, _micCount), micB = Rms(_micBassSumSq, _micCount), micT = Rms(_micTrebleSumSq, _micCount);
+        _sysSumSq = _sysBassSumSq = _sysTrebleSumSq = 0; _sysCount = 0;
+        _micSumSq = _micBassSumSq = _micTrebleSumSq = 0; _micCount = 0;
 
-        levelHandler?.Invoke(rms);
-        featuresHandler?.Invoke(new AudioFeatures(rms, bass, treble));
+        levelHandler?.Invoke(Math.Max(sysL, micL));
+        featuresHandler?.Invoke(new AudioFeatures(sysL, sysB, sysT, micL, micB, micT));
     }
 
     /// <summary>Forwards an interim hypothesis to the sink and re-raises it via <see cref="Interim"/>.</summary>
