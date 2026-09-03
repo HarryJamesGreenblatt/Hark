@@ -56,7 +56,7 @@ items together since they all live around `Hark.App/Reporting/` and the `Session
   title** (no naming drift). It only regenerates when captions actually change between saves.
 
 ## �🔓 Open threads
-- **HARK 2.1.0 — 5 of the original 6 done** (rebrand · Oracle naming · title · PDF light · icon). Remaining:
-  the **installer pre-UAC delay** (measure first, then splash + startup tuning) and the **organic eye-motion**
-  research spike. Live-validation to-do: confirm the icon renders in each format on a real save (tests cover
-  structure, not visual placement). Full list: `/memories/repo/hark-2.1.0-backlog.md`.
+- **HARK 2.1.0 — 5 of the original 6 done** (rebrand · Oracle naming · title · PDF light · icon), **live-validated**
+  (user: *"looking better across each front"* — title, PDF light mode, and the icon confirmed on real saves).
+  Remaining: the **installer pre-UAC delay** (measure first, then splash + startup tuning) and the **organic
+  eye-motion** research spike. Full list: `/memories/repo/hark-2.1.0-backlog.md`.

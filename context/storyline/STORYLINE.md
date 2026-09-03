@@ -171,12 +171,13 @@ These are unresolved at the end of the latest episode — natural starting point
   **#1** rebrand to **Hear · Adapt · Render · Keep** (EP38, `70aed5a`); the **Oracle identity**
   consolidation (EP39); **#3** a **model-generated session title** (a `title` field on `MeetingRecap`),
   **#4** **PDF light mode** (a `lightMode` flag on `HtmlReportWriter`), and **#5** a **consistent Oracle-eye
-  icon** across all five formats (`SessionReport.Icon`) — the export-polish cluster (EP40, `3e569bb`).
+  icon** across all five formats (`SessionReport.Icon`) — the export-polish cluster (EP40, `3e569bb`),
+  **live-validated** (*"looking better across each front"*). Plus a follow-on fix (`809805c`): mic mixing
+  resets to the configured default on session clear.
   **Remaining:** **(2)** **organic eye motion** for the Oracle's eye (gaze/look-at, a new audio band,
   attraction/repulsion — a research spike, the 2D-gaze worry answered by **layered pupil-offset**); and
   **(6)** the **installer's long pre-UAC startup delay** (splash for the post-UAC gap + **measure first** the
-  pre-UAC single-file verify/extract cost; *not* reverting to WinForms). Live-validation to-do: confirm the
-  icon renders per format on a real save. Full list + seams: `/memories/repo/hark-2.1.0-backlog.md`. Records:
+  pre-UAC single-file verify/extract cost; *not* reverting to WinForms). Full list + seams: `/memories/repo/hark-2.1.0-backlog.md`. Records:
   [`EP37`](./EP37-2.1.0-backlog-lock.md), [`EP38`](./EP38-rebrand-hear-adapt-render-keep.md),
   [`EP39`](./EP39-naming-the-oracle.md), [`EP40`](./EP40-export-polish-title-pdf-light-icon.md).
 
