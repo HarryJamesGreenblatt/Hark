@@ -324,6 +324,11 @@ public partial class InstallerWindow : Window
         catch { return null; }
     }
 
+    /// <summary>Gates the provisioning form (and its red action button) behind an explicit opt-in, so it
+    /// can't be hit by accident when the user only means to Finish.</summary>
+    void OnProvisionOptInChanged(object sender, RoutedEventArgs e) =>
+        ProvisionForm.Visibility = ProvisionOptIn.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Runs the embedded Bicep deployment via the Azure CLI, then fills the config fields from its outputs.</summary>
     async void OnProvisionClick(object sender, RoutedEventArgs e)
     {
