@@ -3,11 +3,13 @@ using System.Text.Json.Serialization;
 namespace Hark.Core.Summarization;
 
 /// <summary>
-/// A structured, Teams-Recap-style meeting summary: a short overview, the meeting broken into the
-/// distinct <see cref="Topics"/> that were actually discussed (each expandable into detail bullets),
-/// and a flat list of <see cref="FollowUps"/>. Produced by <see cref="ISummarizer.SummarizeStructuredAsync"/>.
+/// A structured, Teams-Recap-style meeting summary: a short <see cref="Title"/> headline, a short
+/// overview, the meeting broken into the distinct <see cref="Topics"/> that were actually discussed
+/// (each expandable into detail bullets), and a flat list of <see cref="FollowUps"/>. Produced by
+/// <see cref="ISummarizer.SummarizeConversationAsync"/>.
 /// </summary>
 public sealed record MeetingRecap(
+    [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("overview")] string Overview,
     [property: JsonPropertyName("topics")] IReadOnlyList<RecapTopic> Topics,
     [property: JsonPropertyName("followUps")] IReadOnlyList<RecapFollowUp> FollowUps);

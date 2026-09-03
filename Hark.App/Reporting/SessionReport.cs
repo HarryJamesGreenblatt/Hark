@@ -19,7 +19,8 @@ public sealed record SessionReport(
     string Transcript,
     MeetingRecap? Recap,
     SpeakerRecap? Speakers,
-    IReadOnlyList<ReportBeat> Beats);
+    IReadOnlyList<ReportBeat> Beats,
+    byte[]? Icon = null);
 
 /// <summary>Writes a <see cref="SessionReport"/> to a file in one concrete format.</summary>
 public interface IReportWriter

@@ -18,7 +18,7 @@ public sealed class PdfReportWriter : IReportWriter
         // Reuse the styled HTML (transcript expanded — a printed PDF can't open a collapsed <details>),
         // spilled to a temp file (WebView2's NavigateToString caps around 2 MB).
         var htmlPath = Path.Combine(Path.GetTempPath(), $"hark-pdf-{Guid.NewGuid():N}.html");
-        await File.WriteAllTextAsync(htmlPath, HtmlReportWriter.Render(report, transcriptOpen: true));
+        await File.WriteAllTextAsync(htmlPath, HtmlReportWriter.Render(report, transcriptOpen: true, lightMode: true));
 
         var dispatcher = Application.Current?.Dispatcher
             ?? throw new InvalidOperationException("PDF export requires a running WPF application.");

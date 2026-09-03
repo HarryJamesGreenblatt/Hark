@@ -116,6 +116,7 @@ public sealed class PptxReportWriter : IReportWriter
         {
             CoverPicture(sp, hero, 0, 0, SlideW, SlideH, 10U);
             Add(sp, RectShape(11, "scrim", 0, 0, SlideW, SlideH, "000000", 62000));
+            if (report.Icon is { Length: > 0 }) CoverPicture(sp, report.Icon, Margin, 3540000L, 520000L, 520000L, 12U);
             Add(sp, TextShape(2, "eyebrow", Margin, 4160000L, 9000000L, 320000L,
                 P(null, 0, 0, 0, Run("HARK \u00b7 SESSION REPORT", Accent, bold: true, sz: 1300, spc: 240))));
             Add(sp, TextShape(3, "title", Margin, 4520000L, SlideW - 2 * Margin, 1500000L,
@@ -125,6 +126,7 @@ public sealed class PptxReportWriter : IReportWriter
         }
         else
         {
+            if (report.Icon is { Length: > 0 }) CoverPicture(sp, report.Icon, (SlideW - 560000L) / 2, 1860000L, 560000L, 560000L, 12U);
             Add(sp, TextShape(2, "eyebrow", Margin, 2560000L, SlideW - 2 * Margin, 320000L,
                 P(D.TextAlignmentTypeValues.Center, 0, 0, 0, Run("HARK \u00b7 SESSION REPORT", Accent, bold: true, sz: 1300, spc: 240))));
             Add(sp, TextShape(3, "title", Margin, 2920000L, SlideW - 2 * Margin, 1400000L,

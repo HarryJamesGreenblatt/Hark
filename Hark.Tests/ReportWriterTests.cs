@@ -28,7 +28,8 @@ public class ReportWriterTests
                 new("Reply", "green", "The famous retort."),
             }, Png1x1),
             new("Topic without a scene", new List<InfographicNode>(), null),
-        });
+        },
+        Icon: Png1x1);
 
     [Fact]
     public async Task Docx_is_structurally_valid_with_embedded_image()

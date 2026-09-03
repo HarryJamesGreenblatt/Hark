@@ -26,4 +26,9 @@
 	<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
+  <ItemGroup>
+	<!-- The Oracle-eye mark, embedded as a WPF resource so reports can load its bytes (pack URI). -->
+	<Resource Include="Assets\Icon.png" />
+  </ItemGroup>
+
 </Project>

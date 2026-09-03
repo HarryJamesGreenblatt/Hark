@@ -14,24 +14,31 @@ public sealed class HtmlReportWriter : IReportWriter
     public string FilterName => "Web page";
 
     public Task WriteAsync(SessionReport report, string path) =>
-        File.WriteAllTextAsync(path, Build(report, transcriptOpen: false));
+        File.WriteAllTextAsync(path, Build(report, transcriptOpen: false, lightMode: false));
 
     /// <summary>Renders the report HTML as a string; <paramref name="transcriptOpen"/> expands the transcript
-    /// (used by the PDF export, where a collapsed <c>&lt;details&gt;</c> can't be opened).</summary>
-    internal static string Render(SessionReport report, bool transcriptOpen) => Build(report, transcriptOpen);
+    /// (used by the PDF export, where a collapsed <c>&lt;details&gt;</c> can't be opened) and
+    /// <paramref name="lightMode"/> swaps to a light printable palette (used by the PDF export, so the dark
+    /// theme doesn't clash with WebView2's white page margin).</summary>
+    internal static string Render(SessionReport report, bool transcriptOpen, bool lightMode) => Build(report, transcriptOpen, lightMode);
 
-    private static string Build(SessionReport report, bool transcriptOpen)
+    private static string Build(SessionReport report, bool transcriptOpen, bool lightMode)
     {
         var stamp = Esc(report.Timestamp.ToString("f"));
         var sb = new StringBuilder();
         sb.AppendLine("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
         sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title>");
-        sb.Append("<style>").Append(Css).AppendLine("</style></head><body><main class=\"wrap\">");
+        sb.Append("<style>").Append(Css);
+        if (lightMode) sb.Append(LightCss);
+        sb.AppendLine("</style></head><body><main class=\"wrap\">");
 
         // Hero — an Oracle-eye mark, the "session report" eyebrow, the title, and a meta line of counts.
         sb.AppendLine("<header class=\"hero\">");
-        sb.AppendLine("<div class=\"eye\" aria-hidden=\"true\"></div>");
+        if (report.Icon is { Length: > 0 } icon)
+            sb.Append("<img class=\"eye\" alt=\"\" src=\"data:image/png;base64,").Append(Convert.ToBase64String(icon)).AppendLine("\">");
+        else
+            sb.AppendLine("<div class=\"eye\" aria-hidden=\"true\"></div>");
         sb.AppendLine("<div class=\"hero-text\"><div class=\"brand\">HARK \u00b7 session report</div>");
         sb.Append("<h1>").Append(Esc(report.Title)).AppendLine("</h1>");
         sb.Append("<div class=\"meta\">").Append(stamp);
@@ -173,13 +180,14 @@ public sealed class HtmlReportWriter : IReportWriter
     }
 
     private const string Css = """
-    :root{--bg:#0B0D10;--surface:#12151A;--surface-2:#181C22;--border:#252C36;--text:#E6EAEF;--dim:#9AA2AC;--faint:#697079;--accent:#FF4B3E;--r:14px;--r-sm:10px;--measure:900px}
+    :root{--bg:#0B0D10;--surface:#12151A;--surface-2:#181C22;--border:#252C36;--text:#E6EAEF;--dim:#9AA2AC;--faint:#697079;--accent:#FF4B3E;--r:14px;--r-sm:10px;--measure:900px;--lead:#CFD5DC}
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI Variable','Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;background-image:radial-gradient(1200px 520px at 50% -240px,rgba(255,75,62,.07),transparent 70%)}
     ::selection{background:rgba(255,75,62,.32)}
     .wrap{max-width:var(--measure);margin:0 auto;padding:56px 28px 110px}
     .hero{display:flex;align-items:center;gap:18px;padding-bottom:26px;border-bottom:1px solid var(--border)}
     .eye{width:38px;height:38px;border-radius:50%;flex:none;background:radial-gradient(circle at 50% 38%,#FF7A6B 0%,#F0362A 42%,#6E0E08 100%);box-shadow:0 0 22px rgba(255,70,55,.5),inset 0 0 6px rgba(0,0,0,.45)}
+    img.eye{object-fit:cover}
     .brand{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
     h1{font-size:27px;line-height:1.2;margin:0;font-weight:650;letter-spacing:-.01em}
     .meta{color:var(--dim);font-size:13px;margin-top:8px}
@@ -190,7 +198,7 @@ public sealed class HtmlReportWriter : IReportWriter
     .sec-head h2{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin:0;font-weight:600}
     h3{font-size:15px;margin:0 0 6px;font-weight:640}
     p{margin:6px 0}
-    .lead{font-size:16px;color:#CFD5DC;margin:0 0 22px;max-width:70ch}
+    .lead{font-size:16px;color:var(--lead);margin:0 0 22px;max-width:70ch}
     ul{margin:8px 0;padding-left:18px}li{margin:4px 0}
     .topic{background:var(--surface);border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:var(--r-sm);padding:14px 18px;margin:12px 0;break-inside:avoid}
     .topic h3{margin-bottom:4px}
@@ -220,6 +228,13 @@ public sealed class HtmlReportWriter : IReportWriter
     .transcript pre{white-space:pre-wrap;word-wrap:break-word;background:var(--surface);border:1px solid var(--border);border-top:0;border-radius:0 0 var(--r-sm) var(--r-sm);padding:16px;font-family:inherit;font-size:13px;color:var(--dim);margin:0;max-height:480px;overflow:auto}
     @media(max-width:620px){.beat{grid-template-columns:1fr}.wrap{padding:40px 18px 80px}}
     @media print{.beat,.topic,.speaker{break-inside:avoid}}
+    """;
+
+    /// <summary>Light-mode palette override, appended after <see cref="Css"/> for the PDF export so the
+    /// printed page sits on a light surface (no dark content clashing with the white page margin).</summary>
+    private const string LightCss = """
+    :root{--bg:#FFFFFF;--surface:#F5F7F9;--surface-2:#EDF1F4;--border:#DCE1E7;--text:#1A1D21;--dim:#586069;--faint:#8A929B;--lead:#3C444D}
+    body{background-image:none}
     """;
 
     /// <summary>XML/HTML-escapes a string for safe insertion as element text or an attribute value.</summary>

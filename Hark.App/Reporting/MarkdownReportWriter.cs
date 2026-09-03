@@ -19,6 +19,8 @@ public sealed class MarkdownReportWriter : IReportWriter
     private static string Build(SessionReport report)
     {
         var sb = new StringBuilder();
+        if (report.Icon is { Length: > 0 } icon)
+            sb.Append("![HARK](data:image/png;base64,").Append(Convert.ToBase64String(icon)).AppendLine(")").AppendLine();
         sb.Append("# ").AppendLine(report.Title);
         sb.Append('_').Append(report.Timestamp.ToString("f"));
         var facts = new List<string>();

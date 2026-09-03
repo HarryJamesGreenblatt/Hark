@@ -38,7 +38,9 @@ public sealed class DocxReportWriter : IReportWriter
         main.Document = new Document();
         var body = main.Document.AppendChild(new Body());
 
-        // Hero: title + a meta line of counts, mirroring the HTML header.
+        // Hero: an Oracle-eye mark, the title, and a meta line of counts, mirroring the HTML header.
+        if (report.Icon is { Length: > 0 })
+            body.AppendChild(ImageParagraph(main, report.Icon, 900, 380000L));   // ~0.4" Oracle-eye mark
         body.AppendChild(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { After = "40" }),
             R(report.Title, color: Ink, bold: true, halfPt: 40)));
         var facts = new System.Collections.Generic.List<string>();

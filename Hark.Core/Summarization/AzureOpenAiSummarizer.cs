@@ -24,7 +24,7 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
 
     /// <summary>An empty recap, returned for empty transcripts or empty completions.</summary>
     private static readonly MeetingRecap EmptyRecap =
-        new(string.Empty, Array.Empty<RecapTopic>(), Array.Empty<RecapFollowUp>());
+        new(string.Empty, string.Empty, Array.Empty<RecapTopic>(), Array.Empty<RecapFollowUp>());
 
     /// <summary>An empty speaker recap, returned for empty transcripts or empty completions.</summary>
     private static readonly SpeakerRecap EmptySpeakerRecap = new(Array.Empty<SpeakerBrief>());
@@ -125,6 +125,8 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         "You produce a structured meeting recap from a transcript. Speakers are anonymous labels " +
         "like 'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
         "Return a JSON object with:\n" +
+        "- title: a short, specific headline naming the whole conversation (≤ 8 words, no trailing " +
+        "period; e.g. 'Q3 Roadmap and Hiring Plan'). Use the Guest labels' topics, never invented names.\n" +
         "- overview: 1-3 sentences capturing the meeting's purpose and outcome.\n" +
         "- topics: the meeting broken into the distinct subjects that were actually discussed. " +
         "Segment by topic shift, not by speaker. For each topic provide:\n" +
@@ -162,6 +164,7 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         {
           "type": "object",
           "properties": {
+            "title": { "type": "string" },
             "overview": { "type": "string" },
             "topics": {
               "type": "array",
@@ -189,7 +192,7 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
               }
             }
           },
-          "required": ["overview", "topics", "followUps"],
+          "required": ["title", "overview", "topics", "followUps"],
           "additionalProperties": false
         }
         """;

@@ -1911,8 +1911,33 @@ public partial class OverlayWindow : Window
         if (string.IsNullOrWhiteSpace(transcript) && !hasRecap && !hasSpeakers && beats.Count == 0)
             return null;
 
-        return new SessionReport("Hark session report", DateTime.Now, transcript,
-            _lastRecap, _lastSpeakerRecap, beats);
+        // Prefer the model-generated conversation title (free from the recap call); fall back otherwise.
+        var title = !string.IsNullOrWhiteSpace(_lastRecap?.Title) ? _lastRecap!.Title.Trim() : "Hark session report";
+
+        return new SessionReport(title, DateTime.Now, transcript,
+            _lastRecap, _lastSpeakerRecap, beats, OracleIconBytes());
+    }
+
+    /// <summary>The Oracle-eye icon bytes (PNG), loaded once from the app resource; null when unavailable.</summary>
+    private static byte[]? _oracleIconBytes;
+    private static bool _oracleIconTried;
+    private static byte[]? OracleIconBytes()
+    {
+        if (_oracleIconTried) return _oracleIconBytes;
+        _oracleIconTried = true;
+        try
+        {
+            var info = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/Icon.png"));
+            if (info is not null)
+            {
+                using var s = info.Stream;
+                using var ms = new System.IO.MemoryStream();
+                s.CopyTo(ms);
+                _oracleIconBytes = ms.ToArray();
+            }
+        }
+        catch { /* no icon resource available */ }
+        return _oracleIconBytes;
     }
 
     /// <summary>Docks the window as a full working-area-width bar flush at the top of the screen.</summary>
