@@ -1,6 +1,9 @@
 # HARK
 
-**H**$\text{ear}$. **A**$\text{dapt}$. **R**$\text{ender}$. **K**$\text{eep}$.
+**H**$\text{ear}$. &emsp;
+**A**$\text{dapt}$. &emsp;
+**R**$\text{ender}$. &emsp;
+**K**$\text{eep}$.
 
 A developer-grade, scriptable speech-to-text pipeline that captures **system playback audio** on
 Windows 11 (WASAPI loopback — no microphone needed) and transcribes it in near real time via
