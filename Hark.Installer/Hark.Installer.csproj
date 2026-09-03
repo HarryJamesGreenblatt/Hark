@@ -24,7 +24,7 @@
     <EmbeddedResource Include="Hark.cer">
       <LogicalName>Hark.cer</LogicalName>
     </EmbeddedResource>
-    <!-- HAL-eye logo for the installer chrome. -->
+    <!-- Oracle-eye logo for the installer chrome. -->
     <EmbeddedResource Include="..\Hark.App\Assets\Icon.png">
       <LogicalName>Icon.png</LogicalName>
     </EmbeddedResource>

@@ -12,7 +12,7 @@
         SnapsToDevicePixels="True">
 
     <Window.Resources>
-        <Style x:Key="HalButton" TargetType="Button">
+        <Style x:Key="OracleButton" TargetType="Button">
             <Setter Property="Background" Value="#960A04"/>
             <Setter Property="Foreground" Value="#F0F4F8"/>
             <Setter Property="FontFamily" Value="Segoe UI Semibold"/>
@@ -147,7 +147,7 @@
                         <CheckBox x:Name="ProvDeployImage" IsChecked="False" Foreground="#C8CDD4" Margin="0,0,0,12"
                                   Content="Also deploy the gpt-image-2 tier"/>
 
-                        <Button x:Name="ProvisionBtn" Style="{StaticResource HalButton}" Content="Provision Azure infra"
+                        <Button x:Name="ProvisionBtn" Style="{StaticResource OracleButton}" Content="Provision Azure infra"
                                 Height="34" Padding="18,0" HorizontalAlignment="Left" Click="OnProvisionClick"/>
                         <TextBlock x:Name="ProvStatus" Foreground="#C8CDD4" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"/>
                     </StackPanel>
@@ -157,7 +157,7 @@
 
         <!-- Bottom bar: the primary action (Install, then Finish once installed). -->
         <Border Grid.Row="2" Background="#141416" BorderBrush="#FF281A" BorderThickness="0,2,0,0" Height="70">
-            <Button x:Name="ActionBtn" Style="{StaticResource HalButton}" Content="Install"
+            <Button x:Name="ActionBtn" Style="{StaticResource OracleButton}" Content="Install"
                     Width="200" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Click="OnActionClick"/>
         </Border>

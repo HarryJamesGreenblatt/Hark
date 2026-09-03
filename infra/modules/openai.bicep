@@ -27,7 +27,7 @@ param principalId string
 @description('Principal type for the role assignment.')
 param principalType string
 
-@description('Deploy a gpt-image image model deployment (the Vision crystal-ball render tier).')
+@description('Deploy a gpt-image image model deployment (the Vision render tier).')
 param deployImage bool = false
 
 @description('Image model deployment name.')

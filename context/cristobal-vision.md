@@ -1,5 +1,14 @@
 # 🔭 Codename Cristóbal — the visualization seam (design north star)
 
+> ## ⚠️ DEPRECATED — superseded by [`oracle.md`](./oracle.md)
+> **Outcome:** this design north star **shipped** — the "art-director refine → live didactic visualization"
+> it describes is now HARK's **Vision**, and the presence that renders it is **the Oracle** (see
+> [`oracle.md`](./oracle.md), the canonical identity doc). The codename **Cristóbal** (the "mind") and the
+> moniker **HAL** (the "eye") have been **retired and unified under "the Oracle"** (EP39). This document is
+> kept **as-is, for history** — its *substance* (why summaries are the wrong seed, the art-director judgment,
+> the async grounding oracle) is still true and worth reading; only the **names** are dated. Do not treat it
+> as current naming.
+>
 > **Status:** design north star — **partly shipped**. The Oracle spike (`Hark.Oracle.Vision`) landed in
 > **EP15**, which **superseded the original integration plan**: Cristóbal reproduces the art-director
 > judgment **natively in .NET** (distilling sequitur's *grounding*, not calling its Python) and is a

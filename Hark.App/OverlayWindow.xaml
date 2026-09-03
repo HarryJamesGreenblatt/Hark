@@ -14,7 +14,7 @@
         MinWidth="420" MinHeight="96"
         WindowStartupLocation="Manual">
 
-    <!-- Root layer: the docked bar plus the full-window Vision ("crystal ball") page that overlays it. -->
+    <!-- Root layer: the docked bar plus the full-window Vision (the Oracle) page that overlays it. -->
     <Grid x:Name="RootLayer">
 
         <!-- Live-Captions-style bar: dark translucent, rounded, soft shadow. Done right: the transcript
@@ -375,10 +375,10 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- HAL-9000-style eye: silver frame, black socket, glowing red cornea (recording),
+                    <!-- The Oracle's eye: silver frame, black socket, glowing red cornea (recording),
                      with a glass gloss highlight. Idle = dim; running/reactive = lit + glow.
                      Click to dilate into the full-window Vision page. -->
-                    <Grid Grid.Column="0" x:Name="HalEye" Width="18" Height="18" VerticalAlignment="Center"
+                    <Grid Grid.Column="0" x:Name="OracleEye" Width="18" Height="18" VerticalAlignment="Center"
                       Background="Transparent" Cursor="Hand" ToolTip="Open Vision">
                         <Ellipse>
                             <Ellipse.Fill>
@@ -390,7 +390,7 @@
                             </Ellipse.Fill>
                         </Ellipse>
                         <Ellipse Margin="2" Fill="#0A0A0B" />
-                        <Ellipse x:Name="HalCornea" Margin="4,4,4,0" RenderTransformOrigin="0.5,0.5" Height="10" VerticalAlignment="Top">
+                        <Ellipse x:Name="OracleCornea" Margin="4,4,4,0" RenderTransformOrigin="0.5,0.5" Height="10" VerticalAlignment="Top">
                             <Ellipse.Fill>
                                 <RadialGradientBrush>
                                     <GradientStop Color="#FFD2C2" Offset="0" />
@@ -399,11 +399,11 @@
                                 </RadialGradientBrush>
                             </Ellipse.Fill>
                             <Ellipse.Effect>
-                                <DropShadowEffect x:Name="HalGlow" Color="#FF1A14"
+                                <DropShadowEffect x:Name="OracleGlow" Color="#FF1A14"
                                               ShadowDepth="0" BlurRadius="8" Opacity="0" />
                             </Ellipse.Effect>
                             <Ellipse.RenderTransform>
-                                <ScaleTransform x:Name="HalScale" ScaleX="1" ScaleY="1" />
+                                <ScaleTransform x:Name="OracleScale" ScaleX="1" ScaleY="1" />
                             </Ellipse.RenderTransform>
                         </Ellipse>
                         <!-- Glass dome reflection: a small top-only highlight so it reads as glass without
@@ -686,7 +686,7 @@
             </Grid>
         </Border>
 
-        <!-- Vision ("crystal ball") page: a full-window canvas the HAL eye dilates into. Clicking the
+        <!-- Vision (the Oracle) page: a full-window canvas the Oracle's eye dilates into. Clicking the
              bar's eye scales this large centered eye up over the bar; clicking it again returns.
              Placeholder for now — the live concept image renders here once the render tier is wired. -->
         <Grid x:Name="VisionCanvas" Visibility="Collapsed" Opacity="0">
@@ -701,9 +701,9 @@
             <Grid x:Name="DiagramLayer" IsHitTestVisible="True" />
 
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <!-- Large HAL-eye replica, centred on the canvas as the diagram's hub; driven by the same
+                <!-- Large Oracle-eye replica, centred on the canvas as the diagram's hub; driven by the same
                      audio envelope as the bar's eye. In scene mode the rendered vision appears in the orb. -->
-                <Grid x:Name="HalEyeBig" Width="360" Height="360"
+                <Grid x:Name="OracleEyeBig" Width="360" Height="360"
                       Cursor="Hand" Background="Transparent"
                       RenderTransformOrigin="0.5,0.5" HorizontalAlignment="Center"
                       ToolTip="Return to captions">
@@ -723,7 +723,7 @@
                         </Ellipse.Fill>
                     </Ellipse>
                     <Ellipse Margin="26" Fill="#0A0A0B" />
-                    <Ellipse x:Name="HalCorneaBig" Margin="78" RenderTransformOrigin="0.5,0.5">
+                    <Ellipse x:Name="OracleCorneaBig" Margin="78" RenderTransformOrigin="0.5,0.5">
                         <Ellipse.Fill>
                             <RadialGradientBrush>
                                 <GradientStop Color="#FFD2C2" Offset="0" />
@@ -732,11 +732,11 @@
                             </RadialGradientBrush>
                         </Ellipse.Fill>
                         <Ellipse.Effect>
-                            <DropShadowEffect x:Name="HalGlowBig" Color="#FF1A14"
+                            <DropShadowEffect x:Name="OracleGlowBig" Color="#FF1A14"
                                               ShadowDepth="0" BlurRadius="40" Opacity="0" />
                         </Ellipse.Effect>
                         <Ellipse.RenderTransform>
-                            <ScaleTransform x:Name="HalScaleBig" ScaleX="1" ScaleY="1" />
+                            <ScaleTransform x:Name="OracleScaleBig" ScaleX="1" ScaleY="1" />
                         </Ellipse.RenderTransform>
                     </Ellipse>
                     <!-- The pupil: a circular-clipped container carrying the audio-reactive dilation. It

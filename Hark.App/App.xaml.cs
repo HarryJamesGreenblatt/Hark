@@ -294,7 +294,7 @@ public partial class App : Application
         return tray;
     }
 
-    /// <summary>Loads the app's HAL-eye icon from the executable, falling back to the system icon.</summary>
+    /// <summary>Loads the app's Oracle-eye icon from the executable, falling back to the system icon.</summary>
     /// <returns>The tray icon to display.</returns>
     private static Icon LoadAppIcon()
     {
@@ -389,7 +389,7 @@ public partial class App : Application
             _overlay?.ShowStatus($"Recognizer: {message}");
         });
 
-    /// <summary>Marshals the banded capture levels onto the UI to drive the sound-reactive HAL eye.</summary>
+    /// <summary>Marshals the banded capture levels onto the UI to drive the sound-reactive Oracle's eye.</summary>
     /// <param name="features">The current overall/bass/treble audio levels.</param>
     private void OnAudioFeatures(AudioFeatures features) =>
         Dispatcher.BeginInvoke(() => _overlay?.SetAudioFeatures(features.Level, features.Bass, features.Treble));
@@ -834,7 +834,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Handles the HAL eye dilating open: shows the Vision page and starts the autonomous beat loop.
+    /// Handles the Oracle's eye dilating open: shows the Vision page and starts the autonomous beat loop.
     /// The open itself force-renders once (human-paced); the loop then re-conjures only on genuine
     /// topic shifts, rate-limited, while the page stays open.
     /// </summary>

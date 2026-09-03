@@ -1,4 +1,4 @@
-# Generates the HARK icon set (HAL-9000 eye) — an .ico for the exe/tray and the MSIX tile PNGs.
+# Generates the HARK icon set (the Oracle's eye) — an .ico for the exe/tray and the MSIX tile PNGs.
 # Pure System.Drawing so it runs anywhere with .NET on Windows; no external assets.
 # Re-run whenever the brand mark changes: pwsh -NoProfile -File Hark.App/Scripts/Generate-Icon.ps1
 
@@ -8,7 +8,7 @@ $assetsDir = Join-Path $PSScriptRoot '..\Assets'
 $tilesDir  = Join-Path $assetsDir 'MsixTiles'
 New-Item -ItemType Directory -Force -Path $assetsDir, $tilesDir | Out-Null
 
-# ── Draw the HAL eye centered in a (width x height) transparent canvas ──
+# ── Draw the Oracle's eye centered in a (width x height) transparent canvas ──
 function New-EyeBitmap {
     param([int]$Width, [int]$Height, [switch]$Plate)
 

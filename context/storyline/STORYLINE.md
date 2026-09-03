@@ -14,7 +14,7 @@ can resume with full context instead of starting cold.
 
 ## 📌 Current State (snapshot)
 
-_Last updated: 2026-09-02 (end of Episode 38. Shipped **2.1.0 item #1 — the rebrand**: the backronym's R-word went **Recognize → Render** and the architecture was **re-storied** so the four letters map onto the whole product (**Hear** = capture+transcribe, **Adapt** = diarize/refine/name/summarize, **Render** = Vision, **Keep** = save/export) — taglines (README, CLI, manifest, installer) + the README "How it works" + `Hark.Core` stage comments, leaving genuine Speech-SDK terms untouched. All projects build clean. Commit `70aed5a`. See [`EP38`](./EP38-rebrand-hear-adapt-render-keep.md). Prior: Episode 37 **locked** the six-item 2.1.0 backlog.)_w audio band, attraction/repulsion — a research spike), (3) a **generated session title** (replace the hardcoded `"Hark session report"`, one seam fans out to all formats), (4) **PDF export in light mode** (fix WebView2's white page-border clash), (5) a **consistent HAL icon across exports** (embed `Assets/Icon.png` everywhere), and (6) an **installer startup-delay** fix (splash + measure the pre-UAC bundle/verify cost). No code changed; backlog + seams captured. See [`EP37`](./EP37-2.1.0-backlog-lock.md). Prior: Episode 36 completed the five-format export set and cut **HARK 2.0.0**.)_
+_Last updated: 2026-09-02 (end of Episode 39. Consolidated HARK's visual-interpretive identity under one canonical name — **the Oracle** — retiring the conflated **HAL** / **Cristóbal** / **crystal ball** monikers across branding, docs, and **code symbols** (`HalEye→OracleEye`, etc.; the red-eye aesthetic stays). Added the canonical [`oracle.md`](../oracle.md), **deprecated** `cristobal-vision.md` (+ outcome note) and pointed `crystal-ball-design-brief.md` at it, and updated the README + living snapshot. Full solution builds; `dotnet test` 4 passed. See [`EP39`](./EP39-naming-the-oracle.md). Prior: Episode 38 shipped the **Hear·Adapt·Render·Keep** rebrand.)_w audio band, attraction/repulsion — a research spike), (3) a **generated session title** (replace the hardcoded `"Hark session report"`, one seam fans out to all formats), (4) **PDF export in light mode** (fix WebView2's white page-border clash), (5) a **consistent HAL icon across exports** (embed `Assets/Icon.png` everywhere), and (6) an **installer startup-delay** fix (splash + measure the pre-UAC bundle/verify cost). No code changed; backlog + seams captured. See [`EP37`](./EP37-2.1.0-backlog-lock.md). Prior: Episode 36 completed the five-format export set and cut **HARK 2.0.0**.)_
 
 - **Status:** CLI MVP + desktop overlay working **and now at 2.0.0** — published to the public
   personal repo `github.com/HarryJamesGreenblatt/Hark` with a tag-driven GitHub Release shipping a
@@ -27,8 +27,9 @@ _Last updated: 2026-09-02 (end of Episode 38. Shipped **2.1.0 item #1 — the re
   views (JSON-schema output). On Stop, an **offline Fast Transcription second pass** re-diarizes the
   buffered audio globally and rebuilds the conversation, fixing streaming diarization's host/guest
   crossups. The bar docks as a **full-width top bar** whose **height fits its content** (collapsible
-  recap sections; a captions **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive HAL-9000
-  status eye**. A header **Save** button exports the whole session as a **multi-format report**
+  recap sections; a captions **LATEST/TRANSCRIPT** scope switch), with a **sound-reactive Oracle's eye**
+  (**the Oracle** is HARK's seeing/interpreting presence — the canonical name for the eye + its Vision;
+  see [`../oracle.md`](../oracle.md)). A header **Save** button exports the whole session as a **multi-format report**
   (**Markdown · Word · PowerPoint · PDF · Web page**) — every format sharing one **beat-card layout
   language**, with a cinematic editorial **PowerPoint** deck.
 - **Branch:** `main` · working tree clean.
@@ -39,8 +40,8 @@ _Last updated: 2026-09-02 (end of Episode 38. Shipped **2.1.0 item #1 — the re
   anonymous `Guest-N` speakers, each with a clickable pill that opens a dedicated page; **right-clicking
   a pill renames** that speaker globally (and an **Oracle naming pass** fills real names in
   automatically, live); a segmented
-  **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the HAL eye** dilates it
-  into a full-window "crystal ball" **Vision page** (corner→centre match-cut zoom; the large eye stays
+  **CAPTIONS / SUMMARY** switch cross-fades to a Teams-style recap. **Clicking the Oracle's eye** dilates it
+  into a full-window **Vision page** (corner→centre match-cut zoom; the large eye stays
   audio-reactive) that renders a **dual-layer** live visualization of the conversation, **conjured in
   parallel every beat** by `Hark.Oracle.Vision`: a **native WPF radial mind-map** drawn behind the eye
   (the eye sits at its empty centre as the hub — exact concentricity, crisp text, instant, crossfaded)
@@ -102,12 +103,14 @@ _Last updated: 2026-09-02 (end of Episode 38. Shipped **2.1.0 item #1 — the re
   repo) both configured; `gh auth switch` to flip.
 - **Known env gotcha:** the Azure CLI can crash on a broken ACL under
   `~/.azure/cliextensions/account/...` → worked around by **running VS elevated**.
-- **North star (vision):** [**Codename Cristóbal**](../cristobal-vision.md) — hook HARK's engine into
-  an agent that dispatches a generative image model to render live *didactic* visualizations of the
-  conversation. Key design: HARK's summaries are the **wrong** image seed (literal + over-complicated);
-  the right seed is an **art-director refine** that already exists, grounded, in the sibling project
-  `sequitur_studios` (its **Production Designer** lands one iconic `visual_concept`). Rides the engine
-  road below as a `GroundingEvent` producer.
+- **North star (vision):** [**The Oracle**](../oracle.md) — HARK's seeing, interpreting presence (the
+  canonical identity doc; supersedes the retired **Codename Cristóbal** / **HAL** / **crystal ball**
+  monikers). The Oracle's engine dispatches a generative image model to render live *didactic*
+  visualizations of the conversation. Key design: HARK's summaries are the **wrong** image seed (literal +
+  over-complicated); the right seed is an **art-director refine** that already exists, grounded, in the
+  sibling project `sequitur_studios` (its **Production Designer** lands one iconic `visual_concept`). Rides
+  the engine road below as a `GroundingEvent` producer. Origin story:
+  [`cristobal-vision.md`](../cristobal-vision.md) (deprecated).
 
 ---
 
@@ -154,6 +157,7 @@ _Last updated: 2026-09-02 (end of Episode 38. Shipped **2.1.0 item #1 — the re
 | 36 | 2026-09-02 | [PDF Export & the 2.0.0 Release](./EP36-pdf-export-and-2.0.0-release.md) | Added the final export — **PDF** via **WebView2** `PrintToPdfAsync` on the styled HTML (loading a **temp file**, since `NavigateToString` caps ~2 MB with embedded scenes) — completing the set (**Markdown · Word · PowerPoint · PDF · Web page**). Polished report details: the beat scene is **vertically centered** beside its nodes in HTML+PDF, and the HTML builder gained a **`transcriptOpen`** option the **PDF** enables (a print can't expand a `<details>`) while the **web page** stays collapsed. Reordered the **deck only** so **Conversation summary + Speakers precede the vision beats** (docs/web/PDF keep Vision leading). Updated the **README** (timeline + Save, the export formats, OpenXML/WebView2 deps), memory, and storyline, then cut **HARK 2.0.0** — the tag-driven release publishing the signed `Hark-Setup.exe`. `dotnet test` **4 passed**. Commits `c0619eb`, `8fb484e`, tag `v2.0.0`. |
 | 37 | 2026-09-02 | [Locking the 2.1.0 Backlog](./EP37-2.1.0-backlog-lock.md) | A **planning session** (no code). Reviewed the storyline top-to-bottom and **locked HARK 2.1.0** — six items, each grounded to a code seam: **(1)** rebrand **HARK = Hear · Adapt · Render · Keep** (a code+docs scrub); **(2)** **organic eye motion** (gaze/look-at on mind-map hover, a new audio band → saccades, attraction/repulsion — a research spike, the 2D-gaze worry answered by **layered pupil-offset**); **(3)** a **generated session title** (replace the hardcoded `"Hark session report"` in `BuildSessionReport` — one seam fans out to all five formats, via the `ReportRecapsRequested` on-save hook); **(4)** **PDF export in light mode** (WebView2 prints the dark HTML onto white pages → a `lightMode` flag on `HtmlReportWriter`); **(5)** a **consistent HAL icon** (embed `Assets/Icon.png` — today HTML/PDF use a CSS faux-eye, MD/Word omit it, PPTX uses the scene); **(6)** the **installer's long pre-UAC delay** — *not* reverting to WinForms; the honest read is `requireAdministrator` fires UAC before any managed code, so a splash covers only the **post**-UAC WPF cold-start while the **pre**-UAC gap is single-file verify/extract → **measure first**, then splash + ReadyToRun/Trusted Signing. Backlog + seams in `/memories/repo/hark-2.1.0-backlog.md`. |
 | 38 | 2026-09-02 | [The Rebrand: Hear · Adapt · Render · Keep](./EP38-rebrand-hear-adapt-render-keep.md) | Shipped **2.1.0 item #1**. Found the backronym already existed as "Hear · Adapt · **Recognize** · Keep", so this was a precise **Recognize → Render** swap (both spell HARK). Per a scoping question, did the **full re-story** (not tagline-only): the four letters now map onto the **product's movements** — **Hear** = capture+transcribe, **Adapt** = diarize/refine/name/summarize, **Render** = Vision, **Keep** = save/export — with transcription folded into **Hear**. Changed the taglines (README title, CLI banner+`--help`, `Package.appxmanifest` ×2, installer XAML), rewrote the README **"How it works"** as a four-movement diagram + component table, and reconciled the `Hark.Core` stage comments ("Recognize"→"Hear", CLI `[Recognize]`→`[Hear]`). Left **genuine Speech-SDK terms** (`SpeechRecognizer`, `RecognizedSpeech`, `recognizer`) and historical episodes untouched. All three projects build clean. Commit `70aed5a`. |
+| 39 | 2026-09-02 | [Naming the Oracle: One Presence, Retiring HAL · Cristóbal · Crystal Ball](./EP39-naming-the-oracle.md) | Consolidated HARK's fragmented visual-interpretive identity under one canonical name — **the Oracle** (a *seer*-eye that *has visions*; already the `Hark.Oracle` tier + the EP19 concept persona). Scope (via 3 questions): **deep** — docs + branding + **code symbols**; **retire "HAL" as a name** (keep the red-eye aesthetic); **deprecate** `cristobal-vision.md` (+ outcome note) and add a **new [`oracle.md`](../oracle.md)**. Renamed the eye symbols (`HalEye→OracleEye`, `HalCornea/Glow/Scale`, `*Big`, `OnHalEyeReleased`, installer `HalButton→OracleButton`), swept ~all HAL/crystal-ball comments + README + icon script + bicep to Oracle vocabulary, and refreshed the living snapshot + North-star line. Left **Speech-SDK terms** and **historical episodes** untouched. Full solution builds (0 errors); `dotnet test` **4 passed**. |
 
 ---
 

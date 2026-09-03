@@ -19,7 +19,7 @@ namespace Hark.Installer;
 /// </summary>
 public partial class InstallerWindow : Window
 {
-    // ── HAL palette (brushes used by the code-built config fields) ──
+    // ── Oracle palette (brushes used by the code-built config fields) ──
     static readonly Brush Field       = new SolidColorBrush(Color.FromRgb(30, 30, 34));
     static readonly Brush FieldBorder = new SolidColorBrush(Color.FromRgb(58, 58, 64));
     static readonly Brush TextDim     = new SolidColorBrush(Color.FromRgb(200, 205, 212));

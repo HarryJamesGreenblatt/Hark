@@ -96,13 +96,13 @@ public partial class OverlayWindow : Window
     /// <summary>The speaker pill currently being renamed via the inline editor, if any.</summary>
     private System.Windows.Controls.Button? _renamePill;
 
-    /// <summary>Whether capture is currently running, driving the HAL eye and hint text.</summary>
+    /// <summary>Whether capture is currently running, driving the Oracle's eye and hint text.</summary>
     private bool _running;
 
     /// <summary>Whether the mic toggle is on (the local microphone is mixed into the captions).</summary>
     private bool _micOn;
 
-    /// <summary>Whether the full-window HAL-eye Vision page is currently open.</summary>
+    /// <summary>Whether the full-window Oracle Vision page is currently open.</summary>
     private bool _visionOpen;
 
     /// <summary>The large Vision eye's start transform (matched over the bar's small eye) for the zoom.</summary>
@@ -176,7 +176,7 @@ public partial class OverlayWindow : Window
     /// <summary>Raised when the user toggles the mic; the argument is the requested on/off state.</summary>
     public event Action<bool>? MicToggleRequested;
 
-    /// <summary>Raised when the HAL eye dilates open, asking the host to conjure a Vision image.</summary>
+    /// <summary>Raised when the Oracle's eye dilates open, asking the host to conjure a Vision image.</summary>
     public event Action? VisionRequested;
 
     /// <summary>Raised when the Vision page collapses, so the host can cancel any in-flight conjure.</summary>
@@ -188,7 +188,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Initializes the overlay's controls, freezes its static brushes, wires up window/menu/mode
-    /// handlers, and starts the compositor-driven render loop for the HAL eye.
+    /// handlers, and starts the compositor-driven render loop for the Oracle's eye.
     /// </summary>
     public OverlayWindow()
     {
@@ -204,12 +204,12 @@ public partial class OverlayWindow : Window
         Loaded += (_, _) => PositionAsTopBar();
         DragHandle.MouseLeftButtonDown += OnDragHandlePressed;
 
-        // Click the HAL eye to dilate into the full-window Vision page. Open on the button's *release*
+        // Click the Oracle's eye to dilate into the full-window Vision page. Open on the button's *release*
         // (not press) so this same click's mouse-up can't land on the just-revealed big eye and
         // immediately close it; the press only suppresses the drag-handle's window move.
-        HalEye.MouseLeftButtonDown += (_, e) => e.Handled = true;
-        HalEye.MouseLeftButtonUp += OnHalEyeReleased;
-        HalEyeBig.MouseLeftButtonUp += (_, _) => { if (!_visionAnimating) CloseVision(); };
+        OracleEye.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        OracleEye.MouseLeftButtonUp += OnOracleEyeReleased;
+        OracleEyeBig.MouseLeftButtonUp += (_, _) => { if (!_visionAnimating) CloseVision(); };
 
         CopyItem.Click += (_, _) => CopySelectionOrAll();
         CopyAllItem.Click += (_, _) => CopyAll();
@@ -256,7 +256,7 @@ public partial class OverlayWindow : Window
         RecapPanel.SizeChanged += (_, _) => ScheduleHeightAdjust();
         SpeakerPanel.SizeChanged += (_, _) => ScheduleHeightAdjust();
 
-        // Drive the HAL eye from the WPF compositor (~60fps), decoupled from the audio callback
+        // Drive the Oracle's eye from the WPF compositor (~60fps), decoupled from the audio callback
         // rate, so it eases smoothly toward the latest level instead of stepping at ~20 Hz.
         CompositionTarget.Rendering += OnRendering;
         Closed += (_, _) => CompositionTarget.Rendering -= OnRendering;
@@ -644,7 +644,7 @@ public partial class OverlayWindow : Window
         Render();
     }
 
-    /// <summary>Reflects capture state in the HAL eye and hint text.</summary>
+    /// <summary>Reflects capture state in the Oracle's eye and hint text.</summary>
     /// <param name="running">Whether capture is currently running.</param>
     public void SetRunning(bool running)
     {
@@ -692,8 +692,8 @@ public partial class OverlayWindow : Window
     }
 
     /// <summary>
-    /// Per-frame easing of the HAL eye toward the latest audio target (or rest when idle/silent).
-    /// Asymmetric time constants — fast attack, slower release — give a lively, HAL-like pulse.
+    /// Per-frame easing of the Oracle's eye toward the latest audio target (or rest when idle/silent).
+    /// Asymmetric time constants — fast attack, slower release — give a lively, organic pulse.
     /// </summary>
     /// <param name="sender">Unused.</param>
     /// <param name="e">Compositor rendering event arguments; expected to be a <see cref="RenderingEventArgs"/>.</param>
@@ -736,18 +736,18 @@ public partial class OverlayWindow : Window
         {
             // Full range: a dim ember when silent (gated to ~0) up to a bright, red-bloomed pulse on
             // loud speech. No glow at rest so it clearly "cools" between utterances.
-            HalCornea.Opacity = 0.28 + 0.72 * l;
-            HalGlow.Opacity = 0.90 * l;
-            HalGlow.BlurRadius = 4 + 26 * l;
-            HalScale.ScaleX = HalScale.ScaleY = 0.86 + 0.36 * l;
+            OracleCornea.Opacity = 0.28 + 0.72 * l;
+            OracleGlow.Opacity = 0.90 * l;
+            OracleGlow.BlurRadius = 4 + 26 * l;
+            OracleScale.ScaleX = OracleScale.ScaleY = 0.86 + 0.36 * l;
         }
         else
         {
             // Idle: dormant, dim eye (still eases down smoothly from any prior glow).
-            HalCornea.Opacity = 0.24 + 0.10 * l;
-            HalGlow.Opacity = 0.0;
-            HalGlow.BlurRadius = 0;
-            HalScale.ScaleX = HalScale.ScaleY = 1.0;
+            OracleCornea.Opacity = 0.24 + 0.10 * l;
+            OracleGlow.Opacity = 0.0;
+            OracleGlow.BlurRadius = 0;
+            OracleScale.ScaleX = OracleScale.ScaleY = 1.0;
         }
 
         // Drive the large Vision eye with the same envelope (scaled for its size) while it's open.
@@ -755,17 +755,17 @@ public partial class OverlayWindow : Window
         {
             if (_running)
             {
-                HalCorneaBig.Opacity = 0.30 + 0.70 * l;
-                HalGlowBig.Opacity = 0.90 * l;
-                HalGlowBig.BlurRadius = 30 + 120 * l;
-                HalScaleBig.ScaleX = HalScaleBig.ScaleY = 0.92 + 0.12 * l;
+                OracleCorneaBig.Opacity = 0.30 + 0.70 * l;
+                OracleGlowBig.Opacity = 0.90 * l;
+                OracleGlowBig.BlurRadius = 30 + 120 * l;
+                OracleScaleBig.ScaleX = OracleScaleBig.ScaleY = 0.92 + 0.12 * l;
             }
             else
             {
-                HalCorneaBig.Opacity = 0.30 + 0.10 * l;
-                HalGlowBig.Opacity = 0.0;
-                HalGlowBig.BlurRadius = 0;
-                HalScaleBig.ScaleX = HalScaleBig.ScaleY = 1.0;
+                OracleCorneaBig.Opacity = 0.30 + 0.10 * l;
+                OracleGlowBig.Opacity = 0.0;
+                OracleGlowBig.BlurRadius = 0;
+                OracleScaleBig.ScaleX = OracleScaleBig.ScaleY = 1.0;
             }
 
             ApplyPupilAndHighlight();
@@ -818,10 +818,10 @@ public partial class OverlayWindow : Window
         VisionGlossTranslate.Y = Math.Cos(_glossPhase * 0.43) * _glossAmp * 0.6;
     }
 
-    /// <summary>Opens the Vision page when the bar's HAL eye is released (ignored mid-transition).</summary>
+    /// <summary>Opens the Vision page when the bar's Oracle eye is released (ignored mid-transition).</summary>
     /// <param name="sender">Unused.</param>
     /// <param name="e">The mouse button event arguments.</param>
-    private void OnHalEyeReleased(object sender, MouseButtonEventArgs e)
+    private void OnOracleEyeReleased(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
         if (!_visionAnimating && !_visionOpen) OpenVision();
@@ -859,12 +859,12 @@ public partial class OverlayWindow : Window
         VisionEyeTranslate.X = VisionEyeTranslate.Y = 0.0;
         UpdateLayout();
 
-        var smallCentre = HalEye.TransformToVisual(VisionCanvas)
-            .Transform(new System.Windows.Point(HalEye.ActualWidth / 2, HalEye.ActualHeight / 2));
-        var bigCentre = HalEyeBig.TransformToVisual(VisionCanvas)
-            .Transform(new System.Windows.Point(HalEyeBig.ActualWidth / 2, HalEyeBig.ActualHeight / 2));
+        var smallCentre = OracleEye.TransformToVisual(VisionCanvas)
+            .Transform(new System.Windows.Point(OracleEye.ActualWidth / 2, OracleEye.ActualHeight / 2));
+        var bigCentre = OracleEyeBig.TransformToVisual(VisionCanvas)
+            .Transform(new System.Windows.Point(OracleEyeBig.ActualWidth / 2, OracleEyeBig.ActualHeight / 2));
 
-        _visionStartScale = HalEyeBig.ActualWidth > 0 ? HalEye.ActualWidth / HalEyeBig.ActualWidth : 0.08;
+        _visionStartScale = OracleEyeBig.ActualWidth > 0 ? OracleEye.ActualWidth / OracleEyeBig.ActualWidth : 0.08;
         _visionStartX = smallCentre.X - bigCentre.X;
         _visionStartY = smallCentre.Y - bigCentre.Y;
 
@@ -950,7 +950,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Clears ALL Vision session state — the pupil ring buffer/filler cycle, the diagram, the pupil image,
-    /// and any scrying sheen — so a new capture session starts with a blank crystal ball. Called on a caption
+    /// and any scrying sheen — so a new capture session starts with a blank Oracle Vision. Called on a caption
     /// toggle (which bypasses <see cref="CloseVision"/>'s cleanup).
     /// </summary>
     public void ResetVision()
@@ -974,7 +974,7 @@ public partial class OverlayWindow : Window
 
     /// <summary>
     /// Marks the start of a conjure. Deliberately shows NO synthetic "loading" spinner — while a scene
-    /// renders the crystal ball simply rests in its regular red sound-reactive state; a held image, if
+    /// renders the Oracle simply rests in its regular red sound-reactive state; a held image, if
     /// any, stays until the new one lands.
     /// </summary>
     public void BeginVisionConjuring()
@@ -1034,8 +1034,8 @@ public partial class OverlayWindow : Window
     private static readonly TimeSpan BlinkInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Renders a Vision image (PNG bytes) inside the HAL eye's orb — the cornea becomes the crystal
-    /// ball — with a conversation-relative caption (the concept's theme) beneath it. The image is also
+    /// Renders a Vision image (PNG bytes) inside the Oracle's eye orb — the cornea becomes the vision
+    /// surface — with a conversation-relative caption (the concept's theme) beneath it. The image is also
     /// buffered so the filler cycle can hold the pupil alive if subsequent renders stall.
     /// </summary>
     /// <param name="png">The rendered image as PNG bytes.</param>
@@ -1378,7 +1378,7 @@ public partial class OverlayWindow : Window
         }
     }
 
-    /// <summary>Wires a hover popup to a node pill, revealing its detail on a HAL-styled bubble.</summary>
+    /// <summary>Wires a hover popup to a node pill, revealing its detail on an Oracle-styled bubble.</summary>
     private void AttachDetailPopup(Canvas canvas, Border pill, string detail, Color accent, bool aboveCentre)
     {
         var popup = new System.Windows.Controls.Primitives.Popup

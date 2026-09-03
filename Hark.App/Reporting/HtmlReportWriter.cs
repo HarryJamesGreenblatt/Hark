@@ -29,7 +29,7 @@ public sealed class HtmlReportWriter : IReportWriter
         sb.Append("<title>Hark report \u2014 ").Append(stamp).AppendLine("</title>");
         sb.Append("<style>").Append(Css).AppendLine("</style></head><body><main class=\"wrap\">");
 
-        // Hero — a HAL-eye mark, the "session report" eyebrow, the title, and a meta line of counts.
+        // Hero — an Oracle-eye mark, the "session report" eyebrow, the title, and a meta line of counts.
         sb.AppendLine("<header class=\"hero\">");
         sb.AppendLine("<div class=\"eye\" aria-hidden=\"true\"></div>");
         sb.AppendLine("<div class=\"hero-text\"><div class=\"brand\">HARK \u00b7 session report</div>");

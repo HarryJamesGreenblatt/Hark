@@ -66,9 +66,9 @@ HARK's four movements — **Hear · Adapt · Render · Keep**:
 ```
 ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
 │     Hear     │──►│    Adapt     │──►│    Render    │──►│     Keep     │
-│ capture +    │   │ diarize ·    │   │ the Vision   │   │ save + the   │
-│ transcribe   │   │ refine · name│   │ crystal ball │   │ multi-format │
-│ (live caps)  │   │ · summarize  │   │ (HAL eye)    │   │ report       │
+│ capture +    │   │ diarize ·    │   │ the Oracle   │   │ save + the   │
+│ transcribe   │   │ refine · name│   │ its eye +    │   │ multi-format │
+│ (live caps)  │   │ · summarize  │   │ Vision scene │   │ report       │
 └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
 ```
 
@@ -76,7 +76,7 @@ HARK's four movements — **Hear · Adapt · Render · Keep**:
 |---|---|---|
 | **Hear** | `Capture/LoopbackCaptureService` (+ `MicCaptureService`) · `Audio/PcmConverter` · `Transcription/AzureSpeechTranscriber` | Taps the default render endpoint via WASAPI loopback (+ optional local mic), downmixes/resamples to 16 kHz mono PCM, and streams it to Azure Speech → live captions |
 | **Adapt** | `ConversationDiarizingTranscriber` · `FastTranscriptionRefiner` · `SemanticDiarizationRefiner` · `SpeakerNamingRefiner` · `Summarization/AzureOpenAiSummarizer` | Attributes lines to `Guest-N`, re-diarizes offline on Stop, names voices from context, and distils the Conversation/Speaker recaps |
-| **Render** | `Hark.Oracle.Vision` (`ConceptDesigner` · `InfographicDesigner` · `VisionRenderer`) | Conjures the dual-layer "crystal ball" — a native WPF mind-map behind the HAL eye + a FLUX scene in the pupil — beat by beat |
+| **Render** | `Hark.Oracle.Vision` (`ConceptDesigner` · `InfographicDesigner` · `VisionRenderer`) | Conjures the Oracle's dual-layer Vision — a native WPF mind-map behind its eye + a FLUX scene in the pupil — beat by beat |
 | **Keep** | `Output/*Sink` · `Hark.App/Reporting` | Fans live results to stdout · text · JSON Lines · SRT · the overlay, and exports the whole session as a **Markdown · Word · PowerPoint · PDF · Web** report |
 
 Inside **Hear**, the dataflow is `48k stereo float → (downmix + resample + 16-bit) → 16k mono PCM →
@@ -153,7 +153,7 @@ CLI flags  →  environment variables  →  %APPDATA%\Hark\config.json  →  dot
 
 ### Summary & Vision (desktop, optional)
 
-The desktop overlay's **Summary** (AI recap) and **Vision** (crystal-ball visualization) tiers both run
+The desktop overlay's **Summary** (AI recap) and **Vision** (the Oracle's visualization) tiers both run
 on a single **Foundry** endpoint that hosts the chat and image deployments. Point HARK at it with
 user-secrets (endpoint + deployment names only — no keys):
 
@@ -195,7 +195,7 @@ A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 
 - **Toggle:** `Ctrl+Win+H` shows/hides a selectable, always-on-top captions bar that docks as a
   **full-width bar at the top** of the screen (native Live Captions layout) and fits its content height.
-- **HAL-9000 status eye:** a metallic-framed red "eye" that's dim when idle and, while listening, glows
+- **The Oracle's eye:** a metallic-framed red "eye" that's dim when idle and, while listening, glows
   and **pulses in time with the captured audio** — the pupil dilates on **bass**, the highlight drifts on
   **treble**.
 - **Speaker diarization:** captions are attributed to anonymous, session-scoped speakers (`Guest-1`,
@@ -209,7 +209,7 @@ A tray-resident captions bar that reuses the same `Hark.Core` pipeline.
 - **CAPTIONS / SUMMARY switch:** a segmented control cross-fades between live captions and an **AI recap**
   — **Conversation** (topic-pivoted) or **Speakers** (people-pivoted), both structured/expandable. The
   recap is cached and regenerated only when captions change.
-- **Vision — the crystal ball:** **clicking the HAL eye** dilates it into a full-window Vision page (a
+- **Vision — the Oracle:** **clicking the Oracle's eye** dilates it into a full-window Vision page (a
   corner→centre match-cut zoom; the large eye stays audio-reactive) that renders a **dual-layer** live
   visualization of the conversation, **conjured in parallel every beat** by `Hark.Oracle.Vision`:
   - a **native WPF radial mind-map** drawn behind the eye — the eye sits at its empty centre as the hub

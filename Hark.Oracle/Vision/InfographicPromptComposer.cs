@@ -9,7 +9,7 @@ namespace Hark.Oracle.Vision;
 /// The grammar is aligned to Black Forest Labs' FLUX.2 prompting guide (docs.bfl.ml): front-loaded
 /// <em>Subject → Style → Context</em>; quoted text for legible typography; plain colour <em>words</em>
 /// (never hex — FLUX renders hex strings as visible label text); and <b>no negative prompts</b>
-/// (FLUX.2 ignores them). A radial mind-map with an <em>empty centre</em> (so the HAL eye sits at the hub)
+/// (FLUX.2 ignores them). A radial mind-map with an <em>empty centre</em> (so the Oracle's eye sits at the hub)
 /// and up to five labeled nodes around it.
 /// </para>
 /// </summary>

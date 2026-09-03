@@ -137,7 +137,7 @@ public sealed class HarkSession : IAsyncDisposable
     /// <summary>
     /// Raised (~20 Hz while running) with the captured audio split into a few perceptual bands
     /// (overall / bass / treble) so independent visual parameters can react to different facets of
-    /// the sound at once — e.g. the HAL eye's pupil dilating on bass while its highlight shimmers on
+    /// the sound at once — e.g. the Oracle's eye pupil dilating on bass while its highlight shimmers on
     /// treble. Complements <see cref="AudioLevel"/> (both fire from the same window).
     /// </summary>
     public event Action<AudioFeatures>? AudioFeatures;

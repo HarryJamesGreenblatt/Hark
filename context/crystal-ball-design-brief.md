@@ -1,5 +1,9 @@
 # The Crystal Ball as an AI-Directed Ambient Display
 
+> **Naming note (2026-09-02):** the "crystal ball" is now called **the Oracle** — see
+> [`oracle.md`](./oracle.md) for the canonical identity. This brief is kept for its **research** (the
+> calm-tech / procedural-oatmeal framing), which still informs the Vision; only the name is dated.
+>
 > A design brief for HARK's Vision feature, grounded in game-dev, HCI, and procedural-generation
 > research. Written 2026-08-29 after an impasse: chasing *low-latency generative images synced to live
 > speech* as an engineering race, and losing.
