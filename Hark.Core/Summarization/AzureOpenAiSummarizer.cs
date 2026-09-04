@@ -122,11 +122,16 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
     /// <param name="style">The recap style to produce.</param>
     /// <returns>The system prompt text.</returns>
     private const string ConversationSystemPrompt =
-        "You produce a structured meeting recap from a transcript. Speakers are anonymous labels " +
-        "like 'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
+        "You produce a structured meeting recap from a transcript. Each line is prefixed with its " +
+        "speaker's label — EITHER an anonymous placeholder (like 'Guest-1') OR a real name assigned " +
+        "during the session (like 'Harry'). Always refer to each speaker by the EXACT label on their " +
+        "lines: keep 'Guest-1' as 'Guest-1' and 'Harry' as 'Harry'; never invent a name that isn't in " +
+        "the transcript, and never demote a provided name back to a 'Guest-N' placeholder. Treat every " +
+        "distinct label as a distinct speaker, INCLUDING labels that come from played-back or system " +
+        "audio (e.g. a narrator or a read-aloud source).\n\n" +
         "Return a JSON object with:\n" +
         "- title: a short, specific headline naming the whole conversation (≤ 8 words, no trailing " +
-        "period; e.g. 'Q3 Roadmap and Hiring Plan'). Use the Guest labels' topics, never invented names.\n" +
+        "period; e.g. 'Q3 Roadmap and Hiring Plan'). Name it by its topics, never by invented names.\n" +
         "- overview: 1-3 sentences capturing the meeting's purpose and outcome.\n" +
         "- topics: the meeting broken into the distinct subjects that were actually discussed. " +
         "Segment by topic shift, not by speaker. For each topic provide:\n" +
@@ -136,7 +141,8 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
         "decisions made, numbers or examples mentioned, and any disagreements. Be substantive and " +
         "specific; do not merely restate the title or summary.\n" +
         "- followUps: a flat list of concrete action items or commitments. For each, set 'task' " +
-        "(what will be done) and 'owner' (the Guest label responsible, or null if unassigned). " +
+        "(what will be done) and 'owner' (the EXACT label of the speaker responsible — a real name if " +
+        "one is shown on their lines, otherwise the Guest label — or null if unassigned). " +
         "If there are none, return an empty array.\n\n" +
         "Cover the whole conversation proportionally: the more that was said, the more topics and " +
         "detail you should produce. Be faithful to the transcript; never fabricate details, names, " +
@@ -147,11 +153,15 @@ public sealed class AzureOpenAiSummarizer : ISummarizer
     /// genuinely complements the topic-pivoted Conversation view rather than restating it.
     /// </summary>
     private const string SpeakersSystemPrompt =
-        "You produce a per-speaker recap from a transcript. Speakers are anonymous labels like " +
-        "'Guest-1'; refer to them only by those labels and never invent real names.\n\n" +
-        "Return a JSON object with a 'speakers' array containing one entry for every distinct speaker " +
-        "who actually spoke. For each, provide:\n" +
-        "- speaker: the exact Guest label (e.g. 'Guest-1').\n" +
+        "You produce a per-speaker recap from a transcript. Each line is prefixed with its speaker's " +
+        "label — EITHER an anonymous placeholder (like 'Guest-1') OR a real name assigned during the " +
+        "session (like 'Harry'). Refer to each speaker by the EXACT label on their lines: keep " +
+        "'Guest-1' as 'Guest-1' and 'Harry' as 'Harry'; never invent a name, and never demote a " +
+        "provided name to a 'Guest-N' placeholder.\n\n" +
+        "Return a JSON object with a 'speakers' array containing one entry for EVERY distinct label " +
+        "that appears in the transcript — including any that come from played-back or system audio, " +
+        "such as a narrator or read-aloud source (they count as speakers too). For each, provide:\n" +
+        "- speaker: the exact label shown on that speaker's lines (e.g. 'Harry' or 'Guest-1').\n" +
         "- summary: one sentence characterizing that speaker's role, stance, or overall contribution.\n" +
         "- points: 2-5 bullets of the specific things they said — positions they took, questions they " +
         "raised, claims or numbers they gave, and any commitments they made. Be substantive and " +
