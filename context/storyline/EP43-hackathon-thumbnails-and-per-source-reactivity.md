@@ -25,6 +25,13 @@ glow."*
   separately; `HarkSession` measures each on its own windowed-RMS path (mic from the **pre-mix** samples, so
   the input is untouched); `OverlayWindow.SetAudioFeatures` drives the eye from **`max()`** of two
   independently-tuned reactivity gains — the mic path **~2.4× hotter** with its own noise-floor gate.
+- **Hackathon submission collateral** — `context/hackathon-entry.md`: a judge-facing **product description**
+  (problem → the four movements → the Oracle → Microsoft-native stack → try it / what's next), distinct from
+  the developer README. Plus the pieces the Hackbox form asks for: a gallery **tagline** — *“Hear. Adapt.
+  Render. Keep.” — captions with a mind (and an eye) of their own*; a **≤200-char problem/opportunity** line —
+  *“PCs hear every meeting, call, and video—then forget them. HARK turns any audio your PC hears into
+  speaker-aware, summarized, visualized, exportable knowledge.”*; and **keywords** — Speech-to-text · Speaker
+  diarization · Azure AI Speech · Microsoft Foundry · Generative AI · Accessibility.
 
 ## 🧠 Decisions
 - **GIF thumbnail, ≤ 5 MB, ~3:2 — because** research (Devpost's documented spec + general gallery behaviour)
@@ -42,6 +49,10 @@ glow."*
   only just published with no downloads, and the user wants 2.1.0 itself to be the *good* build (carrying the
   headset fix) rather than a stale buggy release plus a separate patch. (Normally you don't move a published
   tag; here the release is minutes old and unshared, so a clean delete-then-recreate is fine.)
+- **The gallery tagline complements the thumbnail, doesn't repeat it — because** the animated tile already
+  spells *Hear·Adapt·Render·Keep*; a tagline that restates the acronym wastes the slot. The tagline adds the
+  meaning the acronym only hints at (*a mind and an eye of their own*), so the words and the watching-eye GIF
+  reinforce each other rather than duplicating.
 
 ## ✅ Verification
 - `dotnet build` (App + CLI) clean; `dotnet test` → **4 passed**.
@@ -52,6 +63,7 @@ glow."*
   signed MSIX/installer and re-publishes.
 
 ## 🔓 Open threads
+- **Submit the Hackbox entry** — copy in `context/hackathon-entry.md` (description · tagline · problem/opportunity · keywords); pair it with `oracle-brand.gif` as the tile.
 - **Test-upload `oracle-brand.gif` to Hackbox** to confirm the tile keeps animating (fallback: pure-eye GIF or
   the video slot).
 - Mic reactivity gains (`26/48/54`) / floors (`.012/.008/.005`) are easy dials if a different mic needs nudging.
