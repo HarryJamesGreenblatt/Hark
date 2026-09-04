@@ -1,6 +1,6 @@
 # HARK
 
-### *Hear. Adapt. Render. Keep.*
+### *Hear. Adapt. Render. Keep.* — captions with a mind (and an eye) of their own.
 
 > **HARK turns any conversation your PC can hear into live captions, speaker-aware summaries, and a living visualization — narrated by an Oracle that watches, understands, and renders what's being said.**
 
