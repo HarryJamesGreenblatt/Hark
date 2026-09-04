@@ -54,6 +54,18 @@ glow."*
   meaning the acronym only hints at (*a mind and an eye of their own*), so the words and the watching-eye GIF
   reinforce each other rather than duplicating.
 
+## 🚧 Problems & resolutions
+- **Symptom:** after the reactivity work made mic-mixing genuinely usable, a mic + system-audio test's SUMMARY
+  showed only **one** speaker (the mic) and follow-up owners as *“Guest-1”* despite naming. → **Bisected via a
+  saved report:** the TRANSCRIPT had *both* speakers (named), the SUMMARY dropped one → the bug was in the LLM
+  **summarizer**, not the metering change (`Emit`→transcriber is byte-identical). → **Root cause:** both
+  `AzureOpenAiSummarizer` prompts hard-coded anonymous `Guest-N` labels (*“never invent real names”*, owner =
+  *“the Guest label”*) + a meeting-participant framing — so they demoted real names back to Guest-N and dropped a
+  read-aloud/system-audio narrator as a non-participant. → **Fix (`34debd5`):** both prompts now use each line's
+  EXACT label (Guest-N *or* a real name), never demote or invent, and include *every* distinct source. Re-test:
+  **7 speakers**, real names populating the owners. (The reactivity work only *surfaced* this long-standing
+  prompt/naming mismatch — it didn't cause it.)
+
 ## ✅ Verification
 - `dotnet build` (App + CLI) clean; `dotnet test` → **4 passed**.
 - Thumbnails previewed frame-by-frame (peak/trough, scan phases) and tuned to ~2 MB seamless loops.
@@ -61,6 +73,8 @@ glow."*
   cleanly with other audio sources (HARK + a Bing-AI Navy TTS narration, each keeping its own reactivity).
 - `v2.1.0` deleted (tag + release) and re-cut at the fixed HEAD → the tag-driven `release.yml` rebuilds the
   signed MSIX/installer and re-publishes.
+- Summarizer fix validated live (`34debd5`): a mic + system test now lists **7 speakers** with real names
+  populating the follow-up owners (was **1** before).
 
 ## 🔓 Open threads
 - **Submit the Hackbox entry** — copy in `context/hackathon-entry.md` (description · tagline · problem/opportunity · keywords); pair it with `oracle-brand.gif` as the tile.
